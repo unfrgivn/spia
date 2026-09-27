@@ -9,8 +9,18 @@ struct Discover: AsyncParsableCommand {
 
     @OptionGroup var global: GlobalOptions
 
-    @Flag(name: .long, help: "Skip the 11-bit 700-7F7 sweep.")
+    @Flag(name: .long, help: "Skip the 11-bit sweep.")
     var skipStandard = false
+
+    @Option(name: .long, help: "11-bit request IDs to sweep, hex, inclusive.")
+    var range = "700-7F7"
+
+    @Option(
+        name: .long,
+        help: ArgumentHelp(
+            "Accept replies from any ID in this hex range instead of request+8, e.g. 600-7FF.",
+            discussion: "Must not overlap IDs the bus broadcasts on."))
+    var responseWindow: String?
 
     @Flag(name: .long, help: "Skip the 29-bit 18DAxxF1 sweep.")
     var skipExtended = false
@@ -44,10 +54,16 @@ struct Discover: AsyncParsableCommand {
 
             var found: [(DiagnosticAddress, ECUResponse)] = []
             if !skipStandard {
-                stderr("Sweeping 11-bit 700-7F7...")
-                for request in UInt16(0x700)...0x7F7
-                where request != 0x7DF && !(0x7E8...0x7EF).contains(request) {
-                    found += try await probe(.standard(request: request), on: session)
+                let (low, high) = try parseRange(range)
+                var receive = ReceiveFilter.expectedReply
+                if let responseWindow {
+                    let (windowLow, windowHigh) = try parseRange(responseWindow)
+                    receive = .window(covering: UInt32(windowLow), UInt32(windowHigh))
+                }
+                stderr("Sweeping 11-bit \(range)...")
+                for request in low...high where request != 0x7DF {
+                    found += try await probe(
+                        .standard(request: request), on: session, receive: receive)
                 }
             }
             if !skipExtended {
@@ -69,6 +85,16 @@ struct Discover: AsyncParsableCommand {
         }
     }
 
+    private func parseRange(_ text: String) throws -> (UInt16, UInt16) {
+        let parts = text.split(separator: "-")
+        guard parts.count == 2, let low = UInt16(parts[0], radix: 16),
+            let high = UInt16(parts[1], radix: 16), low <= high, high <= 0x7FF
+        else {
+            throw ValidationError("'\(text)' is not a hex range like 700-7F7")
+        }
+        return (low, high)
+    }
+
     private func requestBytes() throws -> [UInt8] {
         let digits = Array(request.filter { !$0.isWhitespace })
         guard !digits.isEmpty, digits.count.isMultiple(of: 2) else {
@@ -82,10 +108,11 @@ struct Discover: AsyncParsableCommand {
         }
     }
 
-    private func probe(_ address: DiagnosticAddress, on session: ELM327Session) async throws
-        -> [(DiagnosticAddress, ECUResponse)]
-    {
-        try await session.address(address, on: bus)
+    private func probe(
+        _ address: DiagnosticAddress, on session: ELM327Session,
+        receive: ReceiveFilter = .expectedReply
+    ) async throws -> [(DiagnosticAddress, ECUResponse)] {
+        try await session.address(address, on: bus, receive: receive)
         let responses: [ECUResponse]
         do {
             responses = try await session.request(

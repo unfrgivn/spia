@@ -53,9 +53,9 @@ Targets:
 |---|---|---|---|
 | 1 | Package skeleton, `OBDCore` pure decoders + unit tests | `swift build`, `swift test` green | done |
 | 2 | `SerialTransport` + `ELM327Session` + `spia ports` / `spia probe` | Hardware day 1: `ATZ`, `ATI`, `ATRV`, `ATDP` answer from the FS | done |
-| 3 | Recording/replay transports + `--record` flag | Real transcripts land in `Tests/Fixtures/` | done (USB-only capture; car captures next) |
-| 4 (#4) | `spia capture` (ATMA monitor, candump log, per-ID summary, 2 Mbps UART) | 124 IDs captured losslessly on the Ghibli; steering frames identified | done (PR #9); 125k pins 3/11 test still open |
-| 5 (#5) | UDS/ISO-TP client: `0x19` ReadDTC, `0x22` ReadDID, `0x14` ClearDTC; module discovery | ORC and BCM answer; codes match the clock-spring diagnosis below | next |
+| 3 | Recording/replay transports + `--record` flag | Real transcripts land in `Tests/Fixtures/` | done, including car captures |
+| 4 (#4) | `spia capture` (ATMA monitor, candump log, per-ID summary, 2 Mbps UART) | Ghibli traffic captured without reported overflow at 2 Mbps | shipped (PR #9); second-bus traffic also observed with STP 53 |
+| 5 (#5) | UDS/ISO-TP client and module discovery, reads first | Complete DTC replies with explicit request/reply IDs and correct flow control | in progress; live ORC/ABS/BCM reads recorded, CLI integration pending |
 | 6 (#1) | `spia scan` (stored/pending/permanent DTCs, freeze frame, readiness) + `spia info` (VIN, CAL IDs) | Ghibli replay fixtures already recorded; decode matches `term` output | pending |
 | 7 (#2) | `spia clear` | Codes clear, CEL off, re-scan clean | pending |
 | 8 (#3) | `spia live` with CSV logging | RPM/coolant/etc. track reality at idle | pending |
@@ -65,22 +65,22 @@ Reordered 2026-09-26: the fault that started this project is not an emissions co
 
 ## The Ghibli's actual fault (why UDS comes first)
 
-Symptoms: every steering-wheel control dead (volume, cluster menu, cruise), horn dead, airbag lamp on, ABS lamp on. Column-mounted paddles and wiper stalk work. Washer pump silent (separate fault, probably pump/fuse).
+Reported symptoms: every steering-wheel control dead (volume, cluster menu, cruise), horn dead, airbag lamp on, ABS lamp reported on. Column-mounted paddles and wiper stalk work. Washer pump silent despite a full reservoir; whether this is related is unknown.
 
-Everything that routes through the clock spring ribbon is dead; everything that bypasses it works. The airbag lamp means the ORC sees the driver squib loop open, which also runs through the ribbon. Working diagnosis: clock spring, with "fuse or unplugged connector at the column base" as the cheap thing to rule out first.
+The combined symptoms make the clock spring and its connections plausible suspects. A warning lamp alone does not identify a circuit or prove an open ribbon. Complete airbag-controller replies below support high-resistance faults in both driver-airbag stages under the SAE interpretation. They do not distinguish a clock spring from connectors, harness wiring, the airbag assembly, or controller faults. Working paddles/wipers do not prove all column electronics are healthy.
 
-Modules to interrogate over UDS: **ORC** (expect a driver-squib-open B-code), **BCM** (horn/cruise switch faults, washer pump output), **SCCM** (steering column module; hosts the switches and steering angle sensor), **ABS** (probably a lost-comm/steering-angle U- or C-code). None of these answer Mode 01/03.
+Targets are ORC, BCM, steering-column module, and ABS. Generic emissions scans do not cover these faults. Preserve DTCs before repair; no code clearing, output controls, coding, or airbag-circuit probing is part of this investigation. SRS electrical diagnosis requires the vehicle's service procedure and appropriate equipment.
 
 ## Hardware notes
 
 Confirmed on the bench (2026-09-26, USB power only, no car):
 
 - USB `0403:6015` (FTDI FT-X), product string `vLinker FS`. Apple's built-in driver enumerates it as `/dev/cu.usbserial-<serial>`; nothing to install.
-- `ATZ` → `ELM327 v2.3`. `STI` → `STN1170 v4.3.2`. `STDI` → `vLinker FS r2`. It is a real STN1170, so the full ST command set is available.
+- `ATZ` → `ELM327 v2.3`. `STI` → `STN1170 v4.3.2`. `STDI` → `vLinker FS r2`. These identify the reported firmware; individual command support still needs verification.
 - 115200 baud works. Echo is on after reset. `ATZ` takes ~1.2 s to answer; a failed protocol auto-search takes ~7 s before `UNABLE TO CONNECT`.
 - `ATRV` reports `--.-V` without a car; the voltage comes from OBD pin 16.
 - Adapter supports up to 3 Mbps (`ATBRD`) and remembers its last protocol across power cycles.
-- 8 KB serial buffer, 4128-byte OBD requests. Handles MS-CAN/HS-CAN switching in firmware (Ford-specific, irrelevant for the Ghibli).
+- MS-CAN/HS-CAN switching is relevant here: `STP 53` reported `MS CAN (ISO 15765, 125K/11B)` and exposed a second traffic set on the Ghibli.
 - Ghibli M157: expect ISO 15765-4 CAN 11-bit 500k for generic OBD (`ATSP6`). Manufacturer modules are likely UDS over ISO-TP with no public address/DID map. FCA-derived electronics but not identical to Chrysler.
 - 2017 predates FCA's Security Gateway (introduced MY2018 on Chrysler/Jeep/RAM). Unverified for Maserati; check on the car.
 
@@ -90,16 +90,46 @@ Confirmed on the car (2017 Ghibli S Q4, 2026-09-26; fixtures in `Tests/Fixtures/
 - Functional `7DF` gets two answers: ECM `7E8` (22 PIDs in 01-20) and TCM `7E9` (6 PIDs). VIN `ZAM57RTS4H1249941`. ECM CAL ID `670106994 G`, TCM `670101187`. ECU names `ECM1-EngineControl1`, `TCM\0-TransmisCtrl`.
 - No stored/pending/permanent DTCs, MIL off, all monitors complete. Distance since clear: ECM 1673 km, TCM 1603 km.
 - Car must be in RUN, not ACC. In ACC the bus is alive (~40 IDs at 10-20 Hz, e.g. `102`, `10C`, `10D`, `2F9`) but `0100` gets `NO DATA` on `ATSP6`/`7` and `CAN ERROR` on `ATSP8`. ACC to RUN is one more START press without the brake.
-- STN commands: `STPRS` works; `STP`, `STPBR`, `STCSWM` returned `?`. Probably called without arguments; retry as `STP 33` / `STPBR 125000` when testing whether CAN-IHS (125k) is on DLC pins 3/11.
-- Open: is the SCCM/ORC/BCM traffic on the 500k bus we can see, or on IHS behind the BCM gateway? Decides whether UDS to body modules works from the DLC at all.
+- `STP 53` plus `STPBR 125000` exposed about 100 IDs on the second transceiver. The earlier suggestion to use `STP 33` for that bus was incorrect.
+- Diagnostic replies were observed on both buses once receive filters covered the actual reply IDs. The request-plus-eight convention is not a general manufacturer-module mapping. Reachability does not establish whether a gateway forwarded a reply.
 
 ### Bus observations, ignition on, engine off (2026-09-26, `spia capture`)
 
-- 124 IDs, ~2200 frames/s. Periodic rates are exact 100/50/20/10/5/2/1/0.5 Hz. Nothing above `44C` except one 29-bit `208262F0`.
-- The adapter overflows at 115200 within a second; 2 Mbps captures losslessly. Capture switches rates automatically.
-- `102`, `108`, `120`, `2F8` (100/50 Hz) change continuously while the wheel is moved and are static otherwise: steering angle/torque, so the column module is alive on this bus.
-- Horn and wheel-button presses (short and 3 s holds) change nothing on the bus. Consistent with an open ribbon on the switch side.
-- `328` and `3E0` carry variable-length UTF-16 text: radio now-playing metadata for the cluster.
+- The current parser reported 124 IDs and about 2200 frames/s at 2 Mbps. Frame lengths remain suspect with CAN auto-formatting enabled; do not treat this as a validated raw bus inventory.
+- The adapter overflows at 115200 within a second. No overflow was reported in the 2 Mbps runs, but that does not establish lossless capture.
+- `102`, `108`, `120`, `2F8` changed during the wheel-movement experiment. Steering-related signals are candidates, not verified decodings or proof of which ECU transmitted them.
+- `334` byte 7 did not change during the dedicated volume/horn hold run. This rejects the earlier correlation for that signal, not all possible input paths or faults.
+- `328` contained apparent radio metadata. Its segmentation is not established as ISO-TP. `3E0` content needs separate decoding.
 - `400`-`423`: eight `FD xx ...` frames at 1.3 Hz, likely network-management/status.
 - `214` bytes 1 and 3 drift slowly at idle (sensor value). `10C` byte 4 creeps up over minutes (temperature or voltage).
-- Battery sagged from 11.7 V to 11.6 V over ~15 minutes of ignition-on captures. Below ~11.5 V modules drop off; start the engine for longer sessions.
+- Adapter voltage fell from 11.7 V to 11.6 V during ignition-on testing. No universal module-dropout threshold has been established. Later engine-running measurements were 14.0–14.3 V. Use a suitable supply for extended stationary diagnosis; never idle in an enclosed space.
+
+### Complete DTC reads (2026-09-26)
+
+Fixtures: `ghibli-orc-flowcontrol.txt` and `ghibli-abs-bcm-flowcontrol.txt`. Each contains the original TX/RX bytes, including setup acknowledgements. Module names below are working labels based on FCA references, not identification-DID verification.
+
+| Target (request → reply, 500k bus) | Complete response to `19 02 09` | Result |
+|---|---|---|
+| ORC (`744` → `4C4`) | `59 02 CF 80 01 1B 8F 80 02 1B 8F` | Two raw DTCs: `80011B`, `80021B`, both status `8F` |
+| ABS (`747` → `4C7`) | `59 02 7F` | No records matching requested status mask `09` |
+| BCM (`620` → `504`) | `59 02 FB 10 09 00 2B` | Raw DTC `100900`, status `2B`; manufacturer meaning unverified |
+
+With SAE-format interpretation, the ORC records map to `B0001-1B` and `B0002-1B`, driver frontal stage 1/2 circuits with resistance above threshold. Exact Maserati descriptions and the ECU's DTC format identifier remain unverified. The decoder therefore preserves raw codes. Status `8F` sets testFailed, testFailedThisOperationCycle, pendingDTC, confirmedDTC, and warningIndicatorRequested. Availability `CF` supports those bits.
+
+`19 02 FF` requests every supported status bit, not every possible DTC definition. `19 02 09` selects records with testFailed or confirmedDTC set. The ABS result does not rule out other-status faults or explain the reported lamp.
+
+The first ORC reply is `7F 19 78` (response pending), followed by a separate multi-frame positive response. `10 0B` is an 11-byte ISO-TP payload length. Automatic flow control worked after setting both data and header before enabling mode 1:
+
+```text
+ATCFC 1
+ATSH 744
+ATCRA 4C4
+ATFCSD 30 00 00
+ATFCSH 744
+ATFCSM 1
+190209
+```
+
+The earlier `ATFCSM 1` rejection was setup order, not whitespace. See the [OBDLink reference manual](https://www.scantool.net/scantool/downloads/678/obdlink_frpm_e.pdf), CAN-specific commands, and [ELM327 manual](https://elmelectronics.com/wp-content/uploads/2020/05/ELM327DSL.pdf), "Altering Flow Control Messages."
+
+Next: integrate explicit request/reply pairing and pending-response handling into a bounded UDS read command. Finish and review discovery validation before further live sweeps. No additional vehicle commands are needed to replay these fixtures.

@@ -213,10 +213,46 @@ public actor ELM327Session {
     }
 
     /// Aims subsequent requests at one module. Each command must answer `OK`.
-    public func address(_ address: DiagnosticAddress, on bus: CANBus = .highSpeed) async throws {
-        for command in address.setupCommands(on: bus) {
+    public func address(
+        _ address: DiagnosticAddress, on bus: CANBus = .highSpeed,
+        receive: ReceiveFilter = .expectedReply
+    ) async throws {
+        for command in address.setupCommands(on: bus, receive: receive) {
             let response = try await send(command)
             guard response.contains("OK") else {
+                throw ELM327Error.unexpectedResponse(command: command, response: response)
+            }
+        }
+    }
+
+    /// Configures normal ISO-TP flow control for a request and its expected response.
+    ///
+    /// The caller must select the bus protocol and enable automatic flow control (`ATCFC 1`)
+    /// first. Sets both flow-control data and header before enabling user-defined mode 1.
+    public func configureDiagnosticHeaders(
+        requestHeader: UInt32, responseHeader: UInt32
+    ) async throws {
+        guard requestHeader <= 0x1FFF_FFFF else {
+            throw ELM327Error.invalidCANHeader(requestHeader)
+        }
+        guard responseHeader <= 0x1FFF_FFFF else {
+            throw ELM327Error.invalidCANHeader(responseHeader)
+        }
+        let requestIsStandard = requestHeader <= 0x7FF
+        guard requestIsStandard == (responseHeader <= 0x7FF) else {
+            throw ELM327Error.invalidCANHeader(responseHeader)
+        }
+        let width = requestIsStandard ? 3 : 8
+        let commands = [
+            String(format: "ATSH %0\(width)X", requestHeader),
+            String(format: "ATCRA %0\(width)X", responseHeader),
+            "ATFCSD 30 00 00",
+            String(format: "ATFCSH %0\(width)X", requestHeader),
+            "ATFCSM 1",
+        ]
+        for command in commands {
+            let response = try await send(command)
+            guard response.trimmingCharacters(in: .whitespacesAndNewlines) == "OK" else {
                 throw ELM327Error.unexpectedResponse(command: command, response: response)
             }
         }
