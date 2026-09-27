@@ -80,7 +80,10 @@ public enum ReceiveFilter: Equatable, Sendable {
     case window(mask: UInt32, pattern: UInt32)
 
     /// The smallest aligned window covering `lowest`...`highest`.
-    public static func window(covering lowest: UInt32, _ highest: UInt32) -> ReceiveFilter {
+    public static func window(covering lowest: UInt32, _ highest: UInt32) throws -> ReceiveFilter {
+        guard lowest <= highest, highest <= 0x7FF else {
+            throw DiagnosticAddressError.invalidReceiveWindow(lowest: lowest, highest: highest)
+        }
         var span: UInt32 = 1
         while lowest & ~(span - 1) != highest & ~(span - 1) {
             span <<= 1
@@ -99,4 +102,8 @@ public enum ReceiveFilter: Equatable, Sendable {
             ]
         }
     }
+}
+
+public enum DiagnosticAddressError: Error, Equatable, Sendable {
+    case invalidReceiveWindow(lowest: UInt32, highest: UInt32)
 }

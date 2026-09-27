@@ -3,6 +3,22 @@ import Testing
 
 @Suite("Monitor stream parser")
 struct MonitorStreamParserTests {
+    @Test("unterminated input is bounded and malformed CAN shapes stay unparsable")
+    func rejectsUnboundedMalformedInput() {
+        var parser = MonitorStreamParser()
+        let events = parser.feed(Array(String(repeating: "F", count: 10_000).utf8))
+
+        #expect(events.count == 1)
+        #expect(
+            events.first.map { event in
+                if case .unparsable = event { true } else { false }
+            } == true)
+        #expect(parser.feed(Array("\r".utf8)).isEmpty)
+        #expect(
+            parser.feed(Array("123456789012345678901\r".utf8))
+                == [.unparsable("123456789012345678901")])
+    }
+
     @Test("a frame split across two reads is reassembled")
     func straddlingReads() {
         var parser = MonitorStreamParser()
@@ -85,5 +101,21 @@ struct CaptureSummaryTests {
         let row = summary.rows[0]
         #expect(row.lengths == [1, 2])
         #expect(row.changingBytes == [1])
+    }
+}
+
+@Suite("Diagnostic receive filters")
+struct DiagnosticReceiveFilterTests {
+    @Test("window rejects reversed, overflowing, and overflow-prone bounds")
+    func validatesWindowBounds() {
+        #expect(throws: DiagnosticAddressError.self) {
+            try ReceiveFilter.window(covering: 0x7E8, 0x7E0)
+        }
+        #expect(throws: DiagnosticAddressError.self) {
+            try ReceiveFilter.window(covering: 0x7E8, 0x800)
+        }
+        #expect(
+            (try? ReceiveFilter.window(covering: 0x7E8, 0x7EF))
+                == .window(mask: 0x7F8, pattern: 0x7E8))
     }
 }

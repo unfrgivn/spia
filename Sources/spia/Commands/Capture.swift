@@ -4,6 +4,8 @@ import Foundation
 import OBDCore
 
 struct Capture: AsyncParsableCommand {
+    private static let maximumDuration = 86_400.0
+    private static let maximumBaud = 10_000_000
     static let configuration = CommandConfiguration(
         abstract: "Sniff the CAN bus. Frames go to stdout in candump format; Ctrl-C or "
             + "--duration stops and prints a per-ID summary on stderr.")
@@ -49,6 +51,7 @@ struct Capture: AsyncParsableCommand {
     var uartBaud = 2_000_000
 
     func run() async throws {
+        try validateOptions()
         var options = global
         if options.protocol == .automatic {
             options.protocol = .can11bit500k
@@ -56,8 +59,16 @@ struct Capture: AsyncParsableCommand {
                 "Monitor mode needs a fixed protocol; using 6 (CAN 11-bit 500k). Pass --protocol to change."
             )
         }
+        stderr(
+            "Warning: monitor output is adapter-formatted; it is not guaranteed raw/lossless CAN.")
         let filter = try Set(id.map(parseID))
+        if let out, let record = options.record,
+            try canonicalFileURL(out) == canonicalFileURL(record)
+        {
+            throw ValidationError("--out and --record must be different files")
+        }
         let file = try out.map(openForAppend)
+        defer { try? file?.close() }
 
         try await Connection.with(options) { connection in
             let recorder = CaptureRecorder(filter: filter, echo: !quiet, file: file)
@@ -73,7 +84,7 @@ struct Capture: AsyncParsableCommand {
                 }
                 for line in setup {
                     let reply = try await connection.session.send(line)
-                    guard reply.contains("OK") else {
+                    guard reply.trimmingCharacters(in: .whitespacesAndNewlines) == "OK" else {
                         throw ELM327Error.unexpectedResponse(command: line, response: reply)
                     }
                 }
@@ -88,25 +99,58 @@ struct Capture: AsyncParsableCommand {
             }
             let interrupt = installInterruptHandler { work.cancel() }
             defer { interrupt.cancel() }
+            var timer: Task<Void, Never>?
             if let duration {
-                Task {
-                    try await Task.sleep(for: .seconds(duration))
-                    work.cancel()
+                timer = Task {
+                    try? await Task.sleep(for: .seconds(duration))
+                    if !Task.isCancelled { work.cancel() }
                 }
             }
+            defer { timer?.cancel() }
             try await work.value
+
+            if let failure = await recorder.failure() { throw failure }
 
             let report = await recorder.report()
             stderr(report)
         }
-        try file?.close()
+    }
+
+    private func validateOptions() throws {
+        if let duration, !duration.isFinite || duration <= 0 || duration > Self.maximumDuration {
+            throw ValidationError("--duration must be finite, positive, and at most 86400 seconds")
+        }
+        guard command == "ATMA" || command == "STMA" else {
+            throw ValidationError("--command must be ATMA or STMA")
+        }
+        guard uartBaud >= 0, uartBaud <= Self.maximumBaud else {
+            throw ValidationError("--uart-baud must be zero or positive and at most 10000000")
+        }
+        if let stp, stp != 53 && stp != 54 {
+            throw ValidationError("--stp must be 53 or 54")
+        }
+        if let stpBaud {
+            guard stp != nil else { throw ValidationError("--stp-baud requires --stp") }
+            guard stpBaud == 125_000 else {
+                throw ValidationError("--stp-baud currently supports only 125000")
+            }
+        }
+        switch global.protocol {
+        case .automatic, .can11bit500k, .can29bit500k, .can11bit250k, .can29bit250k:
+            break
+        default:
+            throw ValidationError("capture requires CAN protocol 6, 7, 8, 9, or automatic")
+        }
     }
 
     private func parseID(_ text: String) throws -> UInt32 {
-        guard let value = UInt32(text, radix: 16) else {
+        guard let value = UInt64(text, radix: 16) else {
             throw ValidationError("'\(text)' is not a hex CAN ID")
         }
-        return value
+        guard value <= 0x1FFF_FFFF else {
+            throw ValidationError("'\(text)' exceeds the 29-bit CAN ID limit")
+        }
+        return UInt32(value)
     }
 
     private func openForAppend(_ path: String) throws -> FileHandle {
@@ -116,6 +160,14 @@ struct Capture: AsyncParsableCommand {
         let handle = try FileHandle(forWritingTo: URL(fileURLWithPath: path))
         try handle.seekToEnd()
         return handle
+    }
+
+    private func canonicalFileURL(_ path: String) throws -> URL {
+        let url = URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+            let identifier = attributes[.systemFileNumber] as? NSNumber
+        else { return url }
+        return URL(fileURLWithPath: "file-number:\(identifier)")
     }
 
     /// Ctrl-C cancels the capture instead of killing the process, so the adapter is taken out of
@@ -140,6 +192,7 @@ actor CaptureRecorder {
     private var messages: [ELM327AdapterMessage] = []
     private var unparsable = 0
     private var dropped = 0
+    private var writeFailure: Error?
 
     init(filter: Set<UInt32>, echo: Bool, file: FileHandle?) {
         self.filter = filter
@@ -159,7 +212,12 @@ actor CaptureRecorder {
             if echo {
                 print(line)
             }
-            file?.write(Data((line + "\n").utf8))
+            do {
+                try file?.write(contentsOf: Data((line + "\n").utf8))
+            } catch {
+                writeFailure = error
+                return false
+            }
         case .message(let message):
             messages.append(message)
         case .unparsable:
@@ -169,6 +227,8 @@ actor CaptureRecorder {
         }
         return true
     }
+
+    func failure() -> Error? { writeFailure }
 
     func report() -> String {
         var lines: [String] = []
