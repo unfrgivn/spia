@@ -126,7 +126,11 @@ public final class VehicleReferences {
         isRefreshing = true
         defer { isRefreshing = false }
         let fresh = await Self.lookUp(input, previous: snapshot, client: client)
+        // Cut short (the screen went away): keep what's cached rather than a partial lookup,
+        // whose photo list would also prune the downloaded photos.
+        guard !Task.isCancelled else { return }
         await downloadPhotos(fresh.photos)
+        guard !Task.isCancelled else { return }
         snapshot = fresh
         save(fresh)
     }

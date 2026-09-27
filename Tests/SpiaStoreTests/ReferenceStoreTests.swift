@@ -68,6 +68,27 @@ struct ReferenceStoreTests {
         #expect(references.photos.isEmpty)
     }
 
+    @Test("a refresh that's cut short keeps the cached references and downloaded photos")
+    func cancelledRefresh() async throws {
+        let vehicle = try garage.addDemoVehicle()
+        let cached = try cacheRecordedReferences(for: vehicle)
+        let photo = try #require(cached.photos.first)
+        let downloaded = garage.files.photoURL(vehicle: vehicle.id, photo: photo)
+        try FileManager.default.createDirectory(
+            at: downloaded.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data([0xFF, 0xD8, 0xFF]).write(to: downloaded)
+        let references = VehicleReferences(vehicleID: vehicle.id, files: garage.files)
+
+        // Cancelled before it runs, as when the screen goes away mid-refresh.
+        let refresh = Task { await references.refresh(vehicle.referenceInput) }
+        refresh.cancel()
+        await refresh.value
+
+        #expect(references.snapshot == cached)
+        #expect(garage.references(for: vehicle) == cached)
+        #expect(FileManager.default.fileExists(atPath: downloaded.path))
+    }
+
     @Test("the briefing carries the decoded car, recalls, complaints, and the bulletin count")
     func briefing() throws {
         let vehicle = try garage.addDemoVehicle()
