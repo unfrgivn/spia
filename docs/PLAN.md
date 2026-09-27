@@ -132,4 +132,6 @@ ATFCSM 1
 
 The earlier `ATFCSM 1` rejection was setup order, not whitespace. See the [OBDLink reference manual](https://www.scantool.net/scantool/downloads/678/obdlink_frpm_e.pdf), CAN-specific commands, and [ELM327 manual](https://elmelectronics.com/wp-content/uploads/2020/05/ELM327DSL.pdf), "Altering Flow Control Messages."
 
-Next: integrate explicit request/reply pairing and pending-response handling into a bounded UDS read command. Finish and review discovery validation before further live sweeps. No additional vehicle commands are needed to replay these fixtures.
+Next: validate and review the bounded offline-replay-backed command `spia uds dtcs --bus hs --tx 744 --rx 4C4` before any live use. It is read-only, standard 11-bit only, explicitly configures the target headers/flow control, sends one `19 02 <mask>` request, accepts pending followed by a final response in one adapter prompt, and reports a pending-only prompt as incomplete. No automatic diagnostic-session transitions, retry, discovery, extended-ID support, or manufacturer label inference are included.
+
+Offline CLI validation runs with `scripts/test-cli-validation.sh .build/debug/spia`; it never invokes a valid auto-port command. `readUDSDTC` assumes its caller exclusively owns the session and has already configured the target headers.

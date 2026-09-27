@@ -2,6 +2,7 @@ public enum ISOTPError: Error, Equatable, Sendable, CustomStringConvertible {
     case truncated(ecu: UInt32)
     case sequenceGap(ecu: UInt32, expected: UInt8, got: UInt8)
     case missingFirstFrame(ecu: UInt32)
+    case malformedFrame(ecu: UInt32)
 
     public var description: String {
         switch self {
@@ -11,6 +12,8 @@ public enum ISOTPError: Error, Equatable, Sendable, CustomStringConvertible {
             return "ECU \(hex(ecu)): expected consecutive frame \(expected), got \(got)"
         case .missingFirstFrame(let ecu):
             return "ECU \(hex(ecu)): consecutive frame without a first frame"
+        case .malformedFrame(let ecu):
+            return "ECU \(hex(ecu)): ISO-TP frame is not a classical 8-byte CAN frame"
         }
     }
 
@@ -33,6 +36,9 @@ public enum ISOTPReassembler {
         var order: [UInt32] = []
         var groups: [UInt32: [CANFrame]] = [:]
         for frame in frames {
+            guard frame.data.count <= 8 else {
+                throw ISOTPError.malformedFrame(ecu: frame.header)
+            }
             if groups[frame.header] == nil {
                 order.append(frame.header)
             }
@@ -59,6 +65,9 @@ public enum ISOTPReassembler {
                 throw ISOTPError.truncated(ecu: ecu)
             }
             let length = (Int(pci & 0x0F) << 8) | Int(first.data[1])
+            guard length >= 8 else {
+                throw ISOTPError.truncated(ecu: ecu)
+            }
             var payload = Array(first.data.dropFirst(2))
             var expected: UInt8 = 1
             for frame in frames.dropFirst() {
@@ -66,6 +75,9 @@ public enum ISOTPReassembler {
                     continue
                 }
                 let sequence = framePCI & 0x0F
+                guard frame.data.count >= 2 else {
+                    throw ISOTPError.truncated(ecu: ecu)
+                }
                 guard sequence == expected else {
                     throw ISOTPError.sequenceGap(ecu: ecu, expected: expected, got: sequence)
                 }

@@ -9,6 +9,11 @@ public enum ELM327Error: Error, Equatable, Sendable, CustomStringConvertible {
     case invalidCANHeader(UInt32)
     /// The adapter answered an OBD request with a status message and no frames.
     case adapter(ELM327AdapterMessage)
+    /// The adapter produced more response data than the bounded command allows.
+    case responseTooLarge(command: String, limit: Int)
+    case invalidTimeout
+    case operationInProgress
+    case transportUnsynchronized
 
     public var description: String {
         switch self {
@@ -22,6 +27,14 @@ public enum ELM327Error: Error, Equatable, Sendable, CustomStringConvertible {
                 "invalid CAN header \(String(format: "%08X", header)): out of range or mismatched identifier width"
         case .adapter(let message):
             return message.description
+        case .responseTooLarge(let command, let limit):
+            return "response to \(command) exceeded the \(limit)-byte safety limit"
+        case .invalidTimeout:
+            return "timeout must be positive"
+        case .operationInProgress:
+            return "another adapter operation is already in progress"
+        case .transportUnsynchronized:
+            return "adapter exchange was interrupted; reconnect before sending another command"
         }
     }
 

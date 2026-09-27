@@ -40,6 +40,59 @@ struct UDSDTCTests {
                 == .negative(service: 0x19, code: .responsePending))
     }
 
+    @Test("selects a terminal negative response after pending")
+    func selectsTerminalNegativeResponse() throws {
+        let raw = "4C4037F1978\r4C4037F1922\r"
+        #expect(
+            try UDSDTCResponseSelector.select(raw, expectedECU: 0x4C4)
+                == .negative(service: 0x19, code: .conditionsNotCorrect))
+    }
+
+    @Test("rejects pending for an unrelated negative-response service")
+    func rejectsWrongNegativeService() {
+        #expect(throws: UDSDTCReadError.wrongNegativeService(0x22)) {
+            try UDSDTCResponseSelector.select("4C4037F2278\r", expectedECU: 0x4C4)
+        }
+    }
+
+    @Test("rejects pending-only prompt")
+    func rejectsPendingOnly() {
+        #expect(throws: UDSDTCReadError.pendingWithoutFinalResponse) {
+            try UDSDTCResponseSelector.select("4C4037F1978\r", expectedECU: 0x4C4)
+        }
+    }
+
+    @Test("rejects a prompt with no frames")
+    func rejectsNoFrames() {
+        #expect(throws: UDSDTCReadError.noFrames) {
+            try UDSDTCResponseSelector.select("\r", expectedECU: 0x4C4)
+        }
+    }
+
+    @Test("rejects adapter error statuses instead of returning a DTC result")
+    func rejectsAdapterStatus() {
+        #expect(throws: UDSDTCReadError.adapterStatus(.noData)) {
+            try UDSDTCResponseSelector.select("NO DATA\r", expectedECU: 0x4C4)
+        }
+        #expect(throws: UDSDTCReadError.adapterStatus(.canError)) {
+            try UDSDTCResponseSelector.select("CAN ERROR\r4C403590200\r", expectedECU: 0x4C4)
+        }
+    }
+
+    @Test("rejects an unexpected ECU")
+    func rejectsUnexpectedECU() {
+        #expect(throws: UDSDTCReadError.unexpectedECU(0x4C5)) {
+            try UDSDTCResponseSelector.select("4C5037F1978\r", expectedECU: 0x4C4)
+        }
+    }
+
+    @Test("rejects duplicate final responses")
+    func rejectsDuplicateFinal() {
+        #expect(throws: UDSDTCReadError.duplicateFinalResponse) {
+            try UDSDTCResponseSelector.select("4C403590200\r4C403590200\r", expectedECU: 0x4C4)
+        }
+    }
+
     @Test("rejects invalid service, subfunction, and record lengths")
     func rejectsInvalidPayloads() {
         #expect(throws: UDSDTCDecodeError.invalidService(0x58)) {
@@ -56,6 +109,22 @@ struct UDSDTCTests {
         }
     }
 
+    @Test("validates timeout and cancellation before any adapter write")
+    func validatesBeforeIO() async {
+        let transport = ReplayTransport(events: [])
+        let session = ELM327Session(transport: transport)
+        await #expect(throws: ELM327Error.invalidTimeout) {
+            try await session.readUDSDTC(
+                responseHeader: 0x4C4, timeout: .zero)
+        }
+        let task = Task {
+            try await session.readUDSDTC(responseHeader: 0x4C4)
+        }
+        task.cancel()
+        await #expect(throws: CancellationError.self) { try await task.value }
+        #expect(await transport.isFinished)
+    }
+
     @Test("replays ORC pending and final payloads without splicing messages")
     func replaysORC() async throws {
         let url = fixtureURL("ghibli-orc-flowcontrol.txt")
@@ -68,18 +137,18 @@ struct UDSDTCTests {
         _ = try await session.send("ATST 64")
         _ = try await session.send("ATCFC 1")
         try await session.configureDiagnosticHeaders(requestHeader: 0x744, responseHeader: 0x4C4)
-        let messages = try reassembleMessages(in: try await session.send("190209"))
-        let decoded = try messages.map { try UDSDTCDecoder.decode($0.payload) }
+        let decoded = [
+            try await session.readUDSDTC(responseHeader: 0x4C4)
+        ]
 
         #expect(
             decoded == [
-                .negative(service: 0x19, code: .responsePending),
                 .positive(
                     availability: 0xCF,
                     records: [
                         UDSDTCRecord(code: [0x80, 0x01, 0x1B], status: 0x8F),
                         UDSDTCRecord(code: [0x80, 0x02, 0x1B], status: 0x8F),
-                    ]),
+                    ])
             ])
         #expect(await transport.isFinished)
     }
@@ -99,14 +168,13 @@ struct UDSDTCTests {
         _ = try await session.send("ATCRA 4C7")
         _ = try await session.send("ATFCSH 747")
         _ = try await session.send("ATFCSM 1")
-        let absMessages = try reassembleMessages(in: try await session.send("190209"))
+        let absResponse = try await session.readUDSDTC(responseHeader: 0x4C7)
         _ = try await session.send("ATSH 620")
         _ = try await session.send("ATCRA 504")
         _ = try await session.send("ATFCSH 620")
         _ = try await session.send("ATFCSM 1")
-        let bcmMessages = try reassembleMessages(in: try await session.send("190209"))
-        let messages = absMessages + bcmMessages
-        let decoded = try messages.map { try UDSDTCDecoder.decode($0.payload) }
+        let bcmResponse = try await session.readUDSDTC(responseHeader: 0x504)
+        let decoded = [absResponse, bcmResponse]
 
         #expect(
             decoded == [
@@ -128,17 +196,4 @@ struct UDSDTCTests {
             .appendingPathComponent(name)
     }
 
-    private func reassembleMessages(in raw: String) throws -> [ECUResponse] {
-        let frames = try ELM327ResponseParser.parse(raw).frames
-        var messages: [[CANFrame]] = []
-        for frame in frames {
-            guard let pci = frame.data.first else { continue }
-            if pci >> 4 == 0 || pci >> 4 == 1 {
-                messages.append([frame])
-            } else if pci >> 4 == 2, !messages.isEmpty {
-                messages[messages.count - 1].append(frame)
-            }
-        }
-        return try messages.flatMap { try ISOTPReassembler.reassemble($0) }
-    }
 }

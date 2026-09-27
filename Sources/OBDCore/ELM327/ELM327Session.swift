@@ -9,6 +9,8 @@ public actor ELM327Session {
     /// The rate the transport opened at, and the one to put the adapter back to on disconnect.
     private let baud: Int
     private var switchedBaud: Int?
+    private var operationInFlight = false
+    private var transportUnsynchronized = false
 
     /// `baud` is the transport's line rate. It only matters for `switchBaud` bookkeeping and
     /// for recovering an adapter that was left at another rate.
@@ -20,27 +22,45 @@ public actor ELM327Session {
     /// Opens the transport, resets the adapter, and applies the framing settings the parser
     /// expects (`ATE0 ATL0 ATS0 ATH1`). Returns the adapter's identification string from `ATZ`.
     public func connect(protocol selected: ELM327Protocol = .automatic) async throws -> String {
-        try await transport.open()
-        let identity: String
+        guard !operationInFlight else { throw ELM327Error.operationInProgress }
+        operationInFlight = true
+        transportUnsynchronized = false
         do {
-            identity = try await send("ATZ", timeout: .seconds(3))
-        } catch ELM327Error.timeout {
-            identity = try await recoverForeignBaud()
-        }
-        for command in ["ATE0", "ATL0", "ATS0", "ATH1", "ATSP\(selected.commandDigit)"] {
-            let response = try await send(command)
-            guard response.contains("OK") else {
-                throw ELM327Error.unexpectedResponse(command: command, response: response)
+            try await transport.open()
+            let identity: String
+            do {
+                identity = try await sendUnlocked("ATZ", timeout: .seconds(3))
+            } catch ELM327Error.timeout {
+                identity = try await recoverForeignBaud()
             }
+            for command in ["ATE0", "ATL0", "ATS0", "ATH1", "ATSP\(selected.commandDigit)"] {
+                let response = try await sendUnlocked(command)
+                guard response.contains("OK") else {
+                    throw ELM327Error.unexpectedResponse(command: command, response: response)
+                }
+            }
+            transportUnsynchronized = false
+            operationInFlight = false
+            return identity
+        } catch {
+            await transport.close()
+            operationInFlight = false
+            throw error
         }
-        return identity
     }
 
     /// Puts the UART back to its opening rate if `switchBaud` changed it, so the next program
     /// to open the port finds the adapter where it expects it. Then closes the transport.
     public func disconnect() async {
-        if let switchedBaud, switchedBaud != baud {
-            try? await switchBaud(to: baud)
+        guard !operationInFlight else {
+            // The caller must await the canceled operation before disconnecting; closing here
+            // would race an in-flight read and corrupt the next adapter command.
+            return
+        }
+        operationInFlight = true
+        defer { operationInFlight = false }
+        if !transportUnsynchronized, let switchedBaud, switchedBaud != baud {
+            try? await switchBaudUnlocked(to: baud)
         }
         await transport.close()
     }
@@ -65,6 +85,16 @@ public actor ELM327Session {
     /// Sends one command and returns everything the adapter printed before the `>` prompt,
     /// with any echo of the command and surrounding whitespace removed.
     public func send(_ command: String, timeout: Duration = .seconds(2)) async throws -> String {
+        try beginOperation()
+        defer { endOperation() }
+        return try await sendUnlocked(command, timeout: timeout)
+    }
+
+    private func sendUnlocked(_ command: String, timeout: Duration = .seconds(2)) async throws
+        -> String
+    {
+        try Task.checkCancellation()
+        transportUnsynchronized = true
         try await transport.write(Array((command + "\r").utf8))
         let deadline = clock.now + timeout
         var received: [UInt8] = []
@@ -73,12 +103,42 @@ public actor ELM327Session {
             guard remaining > .zero else {
                 throw ELM327Error.timeout(command: command, partial: decode(received))
             }
-            let chunk = try await transport.read(timeout: remaining)
+            let chunk = try await transport.read(timeout: min(remaining, .milliseconds(250)))
             received.append(contentsOf: chunk)
             if let prompt = received.lastIndex(of: UInt8(ascii: ">")) {
+                transportUnsynchronized = false
                 return stripEcho(of: command, from: decode(Array(received[..<prompt])))
             }
         }
+    }
+
+    /// Performs one bounded, read-only UDS ReadDTCByStatusMask transaction.
+    /// The caller must exclusively own the session and configure the request/reply headers first
+    /// with `configureDiagnosticHeaders` (or equivalent recorded setup).
+    public func readUDSDTC(
+        responseHeader: UInt32,
+        statusMask: UInt8 = 0x09,
+        timeout: Duration = .seconds(10)
+    ) async throws -> UDSDTCResponse {
+        try beginOperation()
+        defer { endOperation() }
+        guard responseHeader <= 0x7FF else { throw UDSDTCReadError.invalidHeader(responseHeader) }
+        guard timeout > .zero, timeout <= .seconds(120) else {
+            throw ELM327Error.invalidTimeout
+        }
+        let raw: String
+        do {
+            try Task.checkCancellation()
+            raw = try await sendBounded(
+                String(format: "1902%02X", statusMask), timeout: timeout, limit: 65_536)
+        } catch is CancellationError {
+            transportUnsynchronized = true
+            throw CancellationError()
+        } catch let error as ELM327Error {
+            if case .timeout = error { transportUnsynchronized = true }
+            throw error
+        }
+        return try UDSDTCResponseSelector.select(raw, expectedECU: responseHeader)
     }
 
     /// `ATI`: adapter identification, e.g. `ELM327 v2.3`.
@@ -129,7 +189,13 @@ public actor ELM327Session {
     /// Plain ELM327 clones need `ATBRD` instead and
     /// are not handled.
     public func switchBaud(to newBaud: Int) async throws {
-        let confirm = try await send("STBRT 1000")
+        try beginOperation()
+        defer { endOperation() }
+        try await switchBaudUnlocked(to: newBaud)
+    }
+
+    private func switchBaudUnlocked(to newBaud: Int) async throws {
+        let confirm = try await sendUnlocked("STBRT 1000")
         guard confirm.contains("OK") else {
             throw ELM327Error.unexpectedResponse(command: "STBRT 1000", response: confirm)
         }
@@ -165,7 +231,34 @@ public actor ELM327Session {
             }
             received.append(contentsOf: try await transport.read(timeout: remaining))
             if received.contains(marker) {
+                if marker == UInt8(ascii: ">") { transportUnsynchronized = false }
                 return decode(received)
+            }
+        }
+    }
+
+    private func sendBounded(_ command: String, timeout: Duration, limit: Int) async throws
+        -> String
+    {
+        try Task.checkCancellation()
+        transportUnsynchronized = true
+        try await transport.write(Array((command + "\r").utf8))
+        let deadline = clock.now + timeout
+        var received: [UInt8] = []
+        while true {
+            try Task.checkCancellation()
+            let remaining = clock.now.duration(to: deadline)
+            guard remaining > .zero else {
+                throw ELM327Error.timeout(command: command, partial: decode(received))
+            }
+            let readTimeout = min(remaining, .milliseconds(250))
+            received.append(contentsOf: try await transport.read(timeout: readTimeout))
+            guard received.count <= limit else {
+                throw ELM327Error.responseTooLarge(command: command, limit: limit)
+            }
+            if let prompt = received.lastIndex(of: UInt8(ascii: ">")) {
+                transportUnsynchronized = false
+                return stripEcho(of: command, from: decode(Array(received[..<prompt])))
             }
         }
     }
@@ -184,6 +277,9 @@ public actor ELM327Session {
         _ command: String = "ATMA",
         handle: @Sendable (Duration, MonitorEvent) async -> Bool
     ) async throws {
+        try beginOperation()
+        defer { endOperation() }
+        transportUnsynchronized = true
         try await transport.write(Array((command + "\r").utf8))
         let started = clock.now
         var parser = MonitorStreamParser()
@@ -194,6 +290,7 @@ public actor ELM327Session {
             for event in parser.feed(chunk) {
                 let wanted = await handle(elapsed, event)
                 if event == .prompt {
+                    transportUnsynchronized = false
                     return
                 }
                 if !wanted {
@@ -217,8 +314,10 @@ public actor ELM327Session {
         _ address: DiagnosticAddress, on bus: CANBus = .highSpeed,
         receive: ReceiveFilter = .expectedReply
     ) async throws {
+        try beginOperation()
+        defer { endOperation() }
         for command in address.setupCommands(on: bus, receive: receive) {
-            let response = try await send(command)
+            let response = try await sendUnlocked(command)
             guard response.contains("OK") else {
                 throw ELM327Error.unexpectedResponse(command: command, response: response)
             }
@@ -230,6 +329,15 @@ public actor ELM327Session {
     /// The caller must select the bus protocol and enable automatic flow control (`ATCFC 1`)
     /// first. Sets both flow-control data and header before enabling user-defined mode 1.
     public func configureDiagnosticHeaders(
+        requestHeader: UInt32, responseHeader: UInt32
+    ) async throws {
+        try beginOperation()
+        defer { endOperation() }
+        try await configureDiagnosticHeadersUnlocked(
+            requestHeader: requestHeader, responseHeader: responseHeader)
+    }
+
+    private func configureDiagnosticHeadersUnlocked(
         requestHeader: UInt32, responseHeader: UInt32
     ) async throws {
         guard requestHeader <= 0x1FFF_FFFF else {
@@ -251,11 +359,22 @@ public actor ELM327Session {
             "ATFCSM 1",
         ]
         for command in commands {
-            let response = try await send(command)
+            let response = try await sendUnlocked(command)
             guard response.trimmingCharacters(in: .whitespacesAndNewlines) == "OK" else {
                 throw ELM327Error.unexpectedResponse(command: command, response: response)
             }
         }
+    }
+
+    private func beginOperation() throws {
+        try Task.checkCancellation()
+        guard !operationInFlight else { throw ELM327Error.operationInProgress }
+        guard !transportUnsynchronized else { throw ELM327Error.transportUnsynchronized }
+        operationInFlight = true
+    }
+
+    private func endOperation() {
+        operationInFlight = false
     }
 
     /// Sends an OBD request and returns one reassembled payload per responding ECU.

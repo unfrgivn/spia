@@ -33,6 +33,71 @@ public enum UDSDTCDecodeError: Error, Equatable, Sendable {
     case invalidSubfunction(UInt8)
 }
 
+public enum UDSDTCReadError: Error, Equatable, Sendable, CustomStringConvertible {
+    case invalidHeader(UInt32)
+    case unexpectedECU(UInt32)
+    case pendingWithoutFinalResponse
+    case noFrames
+    case wrongNegativeService(UInt8)
+    case duplicateFinalResponse
+    case adapterStatus(ELM327AdapterMessage)
+
+    public var description: String {
+        switch self {
+        case .invalidHeader(let header):
+            return String(format: "UDS DTC read requires an 11-bit CAN header: %03X", header)
+        case .unexpectedECU(let ecu):
+            return String(format: "UDS DTC read received an unexpected ECU: %03X", ecu)
+        case .pendingWithoutFinalResponse:
+            return "ECU returned response pending, but the adapter stopped before a final response"
+        case .noFrames:
+            return "adapter prompt contained no CAN response frames"
+        case .wrongNegativeService(let service):
+            return String(
+                format: "negative response referred to unexpected service 0x%02X", service)
+        case .duplicateFinalResponse:
+            return "ECU returned more than one final UDS DTC response"
+        case .adapterStatus(let status):
+            return "adapter reported: \(status.description)"
+        }
+    }
+}
+
+/// Selects and validates the final response from one bounded adapter prompt.
+public enum UDSDTCResponseSelector {
+    public static func select(_ raw: String, expectedECU: UInt32) throws -> UDSDTCResponse {
+        let parsed = try ELM327ResponseParser.parse(raw)
+        if let status = parsed.messages.first(where: { $0 != .ok }) {
+            throw UDSDTCReadError.adapterStatus(status)
+        }
+        guard !parsed.frames.isEmpty else { throw UDSDTCReadError.noFrames }
+        let messages = try UDSMessageAssembler.assemble(parsed.frames)
+        var sawPending = false
+        var final: UDSDTCResponse?
+        for message in messages {
+            guard message.ecu == expectedECU else {
+                throw UDSDTCReadError.unexpectedECU(message.ecu)
+            }
+            let response = try UDSDTCDecoder.decode(message.payload)
+            switch response {
+            case .negative(let service, .responsePending):
+                guard service == 0x19 else { throw UDSDTCReadError.wrongNegativeService(service) }
+                sawPending = true
+            case .negative(let service, _):
+                guard service == 0x19 else { throw UDSDTCReadError.wrongNegativeService(service) }
+                guard final == nil else { throw UDSDTCReadError.duplicateFinalResponse }
+                final = response
+            case .positive:
+                guard final == nil else { throw UDSDTCReadError.duplicateFinalResponse }
+                final = response
+            }
+        }
+        if let final { return final }
+        if sawPending { throw UDSDTCReadError.pendingWithoutFinalResponse }
+        throw UDSDTCReadError.noFrames
+    }
+}
+
 public enum UDSDTCDecoder {
     public static func decode(_ payload: [UInt8]) throws -> UDSDTCResponse {
         guard let service = payload.first else {
