@@ -27,6 +27,10 @@ public actor RecordingTransport: Transport {
         handle = nil
     }
 
+    public func setBaud(_ baud: Int) async throws {
+        try await base.setBaud(baud)
+    }
+
     public func write(_ bytes: [UInt8]) async throws {
         try await base.write(bytes)
         try record(.tx, bytes)

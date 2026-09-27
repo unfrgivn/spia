@@ -8,7 +8,7 @@ public enum SerialError: Error, Sendable, CustomStringConvertible {
     public var description: String {
         switch self {
         case .unsupportedBaud(let baud):
-            return "unsupported baud rate \(baud)"
+            return "the serial driver rejected \(baud) baud"
         case .open(let path, let errno, let message):
             return "could not open \(path): \(message) (errno \(errno))"
         case .configure(let path, let errno, let message):

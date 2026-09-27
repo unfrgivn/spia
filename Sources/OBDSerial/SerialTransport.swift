@@ -4,14 +4,13 @@ import OBDCore
 
 /// POSIX serial port transport for macOS. Raw mode, 8N1, no flow control.
 public actor SerialTransport: Transport {
-    private static let speeds: [Int: speed_t] = [
-        9600: speed_t(B9600),
-        19200: speed_t(B19200),
-        38400: speed_t(B38400),
-        57600: speed_t(B57600),
-        115200: speed_t(B115200),
-        230400: speed_t(B230400),
-    ]
+    /// `IOSSIOSPEED` from `<IOKit/serial/ioss.h>`: `_IOW('T', 2, speed_t)`. Swift cannot import
+    /// the macro, so it is assembled here: IOC_OUT | sizeof(speed_t) << 16 | 'T' << 8 | 2.
+    /// It sets any rate the USB-serial chip can generate, not just the termios `B*` constants,
+    /// and must be applied after `tcsetattr`, which would otherwise reset it.
+    private static let iossiospeed: UInt =
+        0x8000_0000 | UInt(MemoryLayout<speed_t>.size & 0x1FFF) << 16 | UInt(UInt8(ascii: "T")) << 8
+        | 2
 
     private let path: String
     private let baud: Int
@@ -42,7 +41,7 @@ public actor SerialTransport: Transport {
         guard descriptor == nil else {
             return
         }
-        guard let speed = Self.speeds[baud] else {
+        guard baud > 0 else {
             throw SerialError.unsupportedBaud(baud)
         }
         let fd = Darwin.open(path, O_RDWR | O_NOCTTY | O_NONBLOCK)
@@ -50,7 +49,8 @@ public actor SerialTransport: Transport {
             throw SerialError.open(path: path, errno: errno, message: Self.message(errno))
         }
         do {
-            try configure(fd, speed: speed)
+            try configure(fd)
+            try applySpeed(fd, baud: baud)
         } catch {
             Darwin.close(fd)
             throw error
@@ -81,6 +81,16 @@ public actor SerialTransport: Transport {
         }
     }
 
+    /// Switches the host rate and discards anything received at the old one, which is garbage
+    /// by definition once the adapter has switched too.
+    public func setBaud(_ baud: Int) async throws {
+        guard let fd = descriptor else {
+            throw SerialError.notOpen
+        }
+        try applySpeed(fd, baud: baud)
+        tcflush(fd, TCIFLUSH)
+    }
+
     public func read(timeout: Duration) async throws -> [UInt8] {
         guard let fd = descriptor else {
             throw SerialError.notOpen
@@ -102,7 +112,7 @@ public actor SerialTransport: Transport {
         return Array(buffer.prefix(count))
     }
 
-    private func configure(_ fd: Int32, speed: speed_t) throws {
+    private func configure(_ fd: Int32) throws {
         guard fcntl(fd, F_SETFL, 0) == 0 else {
             throw SerialError.configure(path: path, errno: errno, message: Self.message(errno))
         }
@@ -111,7 +121,6 @@ public actor SerialTransport: Transport {
             throw SerialError.configure(path: path, errno: errno, message: Self.message(errno))
         }
         cfmakeraw(&settings)
-        cfsetspeed(&settings, speed)
         settings.c_cflag |= tcflag_t(CLOCAL | CREAD)
         settings.c_cflag &= ~tcflag_t(CSIZE | PARENB | CSTOPB | CRTSCTS)
         settings.c_cflag |= tcflag_t(CS8)
@@ -125,6 +134,13 @@ public actor SerialTransport: Transport {
             throw SerialError.configure(path: path, errno: errno, message: Self.message(errno))
         }
         tcflush(fd, TCIOFLUSH)
+    }
+
+    private func applySpeed(_ fd: Int32, baud: Int) throws {
+        var speed = speed_t(baud)
+        guard ioctl(fd, Self.iossiospeed, &speed) == 0 else {
+            throw SerialError.unsupportedBaud(baud)
+        }
     }
 
     private static func message(_ code: Int32) -> String {

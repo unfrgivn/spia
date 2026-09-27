@@ -41,12 +41,13 @@ public enum ELM327ResponseParser {
                 messages.append(message)
                 continue
             }
-            frames.append(try parseFrame(line.filter { !$0.isWhitespace }))
+            frames.append(try frame(fromHex: line.filter { !$0.isWhitespace }))
         }
         return ParsedResponse(frames: frames, messages: messages)
     }
 
-    private static func parseFrame(_ hex: String) throws -> CANFrame {
+    /// Parses one frame line with headers on and whitespace already removed.
+    public static func frame(fromHex hex: String) throws -> CANFrame {
         let digits = Array(hex)
         guard digits.allSatisfy(\.isHexDigit) else {
             throw ELM327ParseError.malformedLine(hex)
