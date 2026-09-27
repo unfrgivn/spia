@@ -87,6 +87,8 @@ public final class VehicleReferences {
     public private(set) var isRefreshing = false
     /// The bulletin whose document is downloading.
     public private(set) var openingBulletin: Int?
+    /// Callers waiting for the lookup in flight to finish.
+    private var waiting: [CheckedContinuation<Void, Never>] = []
 
     public let vehicleID: UUID
     private let files: SpiaFiles
@@ -113,6 +115,7 @@ public final class VehicleReferences {
     /// Looks up again when nothing is cached, the VIN, trim, or colour changed, or the cache is
     /// a week old.
     public func refreshIfNeeded(_ input: ReferenceInput) async {
+        await lookupInFlight()
         if let snapshot, !snapshot.isStale(vin: input.vin),
             snapshot.photoQuery == input.photoQuery(identity: snapshot.identity)
         {
@@ -121,10 +124,17 @@ public final class VehicleReferences {
         await refresh(input)
     }
 
+    /// A caller that arrives while another's lookup runs waits for it, then looks up itself.
+    /// Returning at once would drop the request if that lookup is then cut short, as when the
+    /// garage starts one and the car's own screen replaces it before it finishes.
     public func refresh(_ input: ReferenceInput) async {
-        guard !isRefreshing else { return }
+        await lookupInFlight()
+        guard !Task.isCancelled else { return }
         isRefreshing = true
-        defer { isRefreshing = false }
+        defer {
+            isRefreshing = false
+            resumeWaiting()
+        }
         let fresh = await Self.lookUp(input, previous: snapshot, client: client)
         // Cut short (the screen went away): keep what's cached rather than a partial lookup,
         // whose photo list would also prune the downloaded photos.
@@ -133,6 +143,19 @@ public final class VehicleReferences {
         guard !Task.isCancelled else { return }
         snapshot = fresh
         save(fresh)
+    }
+
+    /// Waits while another caller's lookup runs.
+    private func lookupInFlight() async {
+        while isRefreshing {
+            await withCheckedContinuation { waiting.append($0) }
+        }
+    }
+
+    private func resumeWaiting() {
+        let waiting = self.waiting
+        self.waiting = []
+        for caller in waiting { caller.resume() }
     }
 
     /// The owner's photo when they've added any, else the best reference photo downloaded.
