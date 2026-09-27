@@ -53,7 +53,8 @@ The CLI and the app share one engine. Layers, bottom up:
 
 - `OBDCore`: protocol, decoders, `GenericOBDWorkflow` (the one generic scan/info sequence).
 - `SpiaKit`: `ConnectionManager` (sole owner of an adapter session), `JobRunner` (one read-only check at a time, progress, "needs you" prompts), typed `JobResult` snapshots, per-check transcripts, and `DemoBackend`. iOS-compatible.
-- `SpiaStore`: SwiftData schema v1 (vehicles, adapter profiles, modules, sessions, timeline), transcript files, and the `Workbench` model the screens bind to. iOS-compatible.
+- `SpiaAssist`: the assistant's provider layer. Claude (Messages API) and OpenAI (Responses API, `store: false`) over URLSession with a byte-level SSE parser; Apple's on-device model (FoundationModels, macOS 26 + Apple Intelligence, availability-gated); API keys in the Keychain; the session briefing and safety rules. iOS-compatible.
+- `SpiaStore`: SwiftData schema v1 (vehicles, adapter profiles, modules, sessions, timeline, chat messages) at `Application Support/Spia/Library.store`, transcript and photo files, the `Workbench` model the screens bind to, and `AssistantConversation`. iOS-compatible.
 - `App/SpiaApp.xcodeproj`: SwiftUI screens only. Sandbox with serial, Bluetooth, network client, and user-selected files.
 
 Run it: open `App/SpiaApp.xcodeproj` and run the `Spia` scheme, or `xcodebuild -project App/SpiaApp.xcodeproj -scheme Spia build`. Choose "Explore the demo" to use the Ghibli recordings without a car.
@@ -62,7 +63,17 @@ Demo mode replays recordings through the same code as a live adapter where the r
 
 Verified: engine and store behaviour by `swift test` against the real recordings; app builds universal with warnings as errors; app launches. Not verified: the app against the live car, sandboxed serial access to the vLinker FS, and the screens by eye.
 
-App phases: 1 foundation (this), 2 assistant (on-device or cloud per message, read-only proposals the user approves), 3 media (photos, video, audio), 4 guided workflow from symptoms to tests to a solution.
+App phases: 1 foundation (done), 2 assistant (built, see below), 3 media (camera, video, audio capture), 4 guided workflow from symptoms to tests to a solution.
+
+### Assistant
+
+- The model is chosen per message: on this Mac, Claude, or OpenAI. Model IDs are editable in Settings (defaults `claude-opus-5-5`, `gpt-5.5`; presets for `claude-haiku-4-5`, `gpt-5.4-mini`).
+- It has exactly two tools: `propose_check` (one of `generic_scan`, `vehicle_info`, `adapter_check`, `module_codes`, with the module restricted to the vehicle's own module labels) and `ask_user`. It cannot run anything. A proposal becomes a `DiagnosticJob` only when the person approves it, and the check's result goes back to the model as the tool result. Declines, answers, and "moved on without answering" are reported the same way.
+- Every request carries fresh session data (vehicle, problem, modules, timeline with payloads) inside a `<session_data>` block the model is told is data, never instructions. The on-device model gets summaries only, within a smaller budget.
+- Cloud providers need a once-per-session consent that lists what is sent. The VIN is withheld from cloud providers unless allowed in Settings.
+- Safety rules in every briefing: no probing or unplugging SRS/airbag/clock-spring circuits, manufacturer-code mappings labelled as interpretations, warnings for fuel, high voltage, lifting, and running engines indoors.
+- Photos (attach or drop) are resized to 2000 px JPEG, which also strips location metadata, and stored under `Attachments/<session>`. The on-device model can't see them.
+- Verified: stream decoding and request shapes against the documented examples, tool validation, briefing and redaction, Keychain round trip, and approval running a real demo check through the Workbench. Live provider tests run when `SPIA_ANTHROPIC_API_KEY` / `SPIA_OPENAI_API_KEY` are set; not yet run. The on-device path compiles but is untested (this Mac runs macOS 15).
 
 ## Milestones
 
