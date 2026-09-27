@@ -1,3 +1,4 @@
+import AppKit
 import SpiaKit
 import SpiaReference
 import SpiaStore
@@ -211,9 +212,10 @@ private struct Welcome: View {
     var body: some View {
         VStack(spacing: 28) {
             VStack(spacing: 12) {
-                Image(systemName: "stethoscope.circle.fill")
-                    .font(.system(size: 64))
-                    .foregroundStyle(.tint)
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 112, height: 112)
+                    .accessibilityHidden(true)
                 Text("Spia")
                     .font(.largeTitle.weight(.semibold))
                 Text(

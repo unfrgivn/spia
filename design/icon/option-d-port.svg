@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Spia · Port</title>
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="14"/>
+      <feOffset dy="12" result="blur"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.38"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="tile"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.14"/>
+      <stop offset="0.45" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="bgD" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F6F8FB"/><stop offset="1" stop-color="#D5DBE4"/>
+    </linearGradient>
+    <radialGradient id="glassD" cx="600" cy="570" r="170" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.55"/><stop offset="1" stop-color="#FFE7B8" stop-opacity="0.35"/>
+    </radialGradient>
+  </defs>
+  <g filter="url(#shadow)"><rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bgD)"/></g>
+  <g clip-path="url(#tile)">
+    <path d="M244 372 H700 L656 566 H288 Z" fill="#262A31" stroke="#262A31" stroke-width="44" stroke-linejoin="round"/>
+    <circle cx="300.0" cy="436" r="13" fill="#B7C0CE"/><circle cx="318.0" cy="500" r="13" fill="#B7C0CE"/><circle cx="348.6" cy="436" r="13" fill="#B7C0CE"/><circle cx="361.4" cy="500" r="13" fill="#B7C0CE"/><circle cx="397.2" cy="436" r="13" fill="#B7C0CE"/><circle cx="404.8" cy="500" r="13" fill="#B7C0CE"/><circle cx="445.8" cy="436" r="13" fill="#B7C0CE"/><circle cx="448.2" cy="500" r="13" fill="#B7C0CE"/><circle cx="494.4" cy="436" r="13" fill="#B7C0CE"/><circle cx="491.6" cy="500" r="13" fill="#B7C0CE"/><circle cx="543.0" cy="436" r="13" fill="#B7C0CE"/><circle cx="535.0" cy="500" r="13" fill="#B7C0CE"/><circle cx="591.6" cy="436" r="13" fill="#B7C0CE"/><circle cx="578.4" cy="500" r="13" fill="#B7C0CE"/><circle cx="640.2" cy="436" r="13" fill="#B7C0CE"/><circle cx="621.8" cy="500" r="13" fill="#B7C0CE"/>
+    <line x1="742" y1="712" x2="846" y2="816" stroke="#C97A06" stroke-width="66" stroke-linecap="round"/>
+    <line x1="742" y1="712" x2="846" y2="816" stroke="#F59E0B" stroke-width="50" stroke-linecap="round"/>
+    <circle cx="640" cy="610" r="148" fill="url(#glassD)"/>
+    <circle cx="640" cy="610" r="148" fill="none" stroke="#F59E0B" stroke-width="42"/>
+    <path d="M560 540 A110 110 0 0 1 650 500" fill="none" stroke="#fff" stroke-opacity="0.9" stroke-width="16" stroke-linecap="round"/>
+    <rect x="100" y="100" width="824" height="824" fill="url(#sheen)"/>
+  </g>
+  <rect x="101" y="101" width="822" height="822" rx="184" fill="none" stroke="#fff" stroke-opacity="0.10" stroke-width="2"/>
+</svg>
