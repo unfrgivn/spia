@@ -5,6 +5,8 @@ import OBDCore
 /// `JobRunner` and report the same events, so screens never special-case demo mode.
 public protocol DiagnosticsBackend: Sendable {
     var adapter: AdapterDescriptor { get }
+    /// The settled state, for reading right after `connect()` or `disconnect()` returns.
+    func currentState() async -> ConnectionState
     func states() async -> AsyncStream<ConnectionState>
     func connect() async throws
     func disconnect() async
@@ -28,6 +30,7 @@ public actor LiveBackend: DiagnosticsBackend {
         runner = JobRunner(connection: connection)
     }
 
+    public func currentState() async -> ConnectionState { await connection.state }
     public func states() async -> AsyncStream<ConnectionState> { await connection.states() }
 
     /// Connects and identifies the adapter, so the status shows firmware and voltage at once.

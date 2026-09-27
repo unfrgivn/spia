@@ -88,6 +88,8 @@ public actor DemoBackend: DiagnosticsBackend {
 
     public init() {}
 
+    public func currentState() -> ConnectionState { state }
+
     public func states() -> AsyncStream<ConnectionState> {
         let (stream, continuation) = AsyncStream.makeStream(of: ConnectionState.self)
         let id = UUID()
