@@ -14,6 +14,8 @@ struct AssistantPanel: View {
     let conversation: AssistantConversation
     /// Opens the connection assistant, for proposals that need the adapter.
     let connect: () -> Void
+    /// A question from the board, asked as soon as it arrives.
+    @Binding var question: String?
 
     @State private var provider: ProviderID?
     @State private var draft = ""
@@ -30,6 +32,14 @@ struct AssistantPanel: View {
             messages
             Divider()
             composer
+        }
+        // Asked like anything typed: at once when it can be, else it waits in the composer for
+        // the owner's consent, a key, or a check to finish.
+        .onChange(of: question, initial: true) { _, asked in
+            guard let asked else { return }
+            question = nil
+            draft = asked
+            send()
         }
         .sheet(item: $consentFor) { provider in
             CloudConsentSheet(

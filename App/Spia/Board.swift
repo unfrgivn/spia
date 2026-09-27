@@ -153,16 +153,26 @@ struct SessionBoardView: View {
     var reading: (subject: SessionBoard.Subject, step: String?, cancel: () -> Void)?
     /// Rows lit for the bulb check that plays when the adapter connects.
     var checking: Set<SessionBoard.Subject> = []
+    /// The assistant's answers, under the rows they're about.
+    var notes: [SessionBoard.Subject: BoardNote] = [:]
+    /// Asks the assistant about a row.
+    var explain: ((SessionBoard.Row) -> Void)?
+    var openAssistant: (() -> Void)?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
             Hairline()
             ForEach(board.rows) { row in
-                Group {
+                VStack(alignment: .leading, spacing: 0) {
                     switch layout {
                     case .wide: wide(row)
                     case .compact: compact(row)
+                    }
+                    if let note = notes[row.subject] {
+                        BoardNoteView(note: note, open: openAssistant)
+                            .padding(.leading, layout == .wide ? 140 : 104)
+                            .padding(.bottom, 14)
                     }
                 }
                 // Opaque, so a row sliding to its new place covers the rows it passes.
@@ -297,6 +307,13 @@ struct SessionBoardView: View {
             Button("Read") { read(row.subject) }
                 .buttonStyle(OutlineButtonStyle())
                 .accessibilityLabel("Read \(row.name)")
+        } else if row.question != nil, notes[row.subject] == nil, let explain {
+            Button("Explain") { explain(row) }
+                .buttonStyle(.plain)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Palette.accent)
+                .help("Ask the assistant about this")
+                .accessibilityLabel("Explain \(row.name)")
         }
     }
 
@@ -357,6 +374,64 @@ struct StatusWord: View {
                             removal: .offset(y: -size * 0.55).combined(with: .opacity)))
         }
         .animation(reduceMotion ? nil : .snappy(duration: 0.35), value: word)
+    }
+}
+
+/// The assistant's answer about a board row, or the one it's writing.
+struct BoardNote: Equatable {
+    let text: String
+    /// The provider's name: "Claude".
+    let by: String?
+    let pending: Bool
+}
+
+/// An answer under the row it's about: the assistant's words beside an accent rule, the way a
+/// note sits in a case file's margin, and the way into the whole conversation.
+private struct BoardNoteView: View {
+    let note: BoardNote
+    let open: (() -> Void)?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                .fill(Palette.accent)
+                .frame(width: 3)
+                .modifier(Breathing(active: note.pending))
+            VStack(alignment: .leading, spacing: 6) {
+                Text(heading)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Palette.accent)
+                if !note.text.isEmpty {
+                    Text(Self.inline(note.text))
+                        .font(.system(size: 14))
+                        .lineSpacing(2)
+                        .foregroundStyle(Palette.secondary)
+                        .lineLimit(6)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
+                if !note.pending, let open {
+                    Button("Continue in the assistant", action: open)
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(Palette.accent)
+                }
+            }
+        }
+        .frame(maxWidth: 720, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var heading: String {
+        let name = note.by ?? "The assistant"
+        return note.pending ? "\(name) is answering…" : name
+    }
+
+    /// Bold, italics, and links, as the assistant writes them.
+    private static func inline(_ text: String) -> AttributedString {
+        let options = AttributedString.MarkdownParsingOptions(
+            interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
     }
 }
 

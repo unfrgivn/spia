@@ -1,3 +1,4 @@
+import SpiaAssist
 import SpiaKit
 import SpiaStore
 import SwiftUI
@@ -15,6 +16,8 @@ struct SessionView: View {
     @State private var width: CGFloat = 1_000
     /// Rows lit for the bulb check.
     @State private var checking: Set<SessionBoard.Subject> = []
+    /// A board row's question, for the assistant to ask.
+    @State private var question: String?
     #if os(iOS)
         @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
@@ -37,7 +40,8 @@ struct SessionView: View {
                     }
                     SessionBoardView(
                         board: board, layout: layout, read: reader, reading: reading,
-                        checking: checking
+                        checking: checking, notes: notes, explain: { explain($0) },
+                        openAssistant: { showAssistant = true }
                     )
                     .padding(.top, wide ? 32 : 22)
                     CaseFile(session: session, layout: layout) { transcript = $0 }
@@ -61,10 +65,23 @@ struct SessionView: View {
             }
             #if DEBUG
                 .task {
-                    guard Fixture.screen == .timeline else { return }
-                    // After the fixture's checks have added their results.
-                    try? await Task.sleep(for: .seconds(3))
-                    scroller.scrollTo(Self.timelineID, anchor: .top)
+                    switch Fixture.screen {
+                    case .timeline:
+                        // After the fixture's checks have added their results.
+                        try? await Task.sleep(for: .seconds(3))
+                        scroller.scrollTo(Self.timelineID, anchor: .top)
+                    case .explain:
+                        // After the checks and the fixture's answered question.
+                        try? await Task.sleep(for: .seconds(6))
+                        let notes = notes
+                        if let row = board.rows.first(where: {
+                            $0.question != nil && notes[$0.subject] == nil
+                        }) {
+                            explain(row)
+                        }
+                    default:
+                        break
+                    }
                 }
             #endif
         }
@@ -75,7 +92,8 @@ struct SessionView: View {
         .toolbar { sessionToolbar }
         .inspector(isPresented: $showAssistant) {
             AssistantPanel(
-                conversation: model.conversation(for: session), connect: { showConnection = true }
+                conversation: model.conversation(for: session), connect: { showConnection = true },
+                question: $question
             )
             .inspectorColumnWidth(min: 300, ideal: 360, max: 520)
         }
@@ -164,6 +182,31 @@ struct SessionView: View {
 
     /// A board row's missing reading. Without an adapter, the connection assistant comes first.
     private func read(_ subject: SessionBoard.Subject) { run(subject.job) }
+
+    /// Opens the assistant on a row's question; it asks at once when it can, or waits in the
+    /// composer while it needs setting up or the owner's consent.
+    private func explain(_ row: SessionBoard.Row) {
+        question = row.question
+        showAssistant = true
+    }
+
+    /// Answers about the board's rows, found in the conversation, or being written now.
+    private var notes: [SessionBoard.Subject: BoardNote] {
+        let conversation = model.conversation(for: session)
+        var notes: [SessionBoard.Subject: BoardNote] = [:]
+        for row in board.rows {
+            guard let question = row.question else { continue }
+            if conversation.isAnswering(question) {
+                notes[row.subject] = BoardNote(
+                    text: conversation.streamingText,
+                    by: conversation.respondingProvider?.displayName, pending: true)
+            } else if let answer = session.answer(to: question) {
+                notes[row.subject] = BoardNote(
+                    text: answer.text, by: answer.provider?.displayName, pending: false)
+            }
+        }
+        return notes
+    }
 
     /// The row the running check is filling in, unless it's waiting for the owner.
     private var reading: (subject: SessionBoard.Subject, step: String?, cancel: () -> Void)? {

@@ -18,6 +18,8 @@
             case garage, overview, references, photos, session, settings
             /// The session, scrolled down to its timeline.
             case timeline
+            /// The session, with Explain pressed on the first row that has no answer yet.
+            case explain
         }
 
         static var enabled: Bool { UserDefaults.standard.string(forKey: "SpiaFixture") != nil }
@@ -53,7 +55,8 @@
             case .overview: .overview
             case .references: .references
             case .photos: .photos
-            case .session, .timeline: vehicle.orderedSessions.first.map { .session($0.id) }
+            case .session, .timeline, .explain:
+                vehicle.orderedSessions.first.map { .session($0.id) }
             case .garage, .settings, nil: nil
             }
         }
@@ -89,6 +92,32 @@
             _ = await workbench.run(.moduleDTCs(DemoGarage.abs.target), in: session)
             _ = await workbench.run(.moduleDTCs(DemoGarage.bodyComputer.target), in: session)
             if let error = workbench.lastError { print("Spia fixture check failed: \(error)") }
+            answerAirbagQuestion(in: session, garage: model.garage)
         }
+
+        /// A question about the airbag row and an answer, as if the owner had tapped Explain,
+        /// so shots show a note. The fixture has no keys, so nothing is really asked.
+        private static func answerAirbagQuestion(in session: DiagnosticSession, garage: Garage) {
+            guard
+                let question = session.board().rows
+                    .first(where: { $0.subject == .module(DemoGarage.airbag.target) })?.question
+            else { return }
+            let next = (session.messages.map(\.sequence).max() ?? -1) + 1
+            session.messages.append(
+                ChatMessage(sequence: next, role: .user, parts: [.text(question)]))
+            session.messages.append(
+                ChatMessage(
+                    sequence: next + 1, role: .assistant, parts: [.text(airbagAnswer)],
+                    provider: .anthropic))
+            try? garage.context.save()
+        }
+
+        private static let airbagAnswer = """
+            Those are the airbag controller's own codes, so their exact meanings are in Maserati's \
+            service data rather than the public OBD list. With a dead horn and dead wheel buttons \
+            as well, the usual cause is a failing **clock spring**: the coiled cable behind the \
+            steering wheel that carries the horn, the wheel buttons, and the driver's airbag. \
+            Check first: does the horn work with the wheel turned fully left or right?
+            """
     }
 #endif
