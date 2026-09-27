@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "OBDCore", targets: ["OBDCore"]),
         .library(name: "OBDSerial", targets: ["OBDSerial"]),
+        .library(name: "SpiaKit", targets: ["SpiaKit"]),
         .executable(name: "spia", targets: ["spia"]),
     ],
     dependencies: [
@@ -22,6 +23,9 @@ let package = Package(
                 "OBDSerial",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]),
+        .target(
+            name: "SpiaKit", dependencies: ["OBDCore"], resources: [.copy("Recordings")]),
         .testTarget(name: "OBDCoreTests", dependencies: ["OBDCore"]),
+        .testTarget(name: "SpiaKitTests", dependencies: ["SpiaKit", "OBDCore"]),
     ]
 )
