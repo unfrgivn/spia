@@ -61,12 +61,12 @@ struct SidebarView: View {
 
     private func delete(_ session: DiagnosticSession) {
         if selection == session.id { selection = nil }
-        perform { try model.garage.delete(session) }
+        perform { try model.delete(session) }
     }
 
     private func delete(_ vehicle: Vehicle) {
         if vehicle.sessions.contains(where: { $0.id == selection }) { selection = nil }
-        perform { try model.garage.delete(vehicle) }
+        perform { try model.delete(vehicle) }
     }
 
     private func perform(_ action: () throws -> Void) {

@@ -55,8 +55,10 @@ struct SessionView: View {
             }
         }
         .inspector(isPresented: $showAssistant) {
-            AssistantPlaceholder()
-                .inspectorColumnWidth(min: 260, ideal: 300, max: 420)
+            AssistantPanel(
+                conversation: model.conversation(for: session), connect: { showConnection = true }
+            )
+            .inspectorColumnWidth(min: 300, ideal: 360, max: 520)
         }
         .sheet(isPresented: $showConnection) {
             if let workbench, let vehicle = session.vehicle {
@@ -73,6 +75,9 @@ struct SessionView: View {
         }
         .task(id: session.vehicle?.id) {
             if let vehicle = session.vehicle { workbench = model.workbench(for: vehicle) }
+        }
+        .onChange(of: workbench.map(ObjectIdentifier.init), initial: true) {
+            model.conversation(for: session).workbench = workbench
         }
         .errorAlert($error)
     }
@@ -141,26 +146,5 @@ private struct NoteComposer: View {
             Button("Add Note", action: add)
                 .disabled(note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
-    }
-}
-
-private struct AssistantPlaceholder: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Label("Assistant", systemImage: "sparkles")
-                .font(.title3.weight(.semibold))
-            Text("Coming next.")
-                .font(.headline)
-            Text(
-                "The assistant will read this session's codes, results, and your notes, ask you questions about what you're seeing, and suggest the next check to run."
-            )
-            Text(
-                "You'll choose for each message whether it stays on this Mac or goes to a cloud model, and it can only suggest read-only checks that you approve."
-            )
-            .foregroundStyle(.secondary)
-            Spacer()
-        }
-        .font(.callout)
-        .padding(18)
     }
 }

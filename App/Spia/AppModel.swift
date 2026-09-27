@@ -1,18 +1,22 @@
 import Foundation
 import OBDSerial
 import Observation
+import SpiaAssist
 import SpiaKit
 import SpiaStore
 import SwiftData
 
-/// App-wide state: the garage, and one workbench per adapter so a connection survives
-/// switching between sessions of the same vehicle.
+/// App-wide state: the garage, one workbench per adapter so a connection survives switching
+/// between sessions of the same vehicle, and one assistant conversation per session so a reply
+/// keeps arriving while the user looks elsewhere.
 @MainActor
 @Observable
 final class AppModel {
     let container: ModelContainer
     let garage: Garage
+    let assistant = AssistantConfiguration()
     private var workbenches: [UUID: Workbench] = [:]
+    private var conversations: [UUID: AssistantConversation] = [:]
 
     init(container: ModelContainer, files: SpiaFiles) {
         self.container = container
@@ -20,7 +24,8 @@ final class AppModel {
     }
 
     static func live() throws -> AppModel {
-        try AppModel(container: Garage.container(), files: SpiaFiles.standard())
+        let files = try SpiaFiles.standard()
+        return try AppModel(container: Garage.container(at: files), files: files)
     }
 
     /// The workbench for the vehicle's primary adapter, created on first use.
@@ -30,6 +35,24 @@ final class AppModel {
         let workbench = Workbench(backend: Self.backend(for: profile), garage: garage)
         workbenches[profile.id] = workbench
         return workbench
+    }
+
+    func conversation(for session: DiagnosticSession) -> AssistantConversation {
+        if let existing = conversations[session.id] { return existing }
+        let conversation = AssistantConversation(
+            session: session, garage: garage, configuration: assistant)
+        conversations[session.id] = conversation
+        return conversation
+    }
+
+    func delete(_ session: DiagnosticSession) throws {
+        conversations.removeValue(forKey: session.id)?.stop()
+        try garage.delete(session)
+    }
+
+    func delete(_ vehicle: Vehicle) throws {
+        for session in vehicle.sessions { conversations.removeValue(forKey: session.id)?.stop() }
+        try garage.delete(vehicle)
     }
 
     /// Call after changing a profile's port or baud so the next connection uses them.

@@ -11,6 +11,7 @@
 		A10000000000000000000051 /* SpiaKit */ = {isa = PBXBuildFile; productRef = A10000000000000000000041 /* SpiaKit */; };
 		A10000000000000000000052 /* OBDCore */ = {isa = PBXBuildFile; productRef = A10000000000000000000042 /* OBDCore */; };
 		A10000000000000000000053 /* OBDSerial */ = {isa = PBXBuildFile; productRef = A10000000000000000000043 /* OBDSerial */; };
+		A10000000000000000000054 /* SpiaAssist */ = {isa = PBXBuildFile; productRef = A10000000000000000000044 /* SpiaAssist */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -47,6 +48,7 @@
 				A10000000000000000000051 /* SpiaKit */,
 				A10000000000000000000052 /* OBDCore */,
 				A10000000000000000000053 /* OBDSerial */,
+				A10000000000000000000054 /* SpiaAssist */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -93,6 +95,7 @@
 				A10000000000000000000041 /* SpiaKit */,
 				A10000000000000000000042 /* OBDCore */,
 				A10000000000000000000043 /* OBDSerial */,
+				A10000000000000000000044 /* SpiaAssist */,
 			);
 			productName = Spia;
 			productReference = A10000000000000000000200 /* Spia.app */;
@@ -290,6 +293,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A10000000000000000000020 /* XCLocalSwiftPackageReference ".." */;
 			productName = OBDSerial;
+		};
+		A10000000000000000000044 /* SpiaAssist */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000020 /* XCLocalSwiftPackageReference ".." */;
+			productName = SpiaAssist;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

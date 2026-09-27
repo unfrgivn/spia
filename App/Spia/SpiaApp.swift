@@ -35,6 +35,13 @@ struct SpiaApp: App {
             }
         }
         .windowToolbarStyle(.unified)
+
+        Settings {
+            if let model {
+                AssistantSettingsView()
+                    .environment(model)
+            }
+        }
     }
 }
 

@@ -218,6 +218,11 @@ public final class AssistantConversation {
         continueConversation()
     }
 
+    /// The check a proposal would run on this vehicle, for showing it before approval.
+    public func proposedJob(_ call: ToolCall) -> DiagnosticJob? {
+        try? Self.job(for: call, modules: session.vehicle?.assistantModules ?? [])
+    }
+
     /// Stops the reply in progress, keeping what arrived.
     public func stop() {
         task?.cancel()
