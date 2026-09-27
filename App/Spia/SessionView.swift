@@ -42,12 +42,13 @@ struct SessionView: View {
                 .padding(.vertical, wide ? 38 : 16)
                 .frame(maxWidth: 1_180, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background {
-                    GeometryReader { proxy in
-                        Color.clear
-                            .onAppear { width = proxy.size.width }
-                            .onChange(of: proxy.size.width) { _, newWidth in width = newWidth }
-                    }
+            }
+            // The scroll view's width, not the content's, which depends on the layout this picks.
+            .background {
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear { width = proxy.size.width }
+                        .onChange(of: proxy.size.width) { _, newWidth in width = newWidth }
                 }
             }
             #if DEBUG
@@ -138,17 +139,8 @@ struct SessionView: View {
         .help("Show or hide the assistant")
     }
 
-    /// What the session's results say, with the connected adapter's battery reading, which is
-    /// newer than any saved one.
-    private var board: SessionBoard {
-        let modules = (session.vehicle?.orderedModules ?? []).compactMap { preset in
-            preset.target.map { SessionBoard.Module(label: preset.label, target: $0) }
-        }
-        let results = session.timeline.compactMap { entry in
-            entry.result.map { SessionBoard.Result(date: entry.date, payload: $0.payload) }
-        }
-        return SessionBoard(modules: modules, results: results, live: workbench?.connection.status)
-    }
+    /// With the connected adapter's battery reading, which is newer than any saved one.
+    private var board: SessionBoard { session.board(live: workbench?.connection.status) }
 
     private var subtitle: String {
         guard let vehicle = session.vehicle else { return "" }

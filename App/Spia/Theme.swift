@@ -37,14 +37,6 @@ extension View {
             .background(tint.map { $0.opacity(0.10) } ?? Palette.card, in: shape)
             .overlay(shape.strokeBorder(tint.map { $0.opacity(0.4) } ?? Palette.hairline))
     }
-
-    /// Small caps over a reading, as on a dash: "BATTERY", "CHECK ENGINE".
-    func instrumentCaption() -> some View {
-        font(.caption2.weight(.semibold))
-            .textCase(.uppercase)
-            .tracking(0.6)
-            .foregroundStyle(Palette.tertiary)
-    }
 }
 
 /// Small rounded label, e.g. a DTC status flag.

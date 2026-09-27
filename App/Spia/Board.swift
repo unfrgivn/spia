@@ -2,6 +2,40 @@ import SpiaKit
 import SpiaStore
 import SwiftUI
 
+extension [ModulePreset] {
+    /// The modules the board names, in the owner's order. A preset whose IDs were edited into
+    /// something that isn't one module is left out.
+    var boardModules: [SessionBoard.Module] {
+        compactMap { preset in
+            preset.target.map { SessionBoard.Module(label: preset.label, target: $0) }
+        }
+    }
+}
+
+extension DiagnosticSession {
+    /// What this session's results say about the car. `live` is the connected adapter's status,
+    /// newer than any saved adapter check.
+    func board(live: AdapterStatus? = nil) -> SessionBoard {
+        let results = timeline.compactMap { entry in
+            entry.result.map { SessionBoard.Result(date: entry.date, payload: $0.payload) }
+        }
+        return SessionBoard(
+            modules: vehicle?.orderedModules.boardModules ?? [], results: results, live: live)
+    }
+
+    /// The lamp a list of sessions shows beside this one: the colour of its most urgent problem,
+    /// green once everything is read and clear, and none while there's nothing to say.
+    var lamp: Tone? {
+        let rows = board().rows
+        if let problem = rows.first(where: {
+            [.fault, .codes, .low, .high, .noAnswer].contains($0.status)
+        }) {
+            return problem.status.tone
+        }
+        return rows.allSatisfy { $0.status == .clear || $0.status == .ok } ? .good : nil
+    }
+}
+
 /// How much room the board has: one line per row on a Mac or an iPad held sideways, stacked on
 /// an iPhone or beside the assistant.
 enum BoardLayout {
@@ -325,11 +359,11 @@ extension VehicleRequirement {
     }
 }
 
-/// The session's one primary action, drawn in the accent colour even in a toolbar, which would
+/// A screen's one primary action, drawn in the accent colour even in a toolbar, which would
 /// otherwise flatten a menu to plain text.
-private struct PrimaryPill: View {
+struct PrimaryPill: View {
     let title: String
-    let menu: Bool
+    var menu = false
     @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {

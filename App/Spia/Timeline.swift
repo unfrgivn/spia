@@ -167,9 +167,7 @@ private struct LedgerSummary {
                 ?? (ecus.count == 1 ? "1 computer answered" : "\(ecus.count) computers answered")
         case .genericScan, .moduleDTCs:
             let board = SessionBoard(
-                modules: modules.compactMap { preset in
-                    preset.target.map { SessionBoard.Module(label: preset.label, target: $0) }
-                },
+                modules: modules.boardModules,
                 results: [SessionBoard.Result(date: entry.date, payload: payload)])
             let row = board.rows.first { $0.date != nil }
             title = row?.name ?? entry.title

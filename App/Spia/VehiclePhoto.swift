@@ -3,7 +3,7 @@ import SpiaStore
 import SwiftUI
 
 /// The vehicle's cover (the owner's pick, else the best reference photo), filling its frame, or
-/// a quiet placeholder.
+/// a quiet placeholder: just the paint colour while photos are looked up, then a car's outline.
 struct VehiclePhoto: View {
     let vehicle: Vehicle
     let references: VehicleReferences
@@ -15,10 +15,13 @@ struct VehiclePhoto: View {
                 startPoint: .topLeading, endPoint: .bottomTrailing)
             if let cover = references.cover(for: vehicle) {
                 LocalImage(url: cover.file)
-            } else {
-                Image(systemName: vehicle.isDemo ? "play.rectangle" : "car.side")
-                    .font(.system(size: 44, weight: .light))
-                    .foregroundStyle(.secondary)
+            } else if !references.isRefreshing {
+                GeometryReader { proxy in
+                    Image(systemName: "car.side")
+                        .font(.system(size: min(44, proxy.size.width * 0.34), weight: .light))
+                        .foregroundStyle(.secondary)
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                }
             }
         }
     }

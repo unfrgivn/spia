@@ -85,17 +85,26 @@ struct ContentView: View {
     @ViewBuilder private var content: some View {
         if let vehicle = vehicles.first(where: { $0.id.uuidString == openVehicleID }) {
             VehicleWorkspace(
-                vehicle: vehicle, leave: { openVehicleID = "" }, selection: initialSection
+                vehicle: vehicle, leave: { openVehicleID = "" }, switchTo: open,
+                selection: initialSection
             )
             .id(vehicle.id)
         } else {
             NavigationStack {
-                GarageView { vehicle, session in
-                    initialSection = session.map { .session($0.id) } ?? .overview
-                    openVehicleID = vehicle.id.uuidString
-                }
+                GarageView { vehicle, session in open(vehicle, at: session) }
             }
         }
+    }
+
+    /// Opens `vehicle` in this window, at `session` if given.
+    private func open(_ vehicle: Vehicle, at session: DiagnosticSession?) {
+        initialSection = session.map { .session($0.id) } ?? .overview
+        openVehicleID = vehicle.id.uuidString
+    }
+
+    /// Switching to another vehicle picks up its open session, the way Continue does.
+    private func open(_ vehicle: Vehicle) {
+        open(vehicle, at: vehicle.orderedSessions.first { $0.status == .open })
     }
 
     #if DEBUG

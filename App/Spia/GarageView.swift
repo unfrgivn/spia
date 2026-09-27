@@ -4,7 +4,8 @@ import SpiaStore
 import SwiftData
 import SwiftUI
 
-/// The first screen: every vehicle as a card. Opening one scopes the whole window to it.
+/// The first screen: every vehicle in its own bay, like cars in a showroom, each with what its
+/// open session says about it. Opening one scopes the whole window to it.
 struct GarageView: View {
     @Environment(AppModel.self) private var model
     @Query(sort: \Vehicle.createdAt) private var vehicles: [Vehicle]
@@ -12,51 +13,56 @@ struct GarageView: View {
     @State private var addingVehicle = false
     @State private var deleting: Vehicle?
     @State private var problem: String?
+    @State private var width: CGFloat = 1_000
 
     var body: some View {
+        let compact = width < 760
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: compact ? 16 : 24) {
                 if vehicles.isEmpty {
                     Welcome(addVehicle: { addingVehicle = true }, addDemo: addDemo)
                 } else {
-                    Text("Garage")
-                        .font(.largeTitle.weight(.semibold))
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 280, maximum: 420), spacing: 20)],
-                        alignment: .leading, spacing: 20
-                    ) {
-                        ForEach(vehicles) { vehicle in
-                            ShowroomCard(
-                                vehicle: vehicle, references: model.references(for: vehicle),
-                                open: { open(vehicle, $0) }
-                            )
-                            .contextMenu {
-                                Button("Open") { open(vehicle, nil) }
-                                Divider()
-                                Button("Delete Vehicle and History…", role: .destructive) {
-                                    deleting = vehicle
-                                }
+                    ForEach(vehicles) { vehicle in
+                        ShowroomBay(
+                            vehicle: vehicle, references: model.references(for: vehicle),
+                            compact: compact, featured: vehicles.count == 1,
+                            open: { open(vehicle, $0) },
+                            startSession: { startSession(on: vehicle) }
+                        )
+                        .contextMenu {
+                            Button("Open") { open(vehicle, nil) }
+                            Divider()
+                            Button("Delete Vehicle and History…", role: .destructive) {
+                                deleting = vehicle
                             }
                         }
-                        AddCard(
-                            symbol: "car.badge.plus", title: "Add a vehicle",
-                            detail: "Enter the VIN and Spia looks up the rest."
-                        ) { addingVehicle = true }
-                        if !vehicles.contains(where: \.isDemo) {
-                            AddCard(
-                                symbol: "play.rectangle", title: "Add the demo car",
-                                detail: "A 2017 Maserati Ghibli, replayed from real recordings.",
-                                action: addDemo)
-                        }
+                    }
+                    AddRow(
+                        symbol: "plus.circle", title: "Add a vehicle",
+                        detail: "Enter the VIN and Spia looks up the rest."
+                    ) { addingVehicle = true }
+                    if !vehicles.contains(where: \.isDemo) {
+                        AddRow(
+                            symbol: "car.side", title: "Add the demo car",
+                            detail: "A 2017 Maserati Ghibli, replayed from real recordings.",
+                            action: addDemo)
                     }
                 }
             }
-            .padding(36)
-            .frame(maxWidth: 1200, alignment: .leading)
+            .padding(compact ? 16 : 36)
+            .frame(maxWidth: 1_240, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
+        // The scroll view's width, not the content's, which depends on the layout this picks.
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { width = proxy.size.width }
+                    .onChange(of: proxy.size.width) { _, newWidth in width = newWidth }
+            }
+        }
         .background(Palette.base)
-        .navigationTitle("Spia")
+        .navigationTitle("Garage")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -99,156 +105,272 @@ struct GarageView: View {
         }
     }
 
+    private func startSession(on vehicle: Vehicle) {
+        do {
+            open(vehicle, try model.garage.addSession(to: vehicle, title: "New session"))
+        } catch {
+            problem = String(describing: error)
+        }
+    }
+
     private func delete(_ vehicle: Vehicle) {
         do { try model.delete(vehicle) } catch { problem = String(describing: error) }
     }
 }
 
-/// A vehicle in the garage, shown like a car in a showroom: the photo edge to edge, what it
-/// is over a navy fade, and lamps for its open sessions and recalls.
-private struct ShowroomCard: View {
+/// A vehicle in its bay: the photo coming out of the dark, what the car is, and what its open
+/// session says, with the lines of its board that matter most. Always drawn dark, like a
+/// showroom, so the photo and the lamps carry the colour by day too. Tapping the bay opens the
+/// vehicle; Continue opens its session.
+private struct ShowroomBay: View {
     let vehicle: Vehicle
     let references: VehicleReferences
+    let compact: Bool
+    /// The garage's only car, which gets the room to itself.
+    let featured: Bool
     /// Opens the vehicle, or one of its sessions.
     let open: (DiagnosticSession?) -> Void
+    let startSession: () -> Void
     @State private var hovering = false
 
-    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 14, style: .continuous) }
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 22, style: .continuous) }
+    private var session: DiagnosticSession? {
+        vehicle.orderedSessions.first { $0.status == .open }
+    }
 
     var body: some View {
-        // Continue sits beside the card's button, not in it, so each can be pressed.
-        ZStack(alignment: .bottomTrailing) {
-            Button {
-                open(nil)
-            } label: {
-                showroom
-            }
-            .buttonStyle(.plain)
-            .accessibilityHint("Opens the vehicle")
-            if let session = openSession {
-                Button("Continue") { open(session) }
-                    .buttonStyle(.borderedProminent)
-                    .help("Continue “\(session.title)”")
-                    .padding(14)
-            }
+        Group {
+            if compact { stacked } else { wide }
         }
-        .scaleEffect(hovering ? 1.015 : 1)
-        .shadow(color: .black.opacity(hovering ? 0.25 : 0), radius: 14, y: 6)
-        .animation(.easeOut(duration: 0.15), value: hovering)
+        .background(Palette.base)
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(Palette.hairline))
+        .contentShape(shape)
+        .onTapGesture { open(nil) }
         .onHover { hovering = $0 }
+        .environment(\.colorScheme, .dark)
+        .accessibilityElement(children: .contain)
+        .accessibilityAction(named: "Open \(vehicle.name)") { open(nil) }
         .task(id: vehicle.referenceInput) {
             await references.refreshIfNeeded(vehicle.referenceInput)
         }
     }
 
-    private var showroom: some View {
+    /// The photo is a background, so its width never decides the bay's; the bay clips it.
+    private var wide: some View {
+        details
+            .frame(width: 540, alignment: .leading)
+            .padding(featured ? 48 : 40)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(height: featured ? 540 : 440)
+            .background(alignment: .trailing) {
+                photo
+                    .frame(width: featured ? 860 : 780)
+                    // Eased, not linear, so the fade has no edge where it starts.
+                    .mask(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .black.opacity(0), location: 0),
+                                .init(color: .black.opacity(0.08), location: 0.2),
+                                .init(color: .black.opacity(0.35), location: 0.38),
+                                .init(color: .black.opacity(0.75), location: 0.55),
+                                .init(color: .black, location: 0.7),
+                            ],
+                            startPoint: .leading, endPoint: .trailing))
+            }
+    }
+
+    private var stacked: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            photo
+                .frame(height: 210)
+                .overlay(alignment: .bottom) {
+                    LinearGradient(
+                        colors: [.clear, Palette.base], startPoint: .top, endPoint: .bottom
+                    )
+                    .frame(height: 70)
+                }
+            details
+                .padding(.horizontal, 18)
+                .padding(.bottom, 20)
+        }
+    }
+
+    /// The photo, darkened at the top where a stranger's background usually is, and eased in on
+    /// hover to say the bay can be opened.
+    private var photo: some View {
         VehiclePhoto(vehicle: vehicle, references: references)
-            .aspectRatio(16 / 9, contentMode: .fit)
+            .scaleEffect(hovering ? 1.025 : 1)
+            .animation(.easeOut(duration: 0.3), value: hovering)
             .overlay {
                 LinearGradient(
                     stops: [
-                        .init(color: .clear, location: 0.35),
-                        .init(color: Palette.scrim, location: 1),
+                        .init(color: Palette.base.opacity(0.85), location: 0),
+                        .init(color: .clear, location: 0.4),
                     ],
                     startPoint: .top, endPoint: .bottom)
             }
-            .overlay(alignment: .topTrailing) {
-                if vehicle.isDemo { Chip(text: "Demo").padding(12) }
-            }
-            .overlay(alignment: .bottomLeading) { caption }
-            .clipShape(shape)
-            .overlay(shape.strokeBorder(Palette.hairline))
-            .contentShape(shape)
+            .clipped()
     }
 
-    /// Over the photo, always in night colours so it reads on the fade.
-    private var caption: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(vehicle.name)
-                    .font(.title2.weight(.semibold))
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(vehicle.name)
+                .font(.system(size: compact ? 26 : 40, weight: .bold))
+                .tracking(compact ? -0.4 : -0.8)
+                .foregroundStyle(Palette.primary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(detail)
+                .font(.system(size: compact ? 13 : 14))
+                .foregroundStyle(Palette.secondary)
+                .lineLimit(2)
+                .padding(.top, compact ? 4 : 6)
+            badges
+                .padding(.top, 10)
+            if !compact { Spacer(minLength: 24) }
+            sessionSummary
+                .padding(.top, compact ? 18 : 0)
+        }
+        .frame(maxHeight: compact ? nil : .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder private var badges: some View {
+        let recalls = references.safety?.recalls.count
+        if vehicle.isDemo || recalls != nil {
+            HStack(spacing: 10) {
+                if vehicle.isDemo { Chip(text: "Demo") }
+                if let recalls {
+                    Text(
+                        recalls == 1
+                            ? "1 recall" : recalls == 0 ? "No recalls" : "\(recalls) recalls"
+                    )
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(recalls > 0 ? Palette.caution : Palette.tertiary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var sessionSummary: some View {
+        if let session {
+            let board = session.board()
+            VStack(alignment: .leading, spacing: 0) {
+                let opened = Text("· Opened \(BoardHeader.opened(session.startedAt))")
+                    .foregroundStyle(Palette.tertiary)
+                Text("\(Text(session.title).foregroundStyle(Palette.primary)) \(opened)")
+                    .font(.system(size: 13, weight: .medium))
+                    .lineLimit(compact ? 2 : 1)
+                Text(board.headline)
+                    .font(.system(size: compact ? 19 : 24, weight: .semibold))
+                    .tracking(-0.3)
                     .foregroundStyle(Palette.primary)
-                    .lineLimit(2)
-                Text(subtitle)
-                    .font(.callout)
-                    .foregroundStyle(Palette.secondary)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 8)
+                MiniBoard(
+                    rows: board.rows.filter { $0.status != .notRead }.prefix(3),
+                    size: compact ? 17 : 20
+                )
+                .padding(.top, 12)
+                Button {
+                    open(session)
+                } label: {
+                    PrimaryPill(title: "Continue")
+                }
+                .buttonStyle(.plain)
+                .help("Continue “\(session.title)”")
+                .padding(.top, 16)
             }
-            HStack(spacing: 22) {
-                Lamp(
-                    tone: openSessions > 0 ? .working : .neutral, symbol: "stethoscope",
-                    label: "Sessions", value: sessionsText)
-                recalls
-            }
-            // Clear of the Continue button, which sits level with the lamps.
-            .padding(.trailing, openSession == nil ? 0 : 96)
-        }
-        .padding(16)
-        .environment(\.colorScheme, .dark)
-    }
-
-    @ViewBuilder private var recalls: some View {
-        if let count = references.safety?.recalls.count {
-            Lamp(
-                tone: count > 0 ? .attention : .good,
-                symbol: count > 0 ? "exclamationmark.triangle" : "checkmark", label: "Recalls",
-                value: count > 0 ? "\(count)" : "None")
         } else {
-            Lamp(
-                tone: .neutral, symbol: "exclamationmark.triangle", label: "Recalls",
-                value: references.isRefreshing ? "Looking up" : "Unknown")
+            VStack(alignment: .leading, spacing: 6) {
+                Text(vehicle.sessions.isEmpty ? "No sessions yet" : "No open sessions")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Palette.primary)
+                Text("Start one when something's wrong: what you notice, and what the car reports.")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(Palette.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(action: startSession) { PrimaryPill(title: "Start a Session") }
+                    .buttonStyle(.plain)
+                    .padding(.top, 10)
+            }
         }
     }
 
-    private var openSession: DiagnosticSession? {
-        vehicle.orderedSessions.first { $0.status == .open }
-    }
-
-    private var openSessions: Int { vehicle.sessions.filter { $0.status == .open }.count }
-
-    private var sessionsText: String {
-        let count = vehicle.sessions.count
-        guard count > 0 else { return "None" }
-        return openSessions > 0 ? "\(openSessions) open" : "\(count)"
-    }
-
-    private var subtitle: String {
+    private var detail: String {
         let detail = vehicle.detail(identity: references.identity)
         if !detail.isEmpty { return detail }
         return vehicle.vin.map { "VIN \($0)" } ?? "No VIN yet"
     }
 }
 
-private struct AddCard: View {
+/// The lines of a board that matter most, small: the status word and the part it's about.
+private struct MiniBoard: View {
+    let rows: ArraySlice<SessionBoard.Row>
+    let size: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            ForEach(rows) { row in
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    StatusWord(row: row, size: size)
+                        .frame(width: size * 3.7, alignment: .leading)
+                    Text(row.name)
+                        .font(.system(size: size * 0.72, weight: .medium))
+                        .foregroundStyle(Palette.primary)
+                    if let reading = reading(row) {
+                        Text(reading)
+                            .font(
+                                .system(size: size * 0.66, weight: .semibold, design: .monospaced)
+                            )
+                            .foregroundStyle(row.status.tone.color)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
+    }
+
+    private func reading(_ row: SessionBoard.Row) -> String? {
+        row.codes.isEmpty ? row.value : row.codes.joined(separator: " ")
+    }
+}
+
+/// A slim row for adding a vehicle, after the bays.
+private struct AddRow: View {
     let symbol: String
     let title: String
     let detail: String
     let action: () -> Void
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
         Button(action: action) {
-            VStack(spacing: 10) {
+            HStack(spacing: 14) {
                 Image(systemName: symbol)
-                    .font(.system(size: 30))
-                    .foregroundStyle(.tint)
-                Text(title)
-                    .font(.headline)
-                    .foregroundStyle(Palette.primary)
-                Text(detail)
-                    .font(.callout)
-                    .foregroundStyle(Palette.secondary)
-                    .multilineTextAlignment(.center)
+                    .font(.system(size: 20))
+                    .foregroundStyle(Palette.accent)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Palette.primary)
+                    Text(detail)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Palette.secondary)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Palette.tertiary)
             }
-            .padding(20)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .aspectRatio(16 / 9, contentMode: .fit)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(
-                        Palette.tertiary.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [6])
-                    )
+                shape.strokeBorder(
+                    Palette.tertiary.opacity(0.45), style: StrokeStyle(lineWidth: 1.2, dash: [5]))
             )
-            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(shape)
         }
         .buttonStyle(.plain)
     }
@@ -276,12 +398,12 @@ private struct Welcome: View {
             }
             HStack(spacing: 16) {
                 StartOption(
-                    symbol: "car.badge.plus", title: "Set up my vehicle",
+                    symbol: "plus.circle", title: "Set up my vehicle",
                     detail:
                         "Enter the VIN: Spia looks up the model, its recalls and service bulletins, and photos.",
                     action: addVehicle)
                 StartOption(
-                    symbol: "play.rectangle", title: "Explore the demo",
+                    symbol: "car.side", title: "Explore the demo",
                     detail:
                         "A 2017 Maserati Ghibli with dead wheel controls, from real recordings.",
                     action: addDemo)

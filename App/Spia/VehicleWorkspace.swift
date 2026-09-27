@@ -1,6 +1,7 @@
 import SpiaKit
 import SpiaReference
 import SpiaStore
+import SwiftData
 import SwiftUI
 
 enum WorkspaceSection: Hashable {
@@ -15,22 +16,27 @@ struct VehicleWorkspace: View {
     @Environment(AppModel.self) private var model
     let vehicle: Vehicle
     let leave: () -> Void
+    /// Opens another vehicle in this window.
+    let switchTo: (Vehicle) -> Void
     @State var selection: WorkspaceSection?
 
     var body: some View {
         let references = model.references(for: vehicle)
         NavigationSplitView {
-            WorkspaceSidebar(vehicle: vehicle, references: references, selection: $selection)
-                .navigationSplitViewColumnWidth(min: 230, ideal: 270)
-                .toolbar {
-                    ToolbarItem {
-                        Button(action: leave) {
-                            Label("Garage", systemImage: "square.grid.2x2")
-                        }
-                        .help("Back to all vehicles (⇧⌘G)")
-                        .keyboardShortcut("g", modifiers: [.command, .shift])
+            WorkspaceSidebar(
+                vehicle: vehicle, references: references, selection: $selection,
+                switchTo: switchTo, showGarage: leave
+            )
+            .navigationSplitViewColumnWidth(min: 230, ideal: 270)
+            .toolbar {
+                ToolbarItem {
+                    Button(action: leave) {
+                        Label("Garage", systemImage: "square.grid.2x2")
                     }
+                    .help("Back to all vehicles (⇧⌘G)")
+                    .keyboardShortcut("g", modifiers: [.command, .shift])
                 }
+            }
         } detail: {
             switch selection ?? .overview {
             case .overview:
@@ -61,15 +67,20 @@ private struct WorkspaceSidebar: View {
     let vehicle: Vehicle
     let references: VehicleReferences
     @Binding var selection: WorkspaceSection?
+    let switchTo: (Vehicle) -> Void
+    let showGarage: () -> Void
     @State private var deleting: DiagnosticSession?
     @State private var problem: String?
 
     var body: some View {
         List(selection: $selection) {
-            VehicleBadge(vehicle: vehicle, references: references)
-                .selectionDisabled()
-                .listRowSeparator(.hidden)
-                .padding(.bottom, 6)
+            CarSwitcher(
+                vehicle: vehicle, references: references, switchTo: switchTo,
+                showGarage: showGarage
+            )
+            .selectionDisabled()
+            .listRowSeparator(.hidden)
+            .padding(.bottom, 6)
 
             Section("Vehicle") {
                 Label("Overview", systemImage: "car")
@@ -128,35 +139,67 @@ private struct WorkspaceSidebar: View {
     }
 }
 
-/// The current vehicle at the top of the sidebar.
-private struct VehicleBadge: View {
+/// The open vehicle at the top of the sidebar, and the way to another: a menu of the garage's
+/// vehicles, and the garage itself.
+private struct CarSwitcher: View {
+    @Query(sort: \Vehicle.createdAt) private var vehicles: [Vehicle]
     let vehicle: Vehicle
     let references: VehicleReferences
+    let switchTo: (Vehicle) -> Void
+    let showGarage: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            VehiclePhoto(vehicle: vehicle, references: references)
-                .frame(height: 110)
-                .frame(maxWidth: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(vehicle.name)
-                    .font(.headline)
-                    .lineLimit(2)
-                if vehicle.isDemo { Chip(text: "Demo") }
+        Menu {
+            ForEach(vehicles) { other in
+                Button {
+                    if other.id != vehicle.id { switchTo(other) }
+                } label: {
+                    if other.id == vehicle.id {
+                        Label(other.name, systemImage: "checkmark")
+                    } else {
+                        Text(other.name)
+                    }
+                }
             }
-            Text(detail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
+            Divider()
+            Button("Show Garage", action: showGarage)
+        } label: {
+            HStack(spacing: 10) {
+                VehiclePhoto(vehicle: vehicle, references: references)
+                    .frame(width: 42, height: 42)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(vehicle.name)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Palette.primary)
+                        .lineLimit(2)
+                    Text(detail)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Palette.tertiary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Palette.tertiary)
+            }
+            .padding(8)
+            .background(
+                Palette.hairline, in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .help("Switch vehicle")
+        .accessibilityLabel("Vehicle: \(vehicle.name)")
     }
 
     private var detail: String {
         let detail = vehicle.detail(identity: references.identity)
-        return detail.isEmpty ? (vehicle.vin ?? "No VIN yet") : detail
+        let parts = (vehicle.isDemo ? ["Demo"] : []) + (detail.isEmpty ? [] : [detail])
+        return parts.isEmpty ? (vehicle.vin ?? "No VIN yet") : parts.joined(separator: " · ")
     }
 }
 
@@ -164,20 +207,29 @@ private struct SessionRow: View {
     let session: DiagnosticSession
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(session.title)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                if session.status == .resolved {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                        .accessibilityLabel("Resolved")
+        let lamp = session.lamp
+        HStack(alignment: .top, spacing: 8) {
+            Circle()
+                .fill(lamp?.color ?? .clear)
+                .frame(width: 7, height: 7)
+                .shadow(color: lamp?.color ?? .clear, radius: 3)
+                .padding(.top, 5)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(session.title)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    if session.status == .resolved {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(Palette.pass)
+                            .accessibilityLabel("Resolved")
+                    }
                 }
+                Text(session.updatedAt, format: .relative(presentation: .named))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            Text(session.updatedAt, format: .relative(presentation: .named))
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
         .padding(.vertical, 2)
     }
