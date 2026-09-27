@@ -9,6 +9,7 @@ let package = Package(
         .library(name: "OBDSerial", targets: ["OBDSerial"]),
         .library(name: "SpiaKit", targets: ["SpiaKit"]),
         .library(name: "SpiaStore", targets: ["SpiaStore"]),
+        .library(name: "SpiaAssist", targets: ["SpiaAssist"]),
         .executable(name: "spia", targets: ["spia"]),
     ],
     dependencies: [
@@ -26,9 +27,12 @@ let package = Package(
             ]),
         .target(
             name: "SpiaKit", dependencies: ["OBDCore"], resources: [.copy("Recordings")]),
-        .target(name: "SpiaStore", dependencies: ["SpiaKit", "OBDCore"]),
+        .target(name: "SpiaAssist", dependencies: ["SpiaKit"]),
+        .target(name: "SpiaStore", dependencies: ["SpiaKit", "SpiaAssist", "OBDCore"]),
         .testTarget(name: "OBDCoreTests", dependencies: ["OBDCore"]),
         .testTarget(name: "SpiaKitTests", dependencies: ["SpiaKit", "OBDCore"]),
-        .testTarget(name: "SpiaStoreTests", dependencies: ["SpiaStore", "SpiaKit", "OBDCore"]),
+        .testTarget(
+            name: "SpiaStoreTests", dependencies: ["SpiaStore", "SpiaKit", "SpiaAssist", "OBDCore"]),
+        .testTarget(name: "SpiaAssistTests", dependencies: ["SpiaAssist", "SpiaKit"]),
     ]
 )
