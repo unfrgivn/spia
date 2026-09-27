@@ -116,13 +116,8 @@ struct VehicleSettings: View {
                             Text(coverDescription)
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
-                            HStack {
-                                Button("Upload Photo…") { choosingCover = true }
-                                if vehicle.cover != .automatic {
-                                    Button("Use Best Match") { setCover(.automatic) }
-                                }
-                            }
-                            .controlSize(.small)
+                            Button("Upload Photo…") { choosingCover = true }
+                                .controlSize(.small)
                         }
                     }
                 }
@@ -163,18 +158,9 @@ struct VehicleSettings: View {
     }
 
     private var coverDescription: String {
-        switch vehicle.cover {
-        case .automatic:
-            return "The reference photo that best matches the model, trim, and colour."
-        case .image: return "Your photo."
-        case .reference: return "A reference photo you chose."
-        }
-    }
-
-    private func setCover(_ cover: VehicleCover) {
-        do { try model.garage.setCover(cover, for: vehicle) } catch {
-            self.error = String(describing: error)
-        }
+        vehicle.coverImage == nil
+            ? "The reference photo that best matches the model, trim, and colour. Upload one of your car to use it instead."
+            : "Your photo. Choose another in Photos."
     }
 
     private func save() {

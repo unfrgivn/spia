@@ -31,10 +31,8 @@ public enum SpiaSchemaV1: VersionedSchema {
         public var colorRaw: String?
         /// The maker's paint name, e.g. `Blu Emozione`.
         public var colorName: String?
-        /// The owner's photo shown as the cover, if they chose one.
+        /// Which of the owner's photos is the cover; without one, their first photo is.
         public var coverImageID: UUID?
-        /// The reference photo (Commons file title) shown as the cover, if they chose one.
-        public var coverReferenceID: String?
         @Relationship(deleteRule: .cascade, inverse: \AdapterProfile.vehicle)
         public var adapters: [AdapterProfile] = []
         @Relationship(deleteRule: .cascade, inverse: \ModulePreset.vehicle)
@@ -55,19 +53,10 @@ public enum SpiaSchemaV1: VersionedSchema {
             set { colorRaw = newValue?.rawValue }
         }
 
-        public var cover: VehicleCover {
-            get {
-                if let coverImageID { return .image(coverImageID) }
-                if let coverReferenceID { return .reference(coverReferenceID) }
-                return .automatic
-            }
-            set {
-                switch newValue {
-                case .automatic: (coverImageID, coverReferenceID) = (nil, nil)
-                case .image(let id): (coverImageID, coverReferenceID) = (id, nil)
-                case .reference(let id): (coverImageID, coverReferenceID) = (nil, id)
-                }
-            }
+        /// The owner's photo standing for the vehicle: the one they picked, else their first.
+        /// Nil until they add one, when the best reference photo stands in.
+        public var coverImage: VehicleImage? {
+            images.first { $0.id == coverImageID } ?? orderedImages.first
         }
 
         public init(name: String, vin: String? = nil, notes: String = "", isDemo: Bool = false) {
@@ -329,16 +318,6 @@ public typealias DiagnosticSession = SpiaSchemaV1.DiagnosticSession
 public typealias TimelineEntry = SpiaSchemaV1.TimelineEntry
 public typealias ChatMessage = SpiaSchemaV1.ChatMessage
 public typealias VehicleImage = SpiaSchemaV1.VehicleImage
-
-/// Which photo stands for the vehicle.
-public enum VehicleCover: Sendable, Equatable {
-    /// The best-matching reference photo.
-    case automatic
-    /// One of the owner's photos.
-    case image(UUID)
-    /// A reference photo, by Commons file title.
-    case reference(String)
-}
 
 public enum SpiaMigrationPlan: SchemaMigrationPlan {
     public static var schemas: [any VersionedSchema.Type] { [SpiaSchemaV1.self] }

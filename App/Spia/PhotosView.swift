@@ -69,21 +69,31 @@ struct PhotosView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Your photos").font(.title2.weight(.semibold))
             Text(
-                "Photos of your car, for the cover and for reference. Drop images here or add them; they're resized and stripped of location data."
+                "Photos of your car. Once you add one, it's the cover instead of the reference photo. Drop images here or add them; they're resized and stripped of location data."
             )
             .font(.callout)
             .foregroundStyle(.secondary)
             LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
                 ForEach(vehicle.orderedImages) { image in
                     let file = model.garage.files.url(for: image.path)
-                    PhotoTile(file: file, isCover: file == coverFile) {
-                        Button("Use as Cover") { setCover(.image(image.id)) }
-                        Divider()
+                    let isCover = file == coverFile
+                    PhotoTile(file: file, isCover: isCover) {
+                        if !isCover {
+                            Button("Use as Cover") { setCover(image) }
+                            Divider()
+                        }
                         Button("Remove…", role: .destructive) { removing = image }
                     } footer: {
-                        Text(image.addedAt, format: .dateTime.year().month().day())
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        HStack {
+                            Text(image.addedAt, format: .dateTime.year().month().day())
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            if !isCover {
+                                Button("Use as Cover") { setCover(image) }
+                                    .controlSize(.small)
+                            }
+                        }
                     }
                 }
                 Button {
@@ -134,7 +144,6 @@ struct PhotosView: View {
             LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
                 ForEach(references.photos, id: \.photo.id) { entry in
                     PhotoTile(file: entry.file, isCover: entry.file == coverFile) {
-                        Button("Use as Cover") { setCover(.reference(entry.photo.id)) }
                         Link("Open on Wikimedia Commons", destination: entry.photo.pageURL)
                     } footer: {
                         VStack(alignment: .leading, spacing: 2) {
@@ -155,6 +164,9 @@ struct PhotosView: View {
     private var searchDescription: String {
         let query = vehicle.referenceInput.photoQuery(identity: references.identity)
         var text = "Freely licensed photos from Wikimedia Commons matching \(query.summary)"
+        if vehicle.coverImage == nil {
+            text += ". The best match is the cover until you add your own"
+        }
         if vehicle.color == nil && vehicle.colorName == nil {
             text += ". Add your car's colour to see ones that look like it"
         }
@@ -174,10 +186,8 @@ struct PhotosView: View {
         do { try model.garage.delete(image) } catch { problem = String(describing: error) }
     }
 
-    private func setCover(_ cover: VehicleCover) {
-        do { try model.garage.setCover(cover, for: vehicle) } catch {
-            problem = String(describing: error)
-        }
+    private func setCover(_ image: VehicleImage) {
+        do { try model.garage.setCover(image) } catch { problem = String(describing: error) }
     }
 }
 

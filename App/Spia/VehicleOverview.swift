@@ -76,15 +76,8 @@ struct VehicleOverview: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(alignment: .topTrailing) {
             HStack {
-                Menu("Cover") {
-                    Button("Upload a Photo…") { uploadingCover = true }
-                    Button("Choose from Photos…") { show(.photos) }
-                    if vehicle.cover != .automatic {
-                        Divider()
-                        Button("Use Best Match") { setCover(.automatic) }
-                    }
-                }
-                .fixedSize()
+                Button("Change Cover…") { uploadingCover = true }
+                    .help("Use a photo of your car instead of the reference photo")
                 Button("Edit Vehicle…") { editing = true }
             }
             .buttonStyle(.bordered)
@@ -316,12 +309,6 @@ struct VehicleOverview: View {
             }
         }
         .card()
-    }
-
-    private func setCover(_ cover: VehicleCover) {
-        do { try model.garage.setCover(cover, for: vehicle) } catch {
-            problem = String(describing: error)
-        }
     }
 
     private func newSession() {

@@ -40,19 +40,16 @@ public struct ReferenceInput: Sendable, Equatable {
     public var trim: String?
     public var color: PaintColor?
     public var colorName: String?
-    /// A reference photo chosen as the cover, kept even when a new search doesn't find it.
-    public var keepPhoto: String?
 
     public init(
         vin: String?, name: String, trim: String? = nil, color: PaintColor? = nil,
-        colorName: String? = nil, keepPhoto: String? = nil
+        colorName: String? = nil
     ) {
         self.vin = vin
         self.name = name
         self.trim = trim
         self.color = color
         self.colorName = colorName
-        self.keepPhoto = keepPhoto
     }
 
     /// The photo search for this input, given what the VIN decoded to.
@@ -66,9 +63,7 @@ public struct ReferenceInput: Sendable, Equatable {
 
 extension Vehicle {
     public var referenceInput: ReferenceInput {
-        ReferenceInput(
-            vin: vin, name: name, trim: trim, color: color, colorName: colorName,
-            keepPhoto: coverReferenceID)
+        ReferenceInput(vin: vin, name: name, trim: trim, color: color, colorName: colorName)
     }
 }
 
@@ -130,33 +125,19 @@ public final class VehicleReferences {
         guard !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false }
-        var fresh = await Self.lookUp(input, previous: snapshot, client: client)
-        if let keep = input.keepPhoto, !fresh.photos.contains(where: { $0.id == keep }),
-            let kept = snapshot?.photos.first(where: { $0.id == keep })
-        {
-            fresh.photos.append(kept)
-        }
-        await downloadPhotos(fresh.photos, keeping: input.keepPhoto)
+        let fresh = await Self.lookUp(input, previous: snapshot, client: client)
+        await downloadPhotos(fresh.photos)
         snapshot = fresh
         save(fresh)
     }
 
-    /// The owner's chosen cover, else the best reference photo that's been downloaded.
+    /// The owner's photo when they've added any, else the best reference photo downloaded.
     public func cover(for vehicle: Vehicle) -> CoverImage? {
-        switch vehicle.cover {
-        case .image(let id):
-            if let image = vehicle.images.first(where: { $0.id == id }) {
-                let file = files.url(for: image.path)
-                if FileManager.default.fileExists(atPath: file.path) {
-                    return CoverImage(file: file, reference: nil)
-                }
+        if let image = vehicle.coverImage {
+            let file = files.url(for: image.path)
+            if FileManager.default.fileExists(atPath: file.path) {
+                return CoverImage(file: file, reference: nil)
             }
-        case .reference(let id):
-            if let chosen = photos.first(where: { $0.photo.id == id }) {
-                return CoverImage(file: chosen.file, reference: chosen.photo)
-            }
-        case .automatic:
-            break
         }
         return photos.first.map { CoverImage(file: $0.file, reference: $0.photo) }
     }
@@ -222,17 +203,14 @@ public final class VehicleReferences {
             fetchedAt: fetchedAt, problems: problems)
     }
 
-    /// Reference photos kept on disk, enough to choose a cover from.
+    /// Reference photos kept on disk.
     static let downloadedPhotos = 10
 
-    private func downloadPhotos(_ photos: [ReferencePhoto], keeping keptPhoto: String?) async {
+    private func downloadPhotos(_ photos: [ReferencePhoto]) async {
         let folder = files.referencesFolder(vehicle: vehicleID).appendingPathComponent("Photos")
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         var keep = Set<String>()
-        for photo in photos.prefix(Self.downloadedPhotos)
-            + photos.dropFirst(Self.downloadedPhotos)
-            .filter({ $0.id == keptPhoto })
-        {
+        for photo in photos.prefix(Self.downloadedPhotos) {
             let file = files.photoURL(vehicle: vehicleID, photo: photo)
             keep.insert(file.lastPathComponent)
             guard !FileManager.default.fileExists(atPath: file.path),

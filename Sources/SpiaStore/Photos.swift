@@ -70,16 +70,16 @@ extension Garage {
         try jpeg.write(to: url, options: .atomic)
         let image = VehicleImage(path: path)
         vehicle.images.append(image)
-        if asCover { vehicle.cover = .image(image.id) }
+        if asCover { vehicle.coverImageID = image.id }
         try context.save()
         return image
     }
 
-    /// Removes the photo and its file. A vehicle whose cover it was goes back to automatic.
+    /// Removes the photo and its file. If it was the cover, the owner's first photo takes over.
     public func delete(_ image: VehicleImage) throws {
         let url = files.url(for: image.path)
-        if let vehicle = image.vehicle, vehicle.cover == .image(image.id) {
-            vehicle.cover = .automatic
+        if let vehicle = image.vehicle, vehicle.coverImageID == image.id {
+            vehicle.coverImageID = nil
         }
         context.delete(image)
         try context.save()
@@ -88,8 +88,8 @@ extension Garage {
         }
     }
 
-    public func setCover(_ cover: VehicleCover, for vehicle: Vehicle) throws {
-        vehicle.cover = cover
+    public func setCover(_ image: VehicleImage) throws {
+        image.vehicle?.coverImageID = image.id
         try context.save()
     }
 }

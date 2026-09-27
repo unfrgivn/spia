@@ -144,7 +144,7 @@ struct ReferenceStoreTests {
         #expect(!FileManager.default.fileExists(atPath: folder.path))
     }
 
-    @Test("the owner's photos are stored as JPEG, can be the cover, and go with the vehicle")
+    @Test("the owner's photos replace the reference photo as the cover, and go with the vehicle")
     func ownPhotos() throws {
         let vehicle = try garage.addDemoVehicle()
         _ = try cacheRecordedReferences(for: vehicle)
@@ -155,23 +155,26 @@ struct ReferenceStoreTests {
         try FileManager.default.createDirectory(
             at: referenceFile.deletingLastPathComponent(), withIntermediateDirectories: true)
         try PhotoPreparation.jpeg(from: try Self.png()).write(to: referenceFile)
-        #expect(references.cover(for: vehicle)?.reference == reference)
+        #expect(
+            references.cover(for: vehicle) == CoverImage(file: referenceFile, reference: reference))
 
-        let image = try garage.addImage(try Self.png(), to: vehicle, asCover: true)
-        let file = garage.files.url(for: image.path)
-        #expect(vehicle.cover == .image(image.id))
-        #expect(references.cover(for: vehicle) == CoverImage(file: file, reference: nil))
-        let source = try #require(CGImageSourceCreateWithURL(file as CFURL, nil))
+        let first = try garage.addImage(try Self.png(), to: vehicle)
+        let firstFile = garage.files.url(for: first.path)
+        #expect(references.cover(for: vehicle) == CoverImage(file: firstFile, reference: nil))
+        let source = try #require(CGImageSourceCreateWithURL(firstFile as CFURL, nil))
         #expect(CGImageSourceGetType(source) as String? == UTType.jpeg.identifier)
 
-        try garage.setCover(.reference(reference.id), for: vehicle)
-        #expect(references.cover(for: vehicle)?.file == referenceFile)
-        try garage.setCover(.image(image.id), for: vehicle)
-        try garage.delete(image)
-        #expect(vehicle.cover == .automatic)
-        #expect(!FileManager.default.fileExists(atPath: file.path))
+        let second = try garage.addImage(try Self.png(), to: vehicle)
+        #expect(vehicle.coverImage == first)
+        try garage.setCover(second)
+        #expect(vehicle.coverImage == second)
+        try garage.delete(second)
+        #expect(vehicle.coverImage == first)
+        try garage.delete(first)
+        #expect(!FileManager.default.fileExists(atPath: firstFile.path))
+        #expect(references.cover(for: vehicle)?.reference == reference)
 
-        try garage.addImage(try Self.png(), to: vehicle)
+        try garage.addImage(try Self.png(), to: vehicle, asCover: true)
         let folder = garage.files.vehicleFolder(vehicle.id)
         #expect(FileManager.default.fileExists(atPath: folder.path))
         try garage.delete(vehicle)
