@@ -54,12 +54,12 @@ Targets:
 | 1 | Package skeleton, `OBDCore` pure decoders + unit tests | `swift build`, `swift test` green | done |
 | 2 | `SerialTransport` + `ELM327Session` + `spia ports` / `spia probe` | Hardware day 1: `ATZ`, `ATI`, `ATRV`, `ATDP` answer from the FS | done |
 | 3 | Recording/replay transports + `--record` flag | Real transcripts land in `Tests/Fixtures/` | done (USB-only capture; car captures next) |
-| 4 | `spia scan` (stored/pending/permanent DTCs, freeze frame, readiness) + `spia info` (VIN, CAL IDs) | Reads the Ghibli's active codes; cross-check against dash / known scanner | pending |
-| 5 | `spia clear` | Codes clear, CEL off, re-scan clean | pending |
-| 6 | `spia live` with CSV logging | RPM/coolant/etc. track reality at idle | pending |
-| 7 | `spia term` (raw AT/ST/hex) + `spia capture` (ATMA monitor to file) | We see Maserati CAN traffic | pending |
-| 8+ | UDS/ISO-TP client, Maserati module discovery | Non-powertrain ECUs answer | future |
-| iOS | `BLETransport` (CoreBluetooth), SwiftUI shell | Bluetooth FS on iPhone | future |
+| 4 (#1) | `spia scan` (stored/pending/permanent DTCs, freeze frame, readiness) + `spia info` (VIN, CAL IDs) | Reads the Ghibli's active codes; cross-check against dash / known scanner | pending |
+| 5 (#2) | `spia clear` | Codes clear, CEL off, re-scan clean | pending |
+| 6 (#3) | `spia live` with CSV logging | RPM/coolant/etc. track reality at idle | pending |
+| 7 (#4) | `spia capture` (ATMA monitor to file) | We see Maserati CAN traffic | pending |
+| 8 (#5) | UDS/ISO-TP client, Maserati module discovery | Non-powertrain ECUs answer | future |
+| iOS (#6) | `BLETransport` (CoreBluetooth), SwiftUI shell | Bluetooth FS on iPhone | future |
 
 ## Hardware notes
 
