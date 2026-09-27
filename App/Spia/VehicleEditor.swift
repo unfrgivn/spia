@@ -10,6 +10,9 @@ struct VehicleEditor: View {
 
     @State private var vin = ""
     @State private var name = ""
+    @State private var trim = ""
+    @State private var color: PaintColor?
+    @State private var colorName = ""
     @State private var problem = ""
     @State private var lookup = VINLookup()
     @State private var error: String?
@@ -24,6 +27,10 @@ struct VehicleEditor: View {
                     TextField(
                         "Name", text: $name,
                         prompt: Text(lookup.identity?.title ?? "e.g. 2017 Maserati Ghibli"))
+                    TrimField(trim: $trim, decoded: lookup.identity?.trim)
+                }
+                Section {
+                    PaintPicker(color: $color, name: $colorName)
                 }
                 Section {
                     TextField(
@@ -43,7 +50,7 @@ struct VehicleEditor: View {
             }
         }
         .padding(24)
-        .frame(width: 520)
+        .frame(width: 560)
         .errorAlert($error)
     }
 
@@ -55,6 +62,9 @@ struct VehicleEditor: View {
     private func create() {
         do {
             let vehicle = try model.garage.addVehicle(name: resolvedName, vin: lookup.normalized)
+            vehicle.trim = trim.trimmed
+            vehicle.color = color
+            vehicle.colorName = colorName.trimmed
             try model.garage.addSession(
                 to: vehicle, title: problem.isEmpty ? "First session" : "New problem",
                 problem: problem)
@@ -66,16 +76,22 @@ struct VehicleEditor: View {
     }
 }
 
-/// Name, VIN, and notes of an existing vehicle. A changed VIN looks up the references again.
+/// Name, VIN, trim, colour, cover, and notes of an existing vehicle. A changed VIN, trim, or
+/// colour looks up the references again.
 struct VehicleSettings: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let vehicle: Vehicle
+    let references: VehicleReferences
 
     @State private var name = ""
     @State private var vin = ""
+    @State private var trim = ""
+    @State private var color: PaintColor?
+    @State private var colorName = ""
     @State private var notes = ""
     @State private var lookup = VINLookup()
+    @State private var choosingCover = false
     @State private var error: String?
 
     var body: some View {
@@ -83,10 +99,37 @@ struct VehicleSettings: View {
             Text("Edit vehicle")
                 .font(.title2.weight(.semibold))
             Form {
-                TextField("Name", text: $name)
-                VINField(vin: $vin, lookup: lookup)
-                TextField("Notes", text: $notes, axis: .vertical)
-                    .lineLimit(2...6)
+                Section {
+                    TextField("Name", text: $name)
+                    VINField(vin: $vin, lookup: lookup)
+                    TrimField(trim: $trim, decoded: references.identity?.trim)
+                }
+                Section {
+                    PaintPicker(color: $color, name: $colorName)
+                }
+                Section("Cover") {
+                    HStack(spacing: 14) {
+                        VehiclePhoto(vehicle: vehicle, references: references)
+                            .frame(width: 120, height: 72)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(coverDescription)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                            HStack {
+                                Button("Upload Photo…") { choosingCover = true }
+                                if vehicle.cover != .automatic {
+                                    Button("Use Best Match") { setCover(.automatic) }
+                                }
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                }
+                Section {
+                    TextField("Notes", text: $notes, axis: .vertical)
+                        .lineLimit(2...6)
+                }
             }
             .formStyle(.grouped)
             HStack {
@@ -98,18 +141,48 @@ struct VehicleSettings: View {
             }
         }
         .padding(24)
-        .frame(width: 520)
+        .frame(width: 560)
         .onAppear {
             name = vehicle.name
             vin = vehicle.vin ?? ""
+            trim = vehicle.trim ?? ""
+            color = vehicle.color
+            colorName = vehicle.colorName ?? ""
             notes = vehicle.notes
         }
+        .fileImporter(isPresented: $choosingCover, allowedContentTypes: [.image]) { result in
+            switch result {
+            case .success(let url):
+                let problems = model.garage.addImages(from: [url], to: vehicle, asCover: true)
+                if !problems.isEmpty { error = problems.joined(separator: "\n") }
+            case .failure(let failure):
+                error = failure.localizedDescription
+            }
+        }
         .errorAlert($error)
+    }
+
+    private var coverDescription: String {
+        switch vehicle.cover {
+        case .automatic:
+            return "The reference photo that best matches the model, trim, and colour."
+        case .image: return "Your photo."
+        case .reference: return "A reference photo you chose."
+        }
+    }
+
+    private func setCover(_ cover: VehicleCover) {
+        do { try model.garage.setCover(cover, for: vehicle) } catch {
+            self.error = String(describing: error)
+        }
     }
 
     private func save() {
         vehicle.name = name.trimmingCharacters(in: .whitespaces)
         vehicle.vin = lookup.normalized
+        vehicle.trim = trim.trimmed
+        vehicle.color = color
+        vehicle.colorName = colorName.trimmed
         vehicle.notes = notes
         do {
             try model.garage.context.save()
@@ -216,5 +289,32 @@ private struct VINField: View {
                 }
             }
         }
+    }
+}
+
+/// The trim as the owner calls it, which the photo search uses.
+private struct TrimField: View {
+    @Binding var trim: String
+    let decoded: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            TextField("Trim", text: $trim, prompt: Text(decoded ?? "e.g. S Q4"))
+            Text(
+                decoded.map {
+                    "The VIN decodes as “\($0)”. Enter the trim you'd call it if that's different; photos are matched to it."
+                } ?? "Photos are matched to it."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
+}
+
+extension String {
+    /// Nil when blank.
+    fileprivate var trimmed: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

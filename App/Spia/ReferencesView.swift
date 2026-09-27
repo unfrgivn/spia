@@ -4,7 +4,7 @@ import SpiaReference
 import SpiaStore
 import SwiftUI
 
-/// Public records for the vehicle's make, model, and year, and photos of the model.
+/// Public records for the vehicle's make, model, and year.
 struct ReferencesView: View {
     let vehicle: Vehicle
     let references: VehicleReferences
@@ -13,7 +13,6 @@ struct ReferencesView: View {
         case bulletins = "Service Bulletins"
         case recalls = "Recalls"
         case complaints = "Complaints"
-        case photos = "Photos"
         var id: String { rawValue }
     }
 
@@ -48,7 +47,7 @@ struct ReferencesView: View {
                 } actions: {
                     if vehicle.vin != nil {
                         Button("Look Up Again") {
-                            Task { await references.refresh(vin: vehicle.vin, name: vehicle.name) }
+                            Task { await references.refresh(vehicle.referenceInput) }
                         }
                     }
                 }
@@ -73,7 +72,7 @@ struct ReferencesView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 Text(
-                    "Filed with NHTSA for every \(references.identity?.title ?? "car of this model"), not this car in particular. Photos from Wikimedia Commons."
+                    "Filed with NHTSA for every \(references.identity?.title ?? "car of this model"), not this car in particular."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -85,7 +84,6 @@ struct ReferencesView: View {
             case .bulletins: bulletins(safety.bulletins)
             case .recalls: recalls(safety.recalls)
             case .complaints: complaints(safety)
-            case .photos: photos
             }
         }
     }
@@ -95,7 +93,6 @@ struct ReferencesView: View {
         case .bulletins: return "\(tab.rawValue) (\(safety.bulletins.count))"
         case .recalls: return "\(tab.rawValue) (\(safety.recalls.count))"
         case .complaints: return "\(tab.rawValue) (\(safety.complaints.count))"
-        case .photos: return "\(tab.rawValue) (\(references.photos.count))"
         }
     }
 
@@ -184,32 +181,6 @@ struct ReferencesView: View {
             Section("Reports") {
                 ForEach(safety.complaints) { complaint in ComplaintRow(complaint: complaint) }
             }
-        }
-    }
-
-    // MARK: - Photos
-
-    private var photos: some View {
-        ScrollView {
-            if references.photos.isEmpty {
-                Text("No photos found for this model.")
-                    .foregroundStyle(.secondary)
-                    .padding(40)
-            }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 16)], spacing: 16) {
-                ForEach(references.photos, id: \.photo.id) { entry in
-                    VStack(alignment: .leading, spacing: 6) {
-                        LocalImage(url: entry.file)
-                            .aspectRatio(3 / 2, contentMode: .fit)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        Text(entry.photo.caption)
-                            .font(.caption)
-                            .lineLimit(2)
-                        PhotoCredit(photo: entry.photo)
-                    }
-                }
-            }
-            .padding(20)
         }
     }
 }

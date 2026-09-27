@@ -113,7 +113,7 @@ private struct VehicleCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VehiclePhoto(references: references, isDemo: vehicle.isDemo)
+            VehiclePhoto(vehicle: vehicle, references: references)
                 .frame(height: 170)
                 .clipped()
             VStack(alignment: .leading, spacing: 6) {
@@ -148,8 +148,8 @@ private struct VehicleCard: View {
                 .strokeBorder(Color.primary.opacity(0.1))
         )
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .task(id: vehicle.vin) {
-            await references.refreshIfNeeded(vin: vehicle.vin, name: vehicle.name)
+        .task(id: vehicle.referenceInput) {
+            await references.refreshIfNeeded(vehicle.referenceInput)
         }
         .accessibilityElement(children: .combine)
         .accessibilityHint("Opens the vehicle")
@@ -166,10 +166,9 @@ private struct VehicleCard: View {
     }
 
     private var subtitle: String {
-        if let identity = references.identity {
-            return identity.detail.isEmpty ? identity.title : identity.detail
-        }
-        return vehicle.vin == nil ? "No VIN yet" : "VIN \(vehicle.vin ?? "")"
+        let detail = vehicle.detail(identity: references.identity)
+        if !detail.isEmpty { return detail }
+        return vehicle.vin.map { "VIN \($0)" } ?? "No VIN yet"
     }
 }
 

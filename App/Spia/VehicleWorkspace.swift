@@ -6,6 +6,7 @@ import SwiftUI
 enum WorkspaceSection: Hashable {
     case overview
     case references
+    case photos
     case session(UUID)
 }
 
@@ -36,6 +37,8 @@ struct VehicleWorkspace: View {
                 VehicleOverview(vehicle: vehicle, references: references, show: show)
             case .references:
                 ReferencesView(vehicle: vehicle, references: references)
+            case .photos:
+                PhotosView(vehicle: vehicle, references: references)
             case .session(let id):
                 if let session = vehicle.sessions.first(where: { $0.id == id }) {
                     SessionView(session: session)
@@ -45,8 +48,8 @@ struct VehicleWorkspace: View {
                 }
             }
         }
-        .task(id: vehicle.vin) {
-            await references.refreshIfNeeded(vin: vehicle.vin, name: vehicle.name)
+        .task(id: vehicle.referenceInput) {
+            await references.refreshIfNeeded(vehicle.referenceInput)
         }
     }
 
@@ -74,6 +77,8 @@ private struct WorkspaceSidebar: View {
                 Label("References", systemImage: "books.vertical")
                     .badge(references.safety?.recalls.count ?? 0)
                     .tag(WorkspaceSection.references)
+                Label("Photos", systemImage: "photo.on.rectangle")
+                    .tag(WorkspaceSection.photos)
             }
 
             Section("Sessions") {
@@ -128,7 +133,7 @@ private struct VehicleBadge: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            VehiclePhoto(references: references, isDemo: vehicle.isDemo)
+            VehiclePhoto(vehicle: vehicle, references: references)
                 .frame(height: 110)
                 .frame(maxWidth: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -138,13 +143,18 @@ private struct VehicleBadge: View {
                     .lineLimit(2)
                 if vehicle.isDemo { Chip(text: "Demo") }
             }
-            Text(references.identity?.detail ?? vehicle.vin ?? "No VIN yet")
+            Text(detail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
+    }
+
+    private var detail: String {
+        let detail = vehicle.detail(identity: references.identity)
+        return detail.isEmpty ? (vehicle.vin ?? "No VIN yet") : detail
     }
 }
 

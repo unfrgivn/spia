@@ -14,6 +14,7 @@ struct VehicleOverview: View {
     @State private var editing = false
     @State private var editingModules = false
     @State private var connecting = false
+    @State private var uploadingCover = false
     @State private var problem: String?
 
     var body: some View {
@@ -41,7 +42,7 @@ struct VehicleOverview: View {
         .navigationTitle(vehicle.name)
         .navigationSubtitle("Overview")
         .task(id: vehicle.id) { workbench = model.workbench(for: vehicle) }
-        .sheet(isPresented: $editing) { VehicleSettings(vehicle: vehicle) }
+        .sheet(isPresented: $editing) { VehicleSettings(vehicle: vehicle, references: references) }
         .sheet(isPresented: $editingModules) { ModulesEditor(vehicle: vehicle) }
         .sheet(isPresented: $connecting) {
             if let workbench {
@@ -55,7 +56,7 @@ struct VehicleOverview: View {
 
     private var hero: some View {
         ZStack(alignment: .bottomLeading) {
-            VehiclePhoto(references: references, isDemo: vehicle.isDemo)
+            VehiclePhoto(vehicle: vehicle, references: references)
             LinearGradient(
                 colors: [.clear, .black.opacity(0.65)], startPoint: .center, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 4) {
@@ -64,9 +65,8 @@ struct VehicleOverview: View {
                         .font(.largeTitle.weight(.bold))
                     if vehicle.isDemo { Chip(text: "Demo", color: .white) }
                 }
-                if let identity = references.identity {
-                    Text(identity.detail.isEmpty ? identity.title : identity.detail)
-                        .font(.title3)
+                if !heroDetail.isEmpty {
+                    Text(heroDetail).font(.title3)
                 }
             }
             .foregroundStyle(.white)
@@ -75,18 +75,40 @@ struct VehicleOverview: View {
         .frame(height: 280)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(alignment: .topTrailing) {
-            Button("Edit Vehicle…") { editing = true }
-                .buttonStyle(.bordered)
-                .padding(14)
+            HStack {
+                Menu("Cover") {
+                    Button("Upload a Photo…") { uploadingCover = true }
+                    Button("Choose from Photos…") { show(.photos) }
+                    if vehicle.cover != .automatic {
+                        Divider()
+                        Button("Use Best Match") { setCover(.automatic) }
+                    }
+                }
+                .fixedSize()
+                Button("Edit Vehicle…") { editing = true }
+            }
+            .buttonStyle(.bordered)
+            .padding(14)
         }
         .overlay(alignment: .bottomTrailing) {
-            if let photo = references.photos.first?.photo {
+            if let photo = references.cover(for: vehicle)?.reference {
                 PhotoCredit(photo: photo)
                     .foregroundStyle(.white.opacity(0.8))
                     .padding(10)
             }
         }
+        .fileImporter(isPresented: $uploadingCover, allowedContentTypes: [.image]) { result in
+            switch result {
+            case .success(let url):
+                let problems = model.garage.addImages(from: [url], to: vehicle, asCover: true)
+                if !problems.isEmpty { problem = problems.joined(separator: "\n") }
+            case .failure(let error):
+                problem = error.localizedDescription
+            }
+        }
     }
+
+    private var heroDetail: String { vehicle.detail(identity: references.identity) }
 
     private var referenceStatus: some View {
         HStack(spacing: 8) {
@@ -112,7 +134,7 @@ struct VehicleOverview: View {
             }
             Spacer()
             Button("Refresh") {
-                Task { await references.refresh(vin: vehicle.vin, name: vehicle.name) }
+                Task { await references.refresh(vehicle.referenceInput) }
             }
             .disabled(references.isRefreshing)
         }
@@ -174,7 +196,7 @@ struct VehicleOverview: View {
                 DetailRow("VIN", vehicle.vin, monospaced: true)
                 if let identity = references.identity {
                     DetailRow("Model", identity.title)
-                    DetailRow("Trim", identity.trim)
+                    DetailRow("Trim", vehicle.trim ?? identity.trim)
                     DetailRow("Platform", identity.series)
                     DetailRow("Body", identity.bodyClass)
                     DetailRow("Engine", identity.engine)
@@ -182,6 +204,7 @@ struct VehicleOverview: View {
                     DetailRow("Drive", identity.driveType)
                     DetailRow("Fuel", identity.fuel)
                     DetailRow("Built in", identity.plantCountry?.capitalized)
+                    DetailRow("Color", vehicle.colorName ?? vehicle.color?.displayName)
                     ForEach(identity.decoderNotes, id: \.self) { note in
                         GridRow {
                             Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
@@ -293,6 +316,12 @@ struct VehicleOverview: View {
             }
         }
         .card()
+    }
+
+    private func setCover(_ cover: VehicleCover) {
+        do { try model.garage.setCover(cover, for: vehicle) } catch {
+            problem = String(describing: error)
+        }
     }
 
     private func newSession() {
