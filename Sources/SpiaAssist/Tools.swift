@@ -65,15 +65,19 @@ public struct CheckProposal: Codable, Sendable, Equatable {
 public enum AssistantAction: Sendable, Equatable {
     case proposeCheck(CheckProposal)
     case askUser(question: String)
+    /// Answered by the app straight away: nothing on the car is involved.
+    case searchBulletins(query: String)
 }
 
 public enum AssistantTools {
     public static let proposeCheckName = "propose_check"
     public static let askUserName = "ask_user"
+    public static let searchBulletinsName = "search_bulletins"
 
     /// Tools offered to the model. `modules` are the vehicle's module labels, offered as an enum
-    /// so the model can only pick modules that exist.
-    public static func definitions(modules: [String]) -> [ToolDefinition] {
+    /// so the model can only pick modules that exist. Bulletin search is offered only when the
+    /// vehicle's bulletins are loaded.
+    public static func definitions(modules: [String], bulletins: Bool = false) -> [ToolDefinition] {
         let moduleSchema: JSONValue =
             modules.isEmpty
             ? ["type": "null", "description": "This vehicle has no modules configured."]
@@ -121,8 +125,27 @@ public enum AssistantTools {
                     "required": ["question"],
                     "additionalProperties": false,
                 ]),
-        ]
+        ] + (bulletins ? [searchBulletins] : [])
     }
+
+    static let searchBulletins = ToolDefinition(
+        name: searchBulletinsName,
+        description: """
+            Search the manufacturer's service bulletins filed with NHTSA for this make, model, and \
+            year, by keywords (e.g. "steering wheel horn", "clock spring", "airbag lamp"). Returns \
+            the best matches with number, date, title, summary, and components. Runs immediately; \
+            the person doesn't need to approve it.
+            """,
+        parameters: [
+            "type": "object",
+            "properties": [
+                "query": [
+                    "type": "string", "description": "A few keywords describing the fault or part.",
+                ]
+            ],
+            "required": ["query"],
+            "additionalProperties": false,
+        ])
 
     public enum ParseError: Error, Equatable, Sendable, CustomStringConvertible {
         case unknownTool(String)
@@ -155,6 +178,11 @@ public enum AssistantTools {
                 throw ParseError.badArguments(call.arguments)
             }
             return .askUser(question: question)
+        case searchBulletinsName:
+            guard let query = arguments["query"]?.string,
+                !query.trimmingCharacters(in: .whitespaces).isEmpty
+            else { throw ParseError.badArguments(call.arguments) }
+            return .searchBulletins(query: query)
         default:
             throw ParseError.unknownTool(call.name)
         }

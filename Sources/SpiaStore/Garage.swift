@@ -137,7 +137,23 @@ public final class Garage {
         entry.warnings = warnings
         entry.transcriptPath = result.transcript == nil ? nil : transcriptPath
         append(entry, to: session)
+        if let vehicle = session.vehicle, vehicle.vin == nil, let vin = Self.reportedVIN(result) {
+            vehicle.vin = vin
+        }
         try context.save()
+    }
+
+    /// The VIN a live vehicle-information check read, if the car reported one. Recordings are
+    /// never copied into a vehicle.
+    static func reportedVIN(_ result: JobResult) -> String? {
+        guard result.source == .live, case .vehicleInfo(let ecus) = result.payload else {
+            return nil
+        }
+        return ecus.lazy.compactMap { ecu in
+            ecu.vin.value.map {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines.union(.controlCharacters))
+            }
+        }.first { $0.count == 17 }
     }
 
     public func recordFailure(
@@ -151,9 +167,11 @@ public final class Garage {
         try context.save()
     }
 
-    /// Deletes the vehicle, its sessions and history, and their files.
+    /// Deletes the vehicle, its sessions and history, their files, and its references.
     public func delete(_ vehicle: Vehicle) throws {
-        let folders = vehicle.sessions.flatMap { files.folders(for: $0.id) }
+        let folders =
+            vehicle.sessions.flatMap { files.folders(for: $0.id) }
+            + [files.referencesFolder(vehicle: vehicle.id)]
         context.delete(vehicle)
         try context.save()
         try removeFolders(folders)

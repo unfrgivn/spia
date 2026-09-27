@@ -60,21 +60,63 @@ public struct SessionBriefing: Codable, Sendable, Equatable {
         }
     }
 
+    /// Public records for the car's make, model, and year (NHTSA), not for this car itself.
+    public struct ReferenceFacts: Codable, Sendable, Equatable {
+        public struct Recall: Codable, Sendable, Equatable {
+            public var campaign: String
+            public var date: String?
+            public var components: [String]
+            public var summary: String
+            public var remedy: String
+
+            public init(
+                campaign: String, date: String?, components: [String], summary: String,
+                remedy: String
+            ) {
+                self.campaign = campaign
+                self.date = date
+                self.components = components
+                self.summary = summary
+                self.remedy = remedy
+            }
+        }
+
+        /// What the VIN decoder says the car is, e.g. its trim, engine, and drive.
+        public var decodedVehicle: String?
+        public var recalls: [Recall]
+        /// Owner complaints filed with NHTSA, by component, e.g. `ELECTRICAL SYSTEM: 4`.
+        public var complaintsByComponent: [String]
+        /// Manufacturer service bulletins on file; search them with search_bulletins.
+        public var bulletinCount: Int
+
+        public init(
+            decodedVehicle: String?, recalls: [Recall], complaintsByComponent: [String],
+            bulletinCount: Int
+        ) {
+            self.decodedVehicle = decodedVehicle
+            self.recalls = recalls
+            self.complaintsByComponent = complaintsByComponent
+            self.bulletinCount = bulletinCount
+        }
+    }
+
     public var vehicle: VehicleFacts
     public var problem: String
     public var modules: [ModuleFacts]
     public var adapter: AdapterStatus?
     public var events: [Event]
+    public var references: ReferenceFacts?
 
     public init(
         vehicle: VehicleFacts, problem: String, modules: [ModuleFacts], adapter: AdapterStatus?,
-        events: [Event]
+        events: [Event], references: ReferenceFacts? = nil
     ) {
         self.vehicle = vehicle
         self.problem = problem
         self.modules = modules
         self.adapter = adapter
         self.events = events
+        self.references = references
     }
 }
 
@@ -103,6 +145,15 @@ public enum AssistantInstructions {
                 event.result = nil
                 return event
             }
+            if var references = briefing.references {
+                references.recalls = references.recalls.map { recall in
+                    var recall = recall
+                    recall.summary = String(recall.summary.prefix(200))
+                    recall.remedy = String(recall.remedy.prefix(120))
+                    return recall
+                }
+                briefing.references = references
+            }
         }
         var data = encode(briefing)
         while data.count > limit, !briefing.events.isEmpty {
@@ -128,6 +179,12 @@ public enum AssistantInstructions {
         is not verified. Never invent code descriptions.
         - Be plain and brief. Lead with what matters. Say when you are unsure and what would settle it.
         - Work toward a solution: likely causes ranked by evidence, the cheapest checks first, then the fix.
+        - references in the session data are public NHTSA records for this make, model, and year: \
+        recalls, owner complaints, and the count of manufacturer service bulletins. They are not about \
+        this particular car: a recall may already be done (the person can check by VIN at \
+        nhtsa.gov/recalls) and a bulletin may cover other models. When a bulletin could explain the \
+        symptoms, find it with search_bulletins and cite its number; never invent bulletin numbers or \
+        contents.
 
         Safety:
         - Airbag (SRS) systems can deploy and injure. Never tell the person to probe, measure, or \

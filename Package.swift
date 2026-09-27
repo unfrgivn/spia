@@ -10,6 +10,7 @@ let package = Package(
         .library(name: "SpiaKit", targets: ["SpiaKit"]),
         .library(name: "SpiaStore", targets: ["SpiaStore"]),
         .library(name: "SpiaAssist", targets: ["SpiaAssist"]),
+        .library(name: "SpiaReference", targets: ["SpiaReference"]),
         .executable(name: "spia", targets: ["spia"]),
     ],
     dependencies: [
@@ -28,11 +29,15 @@ let package = Package(
         .target(
             name: "SpiaKit", dependencies: ["OBDCore"], resources: [.copy("Recordings")]),
         .target(name: "SpiaAssist", dependencies: ["SpiaKit"]),
-        .target(name: "SpiaStore", dependencies: ["SpiaKit", "SpiaAssist", "OBDCore"]),
+        .target(name: "SpiaReference"),
+        .target(
+            name: "SpiaStore", dependencies: ["SpiaKit", "SpiaAssist", "SpiaReference", "OBDCore"]),
         .testTarget(name: "OBDCoreTests", dependencies: ["OBDCore"]),
         .testTarget(name: "SpiaKitTests", dependencies: ["SpiaKit", "OBDCore"]),
         .testTarget(
-            name: "SpiaStoreTests", dependencies: ["SpiaStore", "SpiaKit", "SpiaAssist", "OBDCore"]),
+            name: "SpiaStoreTests",
+            dependencies: ["SpiaStore", "SpiaKit", "SpiaAssist", "SpiaReference", "OBDCore"]),
         .testTarget(name: "SpiaAssistTests", dependencies: ["SpiaAssist", "SpiaKit"]),
+        .testTarget(name: "SpiaReferenceTests", dependencies: ["SpiaReference"]),
     ]
 )

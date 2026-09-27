@@ -306,6 +306,23 @@ struct AssistantToolsTests {
         let schema = AssistantTools.definitions(modules: ["ABS", "BCM"])[0].parameters
         #expect(schema["properties"]?["module"]?["enum"] == ["ABS", "BCM", .null])
     }
+
+    @Test("bulletin search is offered only with bulletins, and needs a query")
+    func bulletinSearch() throws {
+        #expect(!AssistantTools.definitions(modules: []).map(\.name).contains("search_bulletins"))
+        #expect(
+            AssistantTools.definitions(modules: [], bulletins: true).map(\.name) == [
+                "propose_check", "ask_user", "search_bulletins",
+            ])
+        #expect(
+            try AssistantTools.parse(
+                ToolCall(id: "1", name: "search_bulletins", arguments: #"{"query":"clock spring"}"#)
+            ) == .searchBulletins(query: "clock spring"))
+        #expect(throws: AssistantTools.ParseError.self) {
+            try AssistantTools.parse(
+                ToolCall(id: "1", name: "search_bulletins", arguments: #"{"query":"  "}"#))
+        }
+    }
 }
 
 @Suite("Assistant instructions")
