@@ -1,5 +1,6 @@
 import Foundation
 import OBDCore
+import SpiaAssist
 import SpiaKit
 import SwiftData
 
@@ -10,7 +11,7 @@ public enum SpiaSchemaV1: VersionedSchema {
     public static var models: [any PersistentModel.Type] {
         [
             Vehicle.self, AdapterProfile.self, ModulePreset.self, DiagnosticSession.self,
-            TimelineEntry.self,
+            TimelineEntry.self, ChatMessage.self,
         ]
     }
 
@@ -119,9 +120,13 @@ public enum SpiaSchemaV1: VersionedSchema {
         public var startedAt: Date
         public var updatedAt: Date
         public var resolution: String?
+        /// The user agreed that this session's data may be sent to cloud AI providers.
+        public var cloudSharingAllowed: Bool = false
         public var vehicle: Vehicle?
         @Relationship(deleteRule: .cascade, inverse: \TimelineEntry.session)
         public var entries: [TimelineEntry] = []
+        @Relationship(deleteRule: .cascade, inverse: \ChatMessage.session)
+        public var messages: [ChatMessage] = []
 
         public init(title: String, problem: String = "") {
             id = UUID()
@@ -138,6 +143,7 @@ public enum SpiaSchemaV1: VersionedSchema {
         }
 
         public var timeline: [TimelineEntry] { entries.sorted { $0.date < $1.date } }
+        public var conversation: [ChatMessage] { messages.sorted { $0.sequence < $1.sequence } }
     }
 
     /// Something that happened in a session: a note, a check result, or a failed check.
@@ -173,6 +179,91 @@ public enum SpiaSchemaV1: VersionedSchema {
     }
 }
 
+extension SpiaSchemaV1 {
+    /// One turn of the assistant conversation. Tool results are stored as user messages, as the
+    /// providers require, and hidden in the UI behind the proposal they answer.
+    @Model public final class ChatMessage {
+        @Attribute(.unique) public var id: UUID
+        /// Position in the conversation; dates can tie.
+        public var sequence: Int
+        public var date: Date
+        public var roleRaw: String
+        public var providerRaw: String?
+        public var model: String?
+        /// `[StoredPart]` as JSON. Images are stored as files and referenced here.
+        public var partsData: Data
+        /// `[callID: ToolResolution]` as JSON, for assistant messages with tool calls.
+        public var resolutionsData: Data?
+        public var session: DiagnosticSession?
+
+        public init(
+            sequence: Int, role: ConversationRole, parts: [StoredPart], provider: ProviderID? = nil,
+            model: String? = nil
+        ) {
+            id = UUID()
+            self.sequence = sequence
+            date = .now
+            roleRaw = role.rawValue
+            providerRaw = provider?.rawValue
+            self.model = model
+            partsData = (try? JSONEncoder().encode(parts)) ?? Data("[]".utf8)
+        }
+
+        public var role: ConversationRole { ConversationRole(rawValue: roleRaw) ?? .user }
+        public var provider: ProviderID? { providerRaw.flatMap(ProviderID.init(rawValue:)) }
+
+        public var parts: [StoredPart] {
+            (try? JSONDecoder().decode([StoredPart].self, from: partsData)) ?? []
+        }
+
+        public var text: String {
+            parts.compactMap { if case .text(let text) = $0 { text } else { nil } }.joined(
+                separator: "\n\n")
+        }
+
+        public var toolCalls: [ToolCall] {
+            parts.compactMap { if case .toolCall(let call) = $0 { call } else { nil } }
+        }
+
+        public var isToolResultsOnly: Bool {
+            !parts.isEmpty && parts.allSatisfy { if case .toolResult = $0 { true } else { false } }
+        }
+
+        public var resolutions: [String: ToolResolution] {
+            get {
+                resolutionsData.flatMap {
+                    try? JSONDecoder().decode([String: ToolResolution].self, from: $0)
+                } ?? [:]
+            }
+            set { resolutionsData = try? JSONEncoder().encode(newValue) }
+        }
+    }
+}
+
+/// A message part as stored: images live in files under the app's storage folder.
+public enum StoredPart: Codable, Sendable, Equatable {
+    case text(String)
+    case image(path: String, mediaType: String)
+    case toolCall(ToolCall)
+    case toolResult(ToolResult)
+}
+
+/// What became of a tool call.
+public enum ToolResolution: Codable, Sendable, Equatable {
+    case pending
+    case running
+    case completed(summary: String)
+    case failed(message: String)
+    case declined
+    case answered(String)
+    /// The user moved on without responding.
+    case skipped
+    /// The model's call couldn't be used (unknown module, bad arguments).
+    case invalid(String)
+
+    public var isOpen: Bool { self == .pending || self == .running }
+}
+
 public enum SessionStatus: String, Codable, Sendable, CaseIterable {
     case open, resolved, archived
 }
@@ -186,6 +277,7 @@ public typealias AdapterProfile = SpiaSchemaV1.AdapterProfile
 public typealias ModulePreset = SpiaSchemaV1.ModulePreset
 public typealias DiagnosticSession = SpiaSchemaV1.DiagnosticSession
 public typealias TimelineEntry = SpiaSchemaV1.TimelineEntry
+public typealias ChatMessage = SpiaSchemaV1.ChatMessage
 
 public enum SpiaMigrationPlan: SchemaMigrationPlan {
     public static var schemas: [any VersionedSchema.Type] { [SpiaSchemaV1.self] }

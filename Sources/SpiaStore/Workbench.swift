@@ -19,6 +19,15 @@ public struct CheckActivity: Equatable, Sendable {
     public var currentStep: String? { steps.last }
 }
 
+/// How a check ended, for callers that act on it (the assistant feeds it back to the model).
+public enum CheckOutcome: Sendable, Equatable {
+    case completed(JobResult)
+    case failed(message: String)
+    case cancelled
+    /// Another check was already running.
+    case notStarted
+}
+
 /// Connects the screens to one adapter (or the demo car) and records what checks find.
 @MainActor
 @Observable
@@ -63,8 +72,10 @@ public final class Workbench {
 
     /// Runs `job` for `session`, keeping `activity` current, and saves the outcome to the
     /// session's timeline. A check the user cancels is not recorded.
-    public func run(_ job: DiagnosticJob, in session: DiagnosticSession) async {
-        guard activity == nil else { return }
+    @discardableResult
+    public func run(_ job: DiagnosticJob, in session: DiagnosticSession) async -> CheckOutcome {
+        guard activity == nil else { return .notStarted }
+        var outcome = CheckOutcome.cancelled
         lastError = nil
         let transcript = garage.newTranscript(for: session)
         activity = CheckActivity(job: job, sessionID: session.id)
@@ -83,6 +94,7 @@ public final class Workbench {
             case .userConfirmed:
                 activity?.prompt = nil
             case .completed(let result):
+                outcome = .completed(result)
                 save {
                     try garage.record(
                         result, warnings: activity?.warnings ?? [], transcriptPath: transcript.path,
@@ -90,6 +102,7 @@ public final class Workbench {
                 }
             case .failed(let failure):
                 guard !failure.cancelled else { break }
+                outcome = .failed(message: failure.message)
                 save {
                     try garage.recordFailure(
                         of: job, failure, warnings: activity?.warnings ?? [],
@@ -99,6 +112,7 @@ public final class Workbench {
             }
         }
         connection = await backend.currentState()
+        return outcome
     }
 
     /// The user did what the prompt asked.

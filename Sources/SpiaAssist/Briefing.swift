@@ -18,13 +18,18 @@ public struct SessionBriefing: Codable, Sendable, Equatable {
 
     public struct ModuleFacts: Codable, Sendable, Equatable {
         public var label: String
+        /// `hs` (pins 6/14, 500k) or `ms` (pins 3/11, 125k interior bus).
+        public var bus: String
         public var request: String
         public var reply: String
         /// False when the label comes from references rather than the module itself.
         public var labelConfirmed: Bool
 
-        public init(label: String, request: String, reply: String, labelConfirmed: Bool) {
+        public init(
+            label: String, bus: String, request: String, reply: String, labelConfirmed: Bool
+        ) {
             self.label = label
+            self.bus = bus
             self.request = request
             self.reply = reply
             self.labelConfirmed = labelConfirmed

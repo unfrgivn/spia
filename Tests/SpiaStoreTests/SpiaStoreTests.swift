@@ -131,7 +131,7 @@ struct SpiaStoreTests {
     func deleteVehicle() async throws {
         let (workbench, session) = try await demoWorkbench()
         await workbench.run(.moduleDTCs(DemoGarage.airbag.target), in: session)
-        let folder = garage.files.sessionFolder(session.id)
+        let folder = try #require(garage.files.folders(for: session.id).first)
         #expect(FileManager.default.fileExists(atPath: folder.path))
         let vehicle = try #require(session.vehicle)
 

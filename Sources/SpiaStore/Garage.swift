@@ -2,8 +2,8 @@ import Foundation
 import SpiaKit
 import SwiftData
 
-/// Where the app keeps files that don't belong in the database: one folder per session of
-/// raw transcripts, so every result can be replayed or inspected later.
+/// Where the app keeps files that don't belong in the database: per session, the raw
+/// transcripts (so every result can be replayed or inspected later) and attached photos.
 public struct SpiaFiles: Sendable {
     public let root: URL
 
@@ -25,8 +25,15 @@ public struct SpiaFiles: Sendable {
         root.appendingPathComponent(relativePath)
     }
 
-    public func sessionFolder(_ session: UUID) -> URL {
-        root.appendingPathComponent("Transcripts/\(session.uuidString)", isDirectory: true)
+    public func attachmentPath(session: UUID, name: String) -> String {
+        "Attachments/\(session.uuidString)/\(name)"
+    }
+
+    /// Every folder holding a session's files.
+    public func folders(for session: UUID) -> [URL] {
+        ["Transcripts", "Attachments"].map {
+            root.appendingPathComponent("\($0)/\(session.uuidString)", isDirectory: true)
+        }
     }
 }
 
@@ -128,21 +135,24 @@ public final class Garage {
         try context.save()
     }
 
-    /// Deletes the vehicle, its sessions and history, and their transcript files.
+    /// Deletes the vehicle, its sessions and history, and their files.
     public func delete(_ vehicle: Vehicle) throws {
-        let folders = vehicle.sessions.map { files.sessionFolder($0.id) }
+        let folders = vehicle.sessions.flatMap { files.folders(for: $0.id) }
         context.delete(vehicle)
         try context.save()
-        for folder in folders where FileManager.default.fileExists(atPath: folder.path) {
-            try FileManager.default.removeItem(at: folder)
-        }
+        try removeFolders(folders)
     }
 
+    /// Deletes the session, its history and conversation, and its transcript and photo files.
     public func delete(_ session: DiagnosticSession) throws {
-        let folder = files.sessionFolder(session.id)
+        let folders = files.folders(for: session.id)
         context.delete(session)
         try context.save()
-        if FileManager.default.fileExists(atPath: folder.path) {
+        try removeFolders(folders)
+    }
+
+    private func removeFolders(_ folders: [URL]) throws {
+        for folder in folders where FileManager.default.fileExists(atPath: folder.path) {
             try FileManager.default.removeItem(at: folder)
         }
     }
