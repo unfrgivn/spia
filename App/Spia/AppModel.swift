@@ -17,13 +17,17 @@ import SwiftData
 final class AppModel {
     let container: ModelContainer
     let garage: Garage
-    let assistant = AssistantConfiguration()
+    let assistant: AssistantConfiguration
     private var workbenches: [UUID: Workbench] = [:]
     private var conversations: [UUID: AssistantConversation] = [:]
     private var referenceSets: [UUID: VehicleReferences] = [:]
 
-    init(container: ModelContainer, files: SpiaFiles) {
+    init(
+        container: ModelContainer, files: SpiaFiles,
+        assistant: AssistantConfiguration = AssistantConfiguration()
+    ) {
         self.container = container
+        self.assistant = assistant
         garage = Garage(context: container.mainContext, files: files)
     }
 
