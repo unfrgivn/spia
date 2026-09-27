@@ -2,7 +2,8 @@
 # Capture DEBUG fixture screens on the iPhone and iPad simulators, or with --mac as visible Mac
 # windows (each shows briefly on the desktop). Environment: SPIA_SCREENS, SPIA_APPEARANCES,
 # SPIA_DEVICES ("|"-separated simulator names), SPIA_EXTRA_ARGS, SPIA_SUFFIX, SPIA_DERIVED_DATA,
-# SPIA_SCREENSHOTS_DIR.
+# SPIA_SCREENSHOTS_DIR, and SPIA_WAIT (seconds before each shot, 8 by default; the fixture looks up
+# the demo car's reference photos online, which can take longer).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -21,6 +22,7 @@ read -ra appearances <<< "${SPIA_APPEARANCES:-light dark}"
 IFS='|' read -ra devices <<< "${SPIA_DEVICES:-iPhone 17 Pro|iPad Pro 13-inch (M5)}"
 read -ra extra <<< "${SPIA_EXTRA_ARGS:-}"
 suffix=${SPIA_SUFFIX:+-$SPIA_SUFFIX}
+wait=${SPIA_WAIT:-8}
 
 # The launch arguments for one shot. Bash 3.2 treats an empty array as unset under `set -u`.
 fixture_args() {
@@ -47,13 +49,21 @@ capture_mac() {
       done
       [[ -n "$pid" ]] || { echo "Spia didn't start" >&2; exit 1; }
       trap 'kill "$pid" 2>/dev/null || true' EXIT
-      sleep 8
+      sleep "$wait"
       local window
+      # The app's biggest window, on screen or not: when another Space is showing, the new
+      # window opens off screen, and screencapture can still take it by its ID.
       window=$(swift - "$pid" <<'SWIFT'
 import CoreGraphics
+import Foundation
 let pid = pid_t(CommandLine.arguments[1]) ?? 0
-let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
-if let window = windows.first(where: { ($0[kCGWindowOwnerPID as String] as? pid_t) == pid && ($0[kCGWindowLayer as String] as? Int) == 0 }), let id = window[kCGWindowNumber as String] as? UInt32 { print(id) }
+let windows = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+func area(_ window: [String: Any]) -> Double {
+  let bounds = window[kCGWindowBounds as String] as? [String: Any] ?? [:]
+  return ((bounds["Width"] as? Double) ?? 0) * ((bounds["Height"] as? Double) ?? 0)
+}
+let own = windows.filter { ($0[kCGWindowOwnerPID as String] as? pid_t) == pid && ($0[kCGWindowLayer as String] as? Int) == 0 }
+if let window = own.max(by: { area($0) < area($1) }), let id = window[kCGWindowNumber as String] as? UInt32 { print(id) }
 SWIFT
       )
       [[ -n "$window" ]] || { echo "No window for Spia (pid $pid)" >&2; exit 1; }
@@ -84,7 +94,7 @@ capture_simulators() {
       for appearance in "${appearances[@]}"; do
         fixture_args "$screen" "$appearance"
         xcrun simctl launch "$udid" "$bundle" "${args[@]}" >/dev/null
-        sleep 8
+        sleep "$wait"
         xcrun simctl io "$udid" screenshot "$root/${name// /_}-$screen-$appearance$suffix.png" \
           >/dev/null 2>&1
         xcrun simctl terminate "$udid" "$bundle"
