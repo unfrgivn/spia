@@ -9,7 +9,7 @@ The app also runs on iPhone and iPad; there it's Demo only until `BLETransport` 
 |---|---|---|
 | Language | Swift 6, Swift Package | Apple-only targets (macOS now, iOS later). CoreBluetooth on both. No FFI. |
 | Adapter now | vLinker FS (USB, FTDI) | Fast (3 Mbps), deterministic, shows up as `/dev/cu.usbserial-*`. Best bench tool for CAN capture. |
-| Adapter later | vLinker FS Bluetooth (BLE+BT mode) | Only vLinker that works on iOS from a third-party app (BLE). iOS cannot talk to the USB FS at all. |
+| Adapter later | vLinker FS Bluetooth, switched to BLE+BT mode | It ships in MFi mode. There CoreBluetooth can't reach it, and the Mac's serial connection failed after the first session (see Hardware notes). The VgateFwUpdater iOS app switches the mode, reversibly per Vgate support. iOS cannot talk to the USB FS at all. |
 | Dependencies | `apple/swift-argument-parser` only | Serial I/O is hand-rolled POSIX termios. |
 | Testing | Unit tests for pure decoders (J1979 formulas). Session/framing tests replay REAL recorded transcripts. Live e2e against the car. | No mocks. Fixtures come only from real captures. |
 | v1 scope | Generic OBD-II + raw terminal + CAN capture | Manufacturer-specific UDS module map is a later reverse-engineering effort. |
@@ -124,6 +124,17 @@ Confirmed on the car (2017 Ghibli S Q4, 2026-09-26; fixtures in `Tests/Fixtures/
 - Car must be in RUN, not ACC. In ACC the bus is alive (~40 IDs at 10-20 Hz, e.g. `102`, `10C`, `10D`, `2F9`) but `0100` gets `NO DATA` on `ATSP6`/`7` and `CAN ERROR` on `ATSP8`. ACC to RUN is one more START press without the brake.
 - `STP 53` plus `STPBR 125000` exposed about 100 IDs on the second transceiver. The earlier suggestion to use `STP 33` for that bus was incorrect.
 - Diagnostic replies were observed on both buses once receive filters covered the actual reply IDs. The request-plus-eight convention is not a general manufacturer-module mapping. Reachability does not establish whether a gateway forwarded a reply.
+
+vLinker FS Bluetooth on the car (2017 Ghibli, 2026-09-27; macOS 15.7, Classic Bluetooth then BLE; fixtures `ghibli-bt-*.txt` are Classic):
+
+- Car-powered only (7–30 V). Pairing needs its Connect button. It pairs as `vLinker FS 17879` (serial-number suffix); macOS creates `/dev/cu.vLinkerFS17879`.
+- SDP: `JXSL-SPP` on RFCOMM channel 1, `JXSL-iAP` (MFi) on channel 2. The unit shipped in MFi mode.
+- `ATZ` → `ELM327 v2.3`, `STI` → `STN2120 v5.8.1` (the USB unit is `STN1170 v4.3.2`), `STDI` → `vLinker FS r2`. `SerialTransport` works unchanged; the driver accepts `IOSSIOSPEED`.
+- The scripted session decodes the same as the USB unit's: VIN, CAL IDs, CVNs, ECU names, DTC state. Simple commands took 9–46 ms (USB: 16 ms); bus-bound requests match. The first `ATZ` after opening the port can go unanswered for over 3 s while the link comes up.
+- Only 2 of 12 connections carried data, each the first after a fresh pairing; a third pairing's first connection failed. Otherwise the port opens, nothing comes back, and closing it blocks about 10 s. Opening RFCOMM channel 1 directly with IOBluetooth failed with `0xE00002BC` three times, while channel 2 opened and ignored `ATZ`. Not spia (a raw termios test behaves the same), not the paired phone (its Bluetooth was off), not low voltage (engine running), not a sleeping adapter (button pressed).
+- VgateFwUpdater (iOS) switched it to BLE+BT in its lower extension section: the bar fills and shows a check, and nothing changes until the adapter is unplugged and plugged back in. It then advertises over BLE as `vLinker FS-IOS` with service `18F0`.
+- GATT: service `18F0` has `2AF0` (notify, indicate) and `2AF1` (write, write without response). Service `E7810A71-73AE-499D-8C15-FAA9AEF0C3F2` has one characteristic, `BEF8D6C9-9C21-4C9E-B632-BD58C1009F9F` (read, write, write without response, notify, indicate). Device Information is present. macOS reported 20-byte writes without response at connect and 182 once the MTU was negotiated.
+- Over `18F0` from macOS CoreBluetooth: `ATZ` echoed, then `ELM327 v2.3` after 1.28 s. `ATE0`, `ATI`, `STI` (`STN2120 v5.8.1`), `STDI`, `ATRV` (14.4 V, engine running) each answered in about 30 ms, each reply in one notification. Classic Bluetooth in this mode is untested.
 
 ### Bus observations, ignition on, engine off (2026-09-26, `spia capture`)
 
