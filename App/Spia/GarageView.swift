@@ -1,4 +1,3 @@
-import AppKit
 import SpiaKit
 import SpiaReference
 import SpiaStore
@@ -142,7 +141,7 @@ private struct VehicleCard: View {
             }
             .padding(14)
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(PlatformColor.controlBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -212,9 +211,7 @@ private struct Welcome: View {
     var body: some View {
         VStack(spacing: 28) {
             VStack(spacing: 12) {
-                Image(nsImage: NSApp.applicationIconImage)
-                    .resizable()
-                    .frame(width: 112, height: 112)
+                PlatformIcon(size: 112)
                     .accessibilityHidden(true)
                 Text("Spia")
                     .font(.largeTitle.weight(.semibold))

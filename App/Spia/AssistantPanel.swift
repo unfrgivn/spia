@@ -1,4 +1,3 @@
-import AppKit
 import SpiaAssist
 import SpiaKit
 import SpiaStore
@@ -9,7 +8,9 @@ import UniformTypeIdentifiers
 /// the person approves one at a time.
 struct AssistantPanel: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.openSettings) private var openSettings
+    #if os(macOS)
+        @Environment(\.openSettings) private var openSettings
+    #endif
     let conversation: AssistantConversation
     /// Opens the connection assistant, for proposals that need the adapter.
     let connect: () -> Void
@@ -20,6 +21,7 @@ struct AssistantPanel: View {
     @State private var importingPhotos = false
     @State private var consentFor: ProviderID?
     @State private var problem: String?
+    @State private var showingSettings = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -53,6 +55,18 @@ struct AssistantPanel: View {
             return true
         }
         .errorAlert($problem)
+        #if os(iOS)
+            .sheet(isPresented: $showingSettings) {
+                NavigationStack {
+                    AssistantSettingsView()
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showingSettings = false }
+                        }
+                    }
+                }
+            }
+        #endif
     }
 
     private var chosenProvider: ProviderID { provider ?? model.assistant.settings.defaultProvider }
@@ -74,11 +88,11 @@ struct AssistantPanel: View {
                     }
                 }
                 Divider()
-                Button("Assistant Settings…") { openSettings() }
+                Button("Assistant Settings…", action: showSettings)
             } label: {
                 ProviderLabel(provider: chosenProvider)
             }
-            .menuStyle(.borderlessButton)
+            .platformBorderlessMenu()
             .fixedSize()
             .help("Which model answers your next message")
         }
@@ -193,7 +207,7 @@ struct AssistantPanel: View {
             .padding(8)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous).fill(
-                    Color(nsColor: .textBackgroundColor))
+                    PlatformColor.textBackground)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.quaternary))
@@ -202,7 +216,7 @@ struct AssistantPanel: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text(reason)
                     if chosenProvider.isCloud {
-                        Button("Open Settings") { openSettings() }.buttonStyle(.link)
+                        Button("Open Settings", action: showSettings).platformLinkButton()
                     }
                 }
                 .font(.caption)
@@ -212,12 +226,20 @@ struct AssistantPanel: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                Label("Stays on this Mac", systemImage: "lock.laptopcomputer")
+                Label(PlatformText.staysOnDevice, systemImage: "lock.laptopcomputer")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
         .padding(12)
+    }
+
+    private func showSettings() {
+        #if os(macOS)
+            openSettings()
+        #else
+            showingSettings = true
+        #endif
     }
 
     private var hasContent: Bool {
@@ -294,7 +316,7 @@ private struct AssistantIntro: View {
             .foregroundStyle(.secondary)
             ForEach(starters, id: \.self) { starter in
                 Button(starter) { ask(starter) }
-                    .buttonStyle(.link)
+                    .platformLinkButton()
                     .font(.callout)
             }
         }
@@ -316,7 +338,7 @@ private struct StreamingReply: View {
                         ? "\(provider.displayName) is thinking…"
                         : "\(provider.displayName) is replying…")
                 Spacer()
-                Button("Stop", action: stop).buttonStyle(.link)
+                Button("Stop", action: stop).platformLinkButton()
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -536,10 +558,8 @@ private struct PhotoThumbnail: View {
 
     var body: some View {
         Group {
-            if case .image(let path, _) = part,
-                let image = NSImage(contentsOf: model.garage.files.url(for: path))
-            {
-                Image(nsImage: image).resizable().scaledToFill()
+            if case .image(let path, _) = part {
+                LocalImage(url: model.garage.files.url(for: path))
             } else {
                 Image(systemName: "photo").foregroundStyle(.secondary)
             }
@@ -582,6 +602,6 @@ private struct CloudConsentSheet: View {
             }
         }
         .padding(22)
-        .frame(width: 440)
+        .platformSheetFrame(width: 440)
     }
 }

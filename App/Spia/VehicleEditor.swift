@@ -50,7 +50,7 @@ struct VehicleEditor: View {
             }
         }
         .padding(24)
-        .frame(width: 560)
+        .platformSheetFrame(width: 560)
         .errorAlert($error)
     }
 
@@ -136,7 +136,7 @@ struct VehicleSettings: View {
             }
         }
         .padding(24)
-        .frame(width: 560)
+        .platformSheetFrame(width: 560)
         .onAppear {
             name = vehicle.name
             vin = vehicle.vin ?? ""

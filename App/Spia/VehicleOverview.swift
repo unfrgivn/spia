@@ -26,7 +26,7 @@ struct VehicleOverview: View {
                     recallCallout(recalls)
                 }
                 stats
-                HStack(alignment: .top, spacing: 20) {
+                AdaptiveStack(alignment: .top, spacing: 20) {
                     details
                     VStack(spacing: 20) {
                         connection
@@ -40,7 +40,7 @@ struct VehicleOverview: View {
             .frame(maxWidth: .infinity)
         }
         .navigationTitle(vehicle.name)
-        .navigationSubtitle("Overview")
+        .platformSubtitle("Overview")
         .task(id: vehicle.id) { workbench = model.workbench(for: vehicle) }
         .sheet(isPresented: $editing) { VehicleSettings(vehicle: vehicle, references: references) }
         .sheet(isPresented: $editingModules) { ModulesEditor(vehicle: vehicle) }
@@ -164,7 +164,7 @@ struct VehicleOverview: View {
 
     private var stats: some View {
         let safety = references.safety
-        return HStack(spacing: 14) {
+        return AdaptiveStack(spacing: 14) {
             StatTile(
                 value: vehicle.sessions.filter { $0.status == .open }.count, label: "Open sessions",
                 symbol: "stethoscope"
@@ -318,6 +318,28 @@ struct VehicleOverview: View {
         } catch {
             problem = String(describing: error)
         }
+    }
+}
+
+/// A row, stacked into a column when the width is compact (an iPhone held upright).
+private struct AdaptiveStack<Content: View>: View {
+    var alignment: VerticalAlignment = .center
+    let spacing: CGFloat
+    @ViewBuilder let content: () -> Content
+    #if os(iOS)
+        @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+
+    var body: some View {
+        #if os(iOS)
+            if horizontalSizeClass == .compact {
+                VStack(alignment: .leading, spacing: spacing, content: content)
+            } else {
+                HStack(alignment: alignment, spacing: spacing, content: content)
+            }
+        #else
+            HStack(alignment: alignment, spacing: spacing, content: content)
+        #endif
     }
 }
 

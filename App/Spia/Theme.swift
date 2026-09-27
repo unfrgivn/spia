@@ -34,7 +34,7 @@ extension View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(tint.map { $0.opacity(0.08) } ?? Color(nsColor: .controlBackgroundColor))
+                    .fill(tint.map { $0.opacity(0.08) } ?? PlatformColor.controlBackground)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)

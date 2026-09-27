@@ -20,12 +20,12 @@ struct AssistantSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("On this Mac") {
+            Section(PlatformText.onDeviceSection) {
                 if let reason = OnDeviceProvider.unavailableReason {
                     Label(reason, systemImage: "info.circle").foregroundStyle(.secondary)
                 } else {
                     Label(
-                        "Apple's on-device model is ready. Nothing leaves this Mac.",
+                        "Apple's on-device model is ready. \(PlatformText.nothingLeaves)",
                         systemImage: "checkmark.circle"
                     )
                     .foregroundStyle(.green)
@@ -54,8 +54,10 @@ struct AssistantSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520)
-        .fixedSize(horizontal: false, vertical: true)
+        .platformSheetFrame(width: 520)
+        #if os(macOS)
+            .fixedSize(horizontal: false, vertical: true)
+        #endif
     }
 }
 

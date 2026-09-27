@@ -73,7 +73,7 @@ private struct EntryView: View {
                     Spacer()
                     if entry.transcriptPath != nil {
                         Button("Transcript", action: showTranscript)
-                            .buttonStyle(.link)
+                            .platformLinkButton()
                             .font(.caption)
                     }
                 }

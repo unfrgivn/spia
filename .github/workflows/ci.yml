@@ -43,3 +43,8 @@ jobs:
         run: >
           swift build --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)"
           --triple arm64-apple-ios17.0-simulator --target SpiaStore -Xswiftc -warnings-as-errors
+
+      - name: Build the iOS app
+        run: >
+          xcodebuild -project App/SpiaApp.xcodeproj -scheme Spia
+          -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build

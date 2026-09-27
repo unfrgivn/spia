@@ -1,7 +1,7 @@
 # spia: Plan
 
 spia (Italian for a dashboard warning light, as in "spia motore"). Mac-first OBD-II scan tool for a Vgate vLinker FS (USB), tested against a 2017 Maserati Ghibli S Q4 (M157).
-Designed so an iOS app can be added later with a Bluetooth vLinker FS by swapping the transport.
+The app also runs on iPhone and iPad; there it's Demo only until `BLETransport` lands.
 
 ## Decisions (locked)
 
@@ -56,8 +56,8 @@ The CLI and the app share one engine. Layers, bottom up:
 - `SpiaAssist`: the assistant's provider layer. Claude (Messages API) and OpenAI (Responses API, `store: false`) over URLSession with a byte-level SSE parser; Apple's on-device model (FoundationModels, macOS 26 + Apple Intelligence, availability-gated); API keys in the Keychain; the session briefing and safety rules. iOS-compatible.
 - `SpiaReference`: public references for a vehicle, Foundation only. VIN validation (49 CFR 565 check digit, required only for North American VINs), NHTSA vPIC decoding, recalls, owner complaints, and manufacturer service bulletins from NHTSA's `vehicles/byYmmt` in one request (bulletin PDFs fetched on demand), photos from Wikimedia Commons with author and license, and keyword search over bulletins. No keys. iOS-compatible. Photo search runs from trim and colour down to the model year and ranks the merged results on title, description, and categories: a photo must mention the model, files filed only under another generation's category (the model's categories on photos that clearly fit are trusted) are dropped, and a category's model year beats a title's photo date.
 - `SpiaStore`: SwiftData schema v1 (vehicles, adapter profiles, modules, sessions, timeline, chat messages) at `Application Support/Spia/Library.store`, transcript and photo files, the `Workbench` model the screens bind to, `AssistantConversation`, and `VehicleReferences`, a per-vehicle cache under `References/<vehicle>` (refreshed weekly or when the VIN changes, deleted with the vehicle). iOS-compatible.
-- `App/SpiaApp.xcodeproj`: SwiftUI screens only. Sandbox with serial, Bluetooth, network client, and user-selected files.
-- App icon: `design/icon/app-icon.svg` (the gauge: a dial reading into the warning zone, with a pulse line) is the source; `scripts/render-app-icon.sh` renders every macOS size into `AppIcon.appiconset` (needs `rsvg-convert`). The other `option-*.svg` files are the alternatives considered.
+- `App/SpiaApp.xcodeproj`: SwiftUI screens only, one target for macOS, iPhone, and iPad. `OBDSerial` is linked on macOS only; there, the sandbox allows serial, Bluetooth, network client, and user-selected files.
+- App icon: `design/icon/app-icon.svg` (the gauge: a dial reading into the warning zone, with a pulse line) is the source; `scripts/render-app-icon.sh` renders macOS sizes and the iOS icon into `AppIcon.appiconset` (needs `rsvg-convert`). The other `option-*.svg` files are the alternatives considered.
 
 Run it: open `App/SpiaApp.xcodeproj` and run the `Spia` scheme, or `xcodebuild -project App/SpiaApp.xcodeproj -scheme Spia build`. Choose "Explore the demo" to use the Ghibli recordings without a car.
 
@@ -91,7 +91,7 @@ App phases: 1 foundation (done), 2 assistant (built, see below), 3 media (camera
 | 6 (#1) | `spia scan` (stored/pending/permanent DTCs, freeze frame, readiness) + `spia info` (VIN, CAL IDs) | Pure report/decoder tests, original `ghibli-ignition-on-term.txt` replay through production request/decode paths, CLI help/validation; live execution remains unverified | offline milestone implemented; live unverified |
 | 7 (#2) | `spia clear` | Codes clear, CEL off, re-scan clean | pending |
 | 8 (#3) | `spia live` with CSV logging | RPM/coolant/etc. track reality at idle | pending |
-| iOS (#6) | `BLETransport` (CoreBluetooth), SwiftUI shell | Bluetooth FS on iPhone | future |
+| iOS (#6) | `BLETransport` (CoreBluetooth), SwiftUI shell | Bluetooth FS on iPhone | Demo app shell shipped; BLETransport future |
 
 Reordered 2026-09-26: the fault that started this project is not an emissions code (Mode 03/07/0A are clean), so UDS access to body modules moves ahead of the generic-OBD polish.
 

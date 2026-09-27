@@ -1,5 +1,3 @@
-import AppKit
-import PDFKit
 import SpiaReference
 import SpiaStore
 import SwiftUI
@@ -54,7 +52,7 @@ struct ReferencesView: View {
             }
         }
         .navigationTitle(vehicle.name)
-        .navigationSubtitle("References")
+        .platformSubtitle("References")
         .sheet(item: $openDocument) { document in
             BulletinDocumentView(bulletin: document.bulletin, file: document.file)
         }
@@ -290,7 +288,7 @@ private struct ComplaintRow: View {
                 .lineLimit(expanded ? nil : 3)
                 .textSelection(.enabled)
             Button(expanded ? "Less" : "More") { expanded.toggle() }
-                .buttonStyle(.link)
+                .platformLinkButton()
                 .font(.caption)
         }
         .padding(.vertical, 4)
@@ -331,6 +329,7 @@ extension String {
 /// A bulletin's PDF, downloaded from NHTSA.
 private struct BulletinDocumentView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     let bulletin: Bulletin
     let file: URL
 
@@ -342,7 +341,11 @@ private struct BulletinDocumentView: View {
                     Text(bulletin.title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
-                Button("Open in Preview") { NSWorkspace.shared.open(file) }
+                #if os(macOS)
+                    Button("Open in Preview") { openURL(file) }
+                #else
+                    ShareLink(item: file) { Label("Share PDF", systemImage: "square.and.arrow.up") }
+                #endif
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
             }
@@ -350,21 +353,6 @@ private struct BulletinDocumentView: View {
             Divider()
             PDFDocumentView(url: file)
         }
-        .frame(minWidth: 720, idealWidth: 820, minHeight: 640, idealHeight: 860)
-    }
-}
-
-private struct PDFDocumentView: NSViewRepresentable {
-    let url: URL
-
-    func makeNSView(context: Context) -> PDFView {
-        let view = PDFView()
-        view.autoScales = true
-        view.document = PDFDocument(url: url)
-        return view
-    }
-
-    func updateNSView(_ view: PDFView, context: Context) {
-        if view.document?.documentURL != url { view.document = PDFDocument(url: url) }
+        .platformSheetFrame(width: 720, idealWidth: 820, minHeight: 640, idealHeight: 860)
     }
 }

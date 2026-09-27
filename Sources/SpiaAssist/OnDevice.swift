@@ -18,10 +18,19 @@ public struct OnDeviceProvider: AssistantProvider {
                 switch SystemLanguageModel.default.availability {
                 case .available: return nil
                 case .unavailable(.deviceNotEligible):
-                    return "This Mac can't run Apple's on-device model (it needs Apple silicon)."
+                    #if os(macOS)
+                        return
+                            "This Mac can't run Apple's on-device model (it needs Apple silicon)."
+                    #else
+                        return "This device can't run Apple's on-device model."
+                    #endif
                 case .unavailable(.appleIntelligenceNotEnabled):
-                    return
-                        "Turn on Apple Intelligence in System Settings to use the on-device model."
+                    #if os(macOS)
+                        return
+                            "Turn on Apple Intelligence in System Settings to use the on-device model."
+                    #else
+                        return "Turn on Apple Intelligence in Settings to use the on-device model."
+                    #endif
                 case .unavailable(.modelNotReady):
                     return "Apple's on-device model is still downloading. Try again later."
                 case .unavailable:
@@ -29,7 +38,11 @@ public struct OnDeviceProvider: AssistantProvider {
                 }
             }
         #endif
-        return "The on-device model needs macOS 26 or later."
+        #if os(macOS)
+            return "The on-device model needs macOS 26 or later."
+        #else
+            return "The on-device model needs iOS 26 or later."
+        #endif
     }
 
     public func respond(to request: AssistantRequest) -> AsyncThrowingStream<

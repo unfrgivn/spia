@@ -27,7 +27,7 @@ struct PhotosView: View {
             .frame(maxWidth: .infinity)
         }
         .navigationTitle(vehicle.name)
-        .navigationSubtitle("Photos")
+        .platformSubtitle("Photos")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -221,7 +221,7 @@ private struct PhotoTile<Actions: View, Footer: View>: View {
                             .font(.title3)
                             .symbolRenderingMode(.hierarchical)
                     }
-                    .menuStyle(.borderlessButton)
+                    .platformBorderlessMenu()
                     .menuIndicator(.hidden)
                     .fixedSize()
                     .padding(8)

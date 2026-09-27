@@ -1,4 +1,3 @@
-import AppKit
 import SpiaReference
 import SpiaStore
 import SwiftUI
@@ -25,26 +24,6 @@ struct VehiclePhoto: View {
     }
 
     private var paint: Color { vehicle.color?.swatch ?? .accentColor }
-}
-
-/// An image file from the app's storage, filling its frame.
-struct LocalImage: View {
-    let url: URL
-    @State private var image: NSImage?
-
-    var body: some View {
-        GeometryReader { proxy in
-            if let image {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .clipped()
-            }
-        }
-        .task(id: url) { image = NSImage(contentsOf: url) }
-        .accessibilityHidden(true)
-    }
 }
 
 /// Credit for a Commons photo, linking to its page with the full license.
@@ -158,5 +137,24 @@ extension Garage {
             }
         }
         return problems
+    }
+}
+/// An image file from the app's storage, filling its frame.
+struct LocalImage: View {
+    let url: URL
+    @State private var image: CGImage?
+
+    var body: some View {
+        GeometryReader { proxy in
+            if let image {
+                Image(decorative: image, scale: 1)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
+            }
+        }
+        .task(id: url) { image = await ImageLoader.load(url: url, maxPixelSize: 1600) }
+        .accessibilityHidden(true)
     }
 }

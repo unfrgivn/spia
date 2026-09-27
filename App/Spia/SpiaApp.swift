@@ -24,7 +24,7 @@ struct SpiaApp: App {
                     ProgressView()
                 }
             }
-            .frame(minWidth: 900, minHeight: 600)
+            .platformWindowFrame()
             .task {
                 guard model == nil, startupError == nil else { return }
                 do {
@@ -34,14 +34,18 @@ struct SpiaApp: App {
                 }
             }
         }
-        .windowToolbarStyle(.unified)
+        #if os(macOS)
+            .windowToolbarStyle(.unified)
+        #endif
 
-        Settings {
-            if let model {
-                AssistantSettingsView()
-                    .environment(model)
+        #if os(macOS)
+            Settings {
+                if let model {
+                    AssistantSettingsView()
+                        .environment(model)
+                }
             }
-        }
+        #endif
     }
 }
 

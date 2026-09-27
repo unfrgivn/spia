@@ -11,7 +11,11 @@ public enum ProviderID: String, Codable, Sendable, CaseIterable, Identifiable {
 
     public var displayName: String {
         switch self {
-        case .onDevice: return "On this Mac"
+        #if os(macOS)
+            case .onDevice: return "On this Mac"
+        #else
+            case .onDevice: return "On this device"
+        #endif
         case .anthropic: return "Claude"
         case .openAI: return "OpenAI"
         }

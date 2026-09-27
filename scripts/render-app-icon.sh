@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Renders design/icon/app-icon.svg into every macOS app icon size. Needs rsvg-convert
+# Renders the app artwork into macOS and iOS app icons. Needs rsvg-convert.
 # (brew install librsvg). Run after changing the SVG, then commit the PNGs.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -17,6 +17,20 @@ for size in 16 32 128 256 512; do
     rsvg-convert -w "$pixels" -h "$pixels" "$source" -o "$set_dir/$name"
     images+=("    { \"filename\" : \"$name\", \"idiom\" : \"mac\", \"scale\" : \"${scale}x\", \"size\" : \"${size}x${size}\" }")
   done
+done
+
+ios_name="icon_ios_1024x1024.png"
+rsvg-convert -w 1024 -h 1024 design/icon/app-icon-ios.svg -o "$set_dir/$ios_name"
+sips -s format jpeg -s formatOptions best "$set_dir/$ios_name" --out "$set_dir/icon_ios_tmp.jpg" >/dev/null
+sips -s format png "$set_dir/icon_ios_tmp.jpg" --out "$set_dir/$ios_name" >/dev/null
+rm "$set_dir/icon_ios_tmp.jpg"
+images+=("    { \"filename\" : \"$ios_name\", \"idiom\" : \"universal\", \"platform\" : \"ios\", \"size\" : \"1024x1024\" }")
+
+# The welcome screen's mark, at 112 pt.
+mark_dir=App/Spia/Assets.xcassets/AppMark.imageset
+for scale in 1 2 3; do
+  pixels=$((112 * scale))
+  rsvg-convert -w "$pixels" -h "$pixels" "$source" -o "$mark_dir/appmark_${pixels}.png"
 done
 
 {

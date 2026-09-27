@@ -46,7 +46,7 @@ struct ModulesEditor: View {
             }
         }
         .padding(24)
-        .frame(width: 620, height: 460)
+        .platformSheetFrame(width: 620, height: 460)
         .errorAlert($error)
     }
 
@@ -81,7 +81,7 @@ private struct ModuleRow: View {
             Image(systemName: "arrow.right").foregroundStyle(.secondary)
             HexField(label: "Reply", value: $module.response)
             Toggle("Confirmed", isOn: $module.confirmed)
-                .toggleStyle(.checkbox)
+                .platformCheckboxToggle()
             if module.target == nil {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
@@ -157,7 +157,7 @@ struct TranscriptView: View {
             }
         }
         .padding(20)
-        .frame(width: 640, height: 520)
+        .platformSheetFrame(width: 640, height: 520)
         .task { load() }
     }
 

@@ -26,7 +26,12 @@ struct ConnectionAssistant: View {
                 )
                 .fixedSize(horizontal: false, vertical: true)
             } else {
-                steps
+                #if os(iOS)
+                    Text(AdapterSetupError.needsMac.description)
+                        .fixedSize(horizontal: false, vertical: true)
+                #else
+                    steps
+                #endif
             }
 
             status
@@ -46,9 +51,11 @@ struct ConnectionAssistant: View {
             }
         }
         .padding(24)
-        .frame(width: 540)
+        .platformSheetFrame(width: 540)
         .onAppear {
-            refreshPorts()
+            #if os(macOS)
+                refreshPorts()
+            #endif
             chosenPort = profile?.devicePath
         }
     }

@@ -1,10 +1,13 @@
 import Foundation
-import OBDSerial
 import Observation
 import SpiaAssist
 import SpiaKit
 import SpiaStore
 import SwiftData
+
+#if os(macOS)
+    import OBDSerial
+#endif
 
 /// App-wide state: the garage, one workbench per adapter so a connection survives switching
 /// between sessions of the same vehicle, one assistant conversation per session so a reply
@@ -76,31 +79,45 @@ final class AppModel {
         case .demo:
             return DemoBackend()
         case .usbSerial, .bluetooth:
-            let path = profile.devicePath ?? ""
-            let baud = profile.baud
-            return LiveBackend(adapter: profile.descriptor, baud: baud) {
-                guard !path.isEmpty else { throw AdapterSetupError.noPortChosen }
-                return SerialTransport(path: path, baud: baud)
-            }
+            #if os(iOS)
+                return LiveBackend(adapter: profile.descriptor, baud: profile.baud) {
+                    throw AdapterSetupError.needsMac
+                }
+            #else
+                let path = profile.devicePath ?? ""
+                let baud = profile.baud
+                return LiveBackend(adapter: profile.descriptor, baud: baud) {
+                    guard !path.isEmpty else { throw AdapterSetupError.noPortChosen }
+                    return SerialTransport(path: path, baud: baud)
+                }
+            #endif
         }
     }
 
     /// USB serial devices that look like OBD adapters come first.
     static func serialPorts() -> [String] {
-        SerialTransport.availablePorts().sorted { lhs, rhs in
-            let lhsUSB = lhs.contains("usbserial") || lhs.contains("usbmodem")
-            let rhsUSB = rhs.contains("usbserial") || rhs.contains("usbmodem")
-            return lhsUSB == rhsUSB ? lhs < rhs : lhsUSB
-        }
+        #if os(iOS)
+            return []
+        #else
+            SerialTransport.availablePorts().sorted { lhs, rhs in
+                let lhsUSB = lhs.contains("usbserial") || lhs.contains("usbmodem")
+                let rhsUSB = rhs.contains("usbserial") || rhs.contains("usbmodem")
+                return lhsUSB == rhsUSB ? lhs < rhs : lhsUSB
+            }
+        #endif
     }
 }
 
 enum AdapterSetupError: Error, CustomStringConvertible {
     case noPortChosen
+    case needsMac
 
     var description: String {
         switch self {
         case .noPortChosen: return "Choose the adapter's USB port first."
+        case .needsMac:
+            return
+                "This adapter works with Spia on a Mac. iPhone support for Bluetooth adapters is planned."
         }
     }
 }

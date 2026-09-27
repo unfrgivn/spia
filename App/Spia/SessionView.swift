@@ -34,7 +34,7 @@ struct SessionView: View {
             .frame(maxWidth: .infinity)
         }
         .navigationTitle(session.title)
-        .navigationSubtitle(subtitle)
+        .platformSubtitle(subtitle)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 if let workbench {
