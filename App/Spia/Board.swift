@@ -149,6 +149,11 @@ struct SessionBoardView: View {
     let layout: BoardLayout
     /// Nil while a check runs.
     let read: ((SessionBoard.Subject) -> Void)?
+    /// The row a running check is filling in, and what it's doing right now.
+    var reading: (subject: SessionBoard.Subject, step: String?, cancel: () -> Void)?
+    /// Rows lit for the bulb check that plays when the adapter connects.
+    var checking: Set<SessionBoard.Subject> = []
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
@@ -160,23 +165,55 @@ struct SessionBoardView: View {
                     case .compact: compact(row)
                     }
                 }
+                // Opaque, so a row sliding to its new place covers the rows it passes.
+                .background(Palette.base)
                 .accessibilityElement(children: .combine)
                 Hairline()
             }
+        }
+        // Rows re-sort by urgency as results arrive; they slide to their new place.
+        .animation(reduceMotion ? nil : .snappy(duration: 0.4), value: board.rows.map(\.id))
+    }
+
+    private func word(_ row: SessionBoard.Row, size: CGFloat) -> StatusWord {
+        if row.subject == reading?.subject {
+            return StatusWord(word: "Reading", tone: .working, size: size, pulsing: true)
+        }
+        if checking.contains(row.subject) {
+            return StatusWord(word: "Check", tone: .working, size: size)
+        }
+        return StatusWord(row: row, size: size)
+    }
+
+    /// While Spia reads the row: what it's asking for, and a way to stop.
+    @ViewBuilder private func progress(_ row: SessionBoard.Row) -> some View {
+        if let reading, reading.subject == row.subject {
+            Text(reading.step ?? "Starting")
+                .font(.system(size: 12.5, weight: .medium, design: .monospaced))
+                .foregroundStyle(Palette.secondary)
+                .lineLimit(1)
+            Button("Cancel", action: reading.cancel)
+                .buttonStyle(OutlineButtonStyle())
         }
     }
 
     private func wide(_ row: SessionBoard.Row) -> some View {
         HStack(spacing: 16) {
-            StatusWord(row: row, size: 31)
+            word(row, size: 31)
                 .frame(width: 124, alignment: .leading)
             name(row)
                 .frame(width: 236, alignment: .leading)
             reading(row, size: 16)
                 .frame(width: 190, alignment: .leading)
             HStack(spacing: 14) {
-                if row.status != .notRead, row.detail != placeholder(row) { detail(row, size: 14) }
-                action(row)
+                if row.subject == reading?.subject {
+                    progress(row)
+                } else {
+                    if row.status != .notRead, row.detail != placeholder(row) {
+                        detail(row, size: 14)
+                    }
+                    action(row)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             stamp(row)
@@ -187,14 +224,18 @@ struct SessionBoardView: View {
 
     private func compact(_ row: SessionBoard.Row) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
-            StatusWord(row: row, size: 25)
+            word(row, size: 25)
                 .frame(width: 92, alignment: .leading)
             VStack(alignment: .leading, spacing: 5) {
                 name(row)
                 if !row.codes.isEmpty || row.value != nil { reading(row, size: 14.5) }
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    if row.status != .notRead { detail(row, size: 13) }
-                    action(row)
+                    if row.subject == reading?.subject {
+                        progress(row)
+                    } else {
+                        if row.status != .notRead { detail(row, size: 13) }
+                        action(row)
+                    }
                 }
             }
             Spacer(minLength: 0)
@@ -273,23 +314,66 @@ struct SessionBoardView: View {
 }
 
 /// A row's status the way a lit display shows it: condensed capitals in the lamp's colour,
-/// glowing a little at night.
+/// glowing a little at night. A new word flips up into place, like a departures board, and
+/// `pulsing` breathes while Spia reads the row. With Reduce Motion the word simply changes.
 struct StatusWord: View {
-    let row: SessionBoard.Row
+    let word: String
+    let tone: Tone
     let size: CGFloat
+    var pulsing = false
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(word: String, tone: Tone, size: CGFloat, pulsing: Bool = false) {
+        self.word = word
+        self.tone = tone
+        self.size = size
+        self.pulsing = pulsing
+    }
+
+    init(row: SessionBoard.Row, size: CGFloat) {
+        self.init(word: row.word, tone: row.status.tone, size: size)
+    }
 
     var body: some View {
-        let lit = row.status.tone != .neutral
-        let color = lit ? row.status.tone.color : Palette.tertiary
-        Text(row.word)
-            .font(.system(size: size, weight: .heavy).width(.compressed))
-            .textCase(.uppercase)
-            .foregroundStyle(color)
-            .shadow(
-                color: lit && scheme == .dark ? color.opacity(0.5) : .clear, radius: size * 0.45
-            )
-            .fixedSize()
+        let lit = tone != .neutral
+        let color = lit ? tone.color : Palette.tertiary
+        ZStack(alignment: .leading) {
+            Text(word)
+                .font(.system(size: size, weight: .heavy).width(.compressed))
+                .textCase(.uppercase)
+                .foregroundStyle(color)
+                .shadow(
+                    color: lit && scheme == .dark ? color.opacity(0.5) : .clear, radius: size * 0.45
+                )
+                .fixedSize()
+                .modifier(Breathing(active: pulsing && !reduceMotion))
+                .id(word)
+                .transition(
+                    reduceMotion
+                        ? .opacity
+                        : .asymmetric(
+                            insertion: .offset(y: size * 0.55).combined(with: .opacity),
+                            removal: .offset(y: -size * 0.55).combined(with: .opacity)))
+        }
+        .animation(reduceMotion ? nil : .snappy(duration: 0.35), value: word)
+    }
+}
+
+/// Fades in and out while something is at work.
+private struct Breathing: ViewModifier {
+    let active: Bool
+
+    func body(content: Content) -> some View {
+        if active {
+            content.phaseAnimator([false, true]) { view, dim in
+                view.opacity(dim ? 0.45 : 1)
+            } animation: { _ in
+                .easeInOut(duration: 0.8)
+            }
+        } else {
+            content
+        }
     }
 }
 

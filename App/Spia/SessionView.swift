@@ -13,6 +13,8 @@ struct SessionView: View {
     @State private var note = ""
     @State private var error: String?
     @State private var width: CGFloat = 1_000
+    /// Rows lit for the bulb check.
+    @State private var checking: Set<SessionBoard.Subject> = []
     #if os(iOS)
         @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
@@ -24,14 +26,20 @@ struct SessionView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     BoardHeader(session: session, board: board, layout: layout)
+                    // A check waiting for the owner, or one with no row, gets the panel; the rest
+                    // show on their row.
                     if let workbench, let activity = workbench.activity,
-                        activity.sessionID == session.id
+                        activity.sessionID == session.id,
+                        activity.prompt != nil || SessionBoard.Subject(job: activity.job) == nil
                     {
                         ActivityPanel(activity: activity, workbench: workbench)
                             .padding(.top, 24)
                     }
-                    SessionBoardView(board: board, layout: layout, read: reader)
-                        .padding(.top, wide ? 32 : 22)
+                    SessionBoardView(
+                        board: board, layout: layout, read: reader, reading: reading,
+                        checking: checking
+                    )
+                    .padding(.top, wide ? 32 : 22)
                     CaseFile(session: session, layout: layout) { transcript = $0 }
                         .padding(.top, wide ? 40 : 30)
                         .id(Self.timelineID)
@@ -91,6 +99,7 @@ struct SessionView: View {
             model.conversation(for: session).workbench = workbench
         }
         .errorAlert($error)
+        .modifier(BulbCheck(link: link, subjects: board.rows.map(\.subject), checking: $checking))
     }
 
     private static let timelineID = "timeline"
@@ -154,12 +163,19 @@ struct SessionView: View {
     }
 
     /// A board row's missing reading. Without an adapter, the connection assistant comes first.
-    private func read(_ subject: SessionBoard.Subject) {
-        switch subject {
-        case .engine: run(.genericScan)
-        case .module(let target): run(.moduleDTCs(target))
-        case .battery: run(.adapterCheck)
-        }
+    private func read(_ subject: SessionBoard.Subject) { run(subject.job) }
+
+    /// The row the running check is filling in, unless it's waiting for the owner.
+    private var reading: (subject: SessionBoard.Subject, step: String?, cancel: () -> Void)? {
+        guard let workbench, let activity = workbench.activity, activity.sessionID == session.id,
+            activity.prompt == nil, let subject = SessionBoard.Subject(job: activity.job)
+        else { return nil }
+        return (subject, activity.currentStep, { Task { await workbench.cancel() } })
+    }
+
+    private var link: AdapterLink {
+        guard let workbench else { return .unknown }
+        return workbench.connection.status == nil ? .disconnected : .connected
     }
 
     private func run(_ job: DiagnosticJob) {
@@ -178,6 +194,45 @@ struct SessionView: View {
         } catch {
             self.error = String(describing: error)
         }
+    }
+}
+
+/// Whether the screen knows of an adapter connection yet. Opening a session while connected
+/// goes from unknown to connected, which isn't a new connection.
+private enum AdapterLink: Equatable {
+    case unknown, disconnected, connected
+}
+
+/// The bulb check a car does at key-on: when the adapter connects, every row lights, then flips
+/// back to what it says, top to bottom, with a light tick for each where there's haptics. It says
+/// the board is live without a word. Skipped with Reduce Motion.
+private struct BulbCheck: ViewModifier {
+    let link: AdapterLink
+    let subjects: [SessionBoard.Subject]
+    @Binding var checking: Set<SessionBoard.Subject>
+    @State private var run = 0
+    @State private var flips = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: link) { old, new in
+                if old == .disconnected, new == .connected { run += 1 }
+            }
+            .task(id: run) {
+                guard run > 0, !reduceMotion else { return }
+                defer { checking = [] }
+                withAnimation(.snappy(duration: 0.3)) { checking = Set(subjects) }
+                flips += 1
+                try? await Task.sleep(for: .milliseconds(650))
+                for subject in subjects {
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.snappy(duration: 0.3)) { _ = checking.remove(subject) }
+                    flips += 1
+                    try? await Task.sleep(for: .milliseconds(80))
+                }
+            }
+            .sensoryFeedback(.selection, trigger: flips)
     }
 }
 

@@ -79,7 +79,11 @@
             guard let session = vehicle.orderedSessions.first,
                 let workbench = model.workbench(for: vehicle)
             else { return }
+            // Connect once the screen is up, so shots can show what a new connection looks like.
+            try? await Task.sleep(for: .seconds(2))
             await workbench.connect()
+            // Checks after the bulb check, the way someone connects and then runs one.
+            try? await Task.sleep(for: .seconds(1.5))
             _ = await workbench.run(.genericScan, in: session)
             _ = await workbench.run(.moduleDTCs(DemoGarage.airbag.target), in: session)
             _ = await workbench.run(.moduleDTCs(DemoGarage.abs.target), in: session)
