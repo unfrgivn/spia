@@ -157,6 +157,13 @@ public final class AssistantConversation {
         session.messages.contains { $0.resolutions.values.contains(.running) }
     }
 
+    /// Whether the reply being written now answers `question`: it's what was asked last.
+    public func isAnswering(_ question: String) -> Bool {
+        isResponding
+            && session.conversation.last { $0.role == .user && !$0.isToolResultsOnly }?.text
+                == question
+    }
+
     public func needsConsent(for provider: ProviderID) -> Bool {
         provider.isCloud && !session.cloudSharingAllowed
     }
@@ -531,5 +538,28 @@ public final class AssistantConversation {
         case .notStarted:
             return nil
         }
+    }
+}
+
+extension DiagnosticSession {
+    /// The assistant's latest answer to `question`: its first reply with words after the last
+    /// time `question` was asked, unless something else was asked first. A check's result coming
+    /// back in between doesn't count as asking. Nil until there's an answer.
+    public func answer(to question: String) -> ChatMessage? {
+        let messages = conversation
+        guard let asked = messages.lastIndex(where: { $0.role == .user && $0.text == question })
+        else { return nil }
+        for message in messages[(asked + 1)...] {
+            switch message.role {
+            case .user where !message.isToolResultsOnly:
+                return nil
+            case .assistant
+            where !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+                return message
+            default:
+                continue
+            }
+        }
+        return nil
     }
 }
