@@ -6,28 +6,24 @@ import SwiftUI
     import UIKit
 #endif
 
-/// The Instrument palette: navy panels from the app icon, the icon's amber-to-red arc for the
-/// car's condition, and cyan, like an instrument's backlight, for what can be pressed and for
-/// Spia at work. Warm colours only ever describe the car. Every colour follows the appearance
-/// of the view it's drawn in, so the cluster, which is always drawn dark, stays dark by day.
+/// The Instrument palette: neutral near-black panels, so the only colours on screen are the
+/// car's (amber to red for its condition, the icon's arc) and cyan, like an instrument's
+/// backlight, for what can be pressed and for Spia at work. Warm colours only ever describe the
+/// car. Every colour follows the appearance of the view it's drawn in, so a view drawn dark stays
+/// dark by day.
 enum Palette {
     // Surfaces, from the window background up.
-    static let base = Color(day: 0xF4F6FB, night: 0x0A1022)
-    static let panel = Color(day: 0xEEF1F8, night: 0x10182E)
-    static let card = Color(day: 0xFFFFFF, night: 0x16213D)
-    static let raised = Color(day: 0xF7F9FD, night: 0x1D2A4C)
-    static let inset = Color(day: 0xEBEEF6, night: 0x0D1428)
-    static let hairline = Color(day: 0x0E1630, night: 0xFFFFFF, opacity: 0.08)
-    /// A highlight along a panel's top edge, like light catching a bezel.
-    static let bezel = Color(day: 0xFFFFFF, night: 0xFFFFFF, opacity: 0.06)
-    static let gaugeTrack = Color(day: 0xD5DBEA, night: 0x2F4270)
-    /// The navy a photo fades into under text, the same by day and by night.
-    static let scrim = Color(day: 0x0A1022, night: 0x0A1022, opacity: 0.92)
+    static let base = Color(day: 0xF4F5F7, night: 0x08090B)
+    static let panel = Color(day: 0xEBEDF0, night: 0x0F1114)
+    static let card = Color(day: 0xFFFFFF, night: 0x14171B)
+    static let hairline = Color(day: 0x0E1116, night: 0xFFFFFF, opacity: 0.08)
+    /// The near-black a photo fades into under text, the same by day and by night.
+    static let scrim = Color(day: 0x08090B, night: 0x08090B, opacity: 0.92)
 
     // Text.
-    static let primary = Color(day: 0x0E1630, night: 0xEEF2FA)
-    static let secondary = Color(day: 0x4A5577, night: 0xA3AECB)
-    static let tertiary = Color(day: 0x7A84A3, night: 0x6E7BA0)
+    static let primary = Color(day: 0x0E1116, night: 0xF2F3F5)
+    static let secondary = Color(day: 0x4A505A, night: 0xA6AAB2)
+    static let tertiary = Color(day: 0x878D97, night: 0x6C717A)
 
     // The car's condition.
     static let caution = Color(day: 0xB7791F, night: 0xFFC24A)
@@ -39,6 +35,8 @@ enum Palette {
 
     /// What can be pressed: the same cyan, the app's AccentColor too.
     static let accent = working
+    /// Text on the accent colour.
+    static let onAccent = Color(day: 0xFFFFFF, night: 0x04121B)
 }
 
 extension Color {

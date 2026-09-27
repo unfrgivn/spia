@@ -2,247 +2,182 @@ import SpiaKit
 import SpiaStore
 import SwiftUI
 
-struct TimelineSection: View {
+/// Everything learned in a session, oldest first, one line each: when, what it was about, and
+/// what it found, in the board's words. A line opens to show the raw answer and the transcript.
+struct CaseFile: View {
     let session: DiagnosticSession
+    let layout: BoardLayout
     let showTranscript: (TimelineEntry) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Timeline")
-                .font(.title2.weight(.semibold))
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("Case file")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Palette.primary)
+                if !session.entries.isEmpty {
+                    Text(count)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Palette.tertiary)
+                }
+            }
+            .padding(.bottom, 10)
             if session.entries.isEmpty {
-                Text("Results and notes will appear here, newest first.")
+                Hairline()
+                Text("Results and notes will appear here, oldest first.")
                     .font(.callout)
                     .foregroundStyle(Palette.secondary)
+                    .padding(.vertical, 12)
             }
-            ForEach(session.timeline.reversed()) { entry in
-                EntryView(entry: entry, modules: session.vehicle?.orderedModules ?? []) {
+            ForEach(session.timeline) { entry in
+                LedgerRow(entry: entry, modules: modules, layout: layout) {
                     showTranscript(entry)
                 }
             }
+            if !session.entries.isEmpty { Hairline() }
         }
+    }
+
+    private var modules: [ModulePreset] { session.vehicle?.orderedModules ?? [] }
+
+    private var count: String {
+        session.entries.count == 1 ? "1 entry" : "\(session.entries.count) entries, oldest first"
     }
 }
 
-private struct EntryView: View {
+private struct LedgerRow: View {
     let entry: TimelineEntry
     let modules: [ModulePreset]
+    let layout: BoardLayout
     let showTranscript: () -> Void
+    @State private var expanded = false
 
     var body: some View {
-        if entry.kind == .result, let result = entry.result,
-            let reading = ResultReading(result.payload, moduleName: moduleName)
-        {
-            ReadingCard(
-                entry: entry, reading: reading, payload: result.payload, modules: modules,
-                showTranscript: showTranscript)
-        } else {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline) {
-                    Label(entry.title, systemImage: symbol)
-                        .font(.headline)
-                        .foregroundStyle(entry.kind == .failure ? Palette.fault : Palette.primary)
-                    Spacer()
-                    EntryStamp(entry: entry)
-                }
-                switch entry.kind {
-                case .note, .failure:
-                    Text(entry.body)
-                        .textSelection(.enabled)
-                case .result:
-                    Text(entry.body)
-                        .foregroundStyle(Palette.secondary)
-                    if let result = entry.result {
-                        ResultDetail(payload: result.payload, modules: modules)
-                    } else {
-                        Text("This result was saved by a newer version of Spia.")
-                            .font(.caption)
-                            .foregroundStyle(Palette.secondary)
-                    }
-                }
-                EntryFooter(entry: entry, showTranscript: showTranscript)
-            }
-            .card(tint: entry.kind == .failure ? Palette.fault : nil)
-        }
-    }
-
-    private var symbol: String {
-        switch entry.kind {
-        case .note: return "text.bubble"
-        case .failure: return "exclamationmark.triangle"
-        case .result: return "checkmark.seal"
-        }
-    }
-
-    private func moduleName(_ target: ModuleTarget) -> String {
-        modules.first { $0.target == target }?.label
-            ?? String(format: "Module %03X", target.request)
-    }
-}
-
-/// A check's result led by what it means: a lamp and a headline, the codes it found, and the
-/// raw answer behind a disclosure.
-private struct ReadingCard: View {
-    let entry: TimelineEntry
-    let reading: ResultReading
-    let payload: JobPayload
-    let modules: [ModulePreset]
-    let showTranscript: () -> Void
-    @State private var showsRaw = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                LampDisc(tone: reading.tone, symbol: symbol)
-                    .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 5 }
-                Text(reading.headline)
-                    .font(.headline)
-                    .foregroundStyle(Palette.primary)
-            }
-            findings
-            DisclosureGroup(isExpanded: $showsRaw) {
-                ResultDetail(payload: payload, modules: modules)
-                    .padding(.top, 6)
+        VStack(alignment: .leading, spacing: 0) {
+            Hairline()
+            Button {
+                withAnimation(.snappy(duration: 0.2)) { expanded.toggle() }
             } label: {
-                Text("Raw data")
-                    .font(.callout)
-                    .foregroundStyle(Palette.secondary)
+                line(LedgerSummary(entry: entry, modules: modules))
             }
-            EntryFooter(entry: entry, showTranscript: showTranscript, showsStamp: true)
-        }
-        .card()
-    }
-
-    private var symbol: String {
-        switch reading.tone {
-        case .good: "checkmark"
-        case .bad: "exclamationmark.octagon"
-        default: "exclamationmark.triangle"
-        }
-    }
-
-    @ViewBuilder private var findings: some View {
-        switch payload {
-        case .genericScan(let reports):
-            GenericScanReadouts(reports: reports)
-        case .moduleDTCs(let module):
-            switch module.outcome {
-            case .records(let availability, let records):
-                ForEach(records, id: \.code) { record in
-                    DTCRow(
-                        code: record.code,
-                        detail: DTCStatus.summary(for: record.status, availability: availability),
-                        tone: DTCStatus.tone(for: record.status, availability: availability))
+            .buttonStyle(.plain)
+            .accessibilityHint(expanded ? "Hides the details" : "Shows the details")
+            if expanded {
+                VStack(alignment: .leading, spacing: 10) {
+                    details
+                    EntryFooter(entry: entry, showTranscript: showTranscript, showsStamp: true)
                 }
-                if !records.isEmpty {
-                    Text(
-                        "Codes are the module's raw bytes; the maker's names for them aren't known yet."
-                    )
-                    .font(.caption)
-                    .foregroundStyle(Palette.tertiary)
-                }
-            case .negative(_, let code):
-                Text(NegativeResponse.explanation(code))
-                    .foregroundStyle(Palette.secondary)
+                .padding(.leading, layout == .wide ? 84 : 0)
+                .padding(.bottom, 14)
             }
-        case .adapter, .vehicleInfo:
-            EmptyView()
         }
     }
-}
 
-/// A generic scan's counts as readouts on a dash, then each code it found.
-private struct GenericScanReadouts: View {
-    let reports: [ECUScan]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 32) { readouts }
-                Grid(alignment: .leading, horizontalSpacing: 32, verticalSpacing: 12) {
-                    GridRow {
-                        readout("Stored", count(\.stored))
-                        readout("Pending", count(\.pending))
+    @ViewBuilder private func line(_ summary: LedgerSummary) -> some View {
+        let title = Text(summary.title)
+            .fontWeight(.semibold)
+            .foregroundStyle(summary.failed ? Palette.fault : Palette.primary)
+        let text = Text(summary.text).foregroundStyle(Palette.secondary)
+        Group {
+            switch layout {
+            case .wide:
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    time.frame(width: 84, alignment: .leading)
+                    title.frame(width: 250, alignment: .leading)
+                    text.lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                    chevron
+                }
+                .font(.system(size: 14))
+            case .compact:
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    time
+                    VStack(alignment: .leading, spacing: 3) {
+                        title.font(.system(size: 15))
+                        text.font(.system(size: 13.5)).lineLimit(3)
                     }
-                    GridRow {
-                        readout("Permanent", count(\.permanent))
-                        readout("Monitors ready", monitors)
-                    }
+                    Spacer(minLength: 0)
+                    chevron
                 }
             }
-            ForEach(codes, id: \.code) { found in
-                DTCRow(code: found.code, detail: found.lists, tone: .bad)
-            }
         }
+        .padding(.vertical, 11)
+        .contentShape(Rectangle())
     }
 
-    @ViewBuilder private var readouts: some View {
-        readout("Stored", count(\.stored))
-        readout("Pending", count(\.pending))
-        readout("Permanent", count(\.permanent))
-        readout("Monitors ready", monitors)
+    private var time: some View {
+        Text(entry.date, format: .dateTime.hour().minute())
+            .font(.system(size: 12.5, weight: .medium, design: .monospaced))
+            .foregroundStyle(Palette.tertiary)
     }
 
-    private func readout(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label).instrumentCaption()
-            Text(value)
-                .font(.title3.weight(.semibold))
-                .fontDesign(.rounded)
-                .monospacedDigit()
-                .foregroundStyle(Palette.primary)
-        }
-        .accessibilityElement(children: .combine)
+    private var chevron: some View {
+        Image(systemName: "chevron.right")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Palette.tertiary)
+            .rotationEffect(.degrees(expanded ? 90 : 0))
     }
 
-    /// Distinct codes in one list across the modules, or a dash when none could say.
-    private func count(_ list: KeyPath<ECUScan, Reading<[String]>>) -> String {
-        let answers = reports.compactMap { $0[keyPath: list].value }
-        guard !answers.isEmpty else { return "–" }
-        return "\(Set(answers.joined()).count)"
-    }
-
-    private var monitors: String {
-        let monitors = reports.compactMap(\.readiness.value).flatMap(\.monitors)
-        guard !monitors.isEmpty else { return "–" }
-        return "\(monitors.filter(\.complete).count) of \(monitors.count)"
-    }
-
-    /// Each distinct code, with the lists it's in: "Stored · Permanent".
-    private var codes: [(code: String, lists: String)] {
-        let lists: [(String, KeyPath<ECUScan, Reading<[String]>>)] = [
-            ("Stored", \.stored), ("Pending", \.pending), ("Permanent", \.permanent),
-        ]
-        let found = Set(
-            reports.flatMap { report in lists.compactMap { report[keyPath: $0.1].value }.joined() })
-        return found.sorted().map { code in
-            let names = lists.filter { _, list in
-                reports.contains { $0[keyPath: list].value?.contains(code) == true }
-            }
-            return (code, names.map(\.0).joined(separator: " · "))
-        }
-    }
-}
-
-/// One trouble code: the code as a badge in its lamp's colour, then what its status says.
-private struct DTCRow: View {
-    let code: String
-    let detail: String
-    let tone: Tone
-
-    var body: some View {
-        let color = tone == .neutral ? Palette.secondary : tone.color
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(code)
-                .font(.callout.monospaced().weight(.semibold))
-                .foregroundStyle(color)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .overlay(Capsule().strokeBorder(color.opacity(0.55)))
+    @ViewBuilder private var details: some View {
+        switch entry.kind {
+        case .note, .failure:
+            Text(entry.body)
                 .textSelection(.enabled)
-            Text(detail)
-                .font(.callout)
                 .foregroundStyle(Palette.secondary)
+        case .result:
+            if let result = entry.result {
+                ResultDetail(payload: result.payload, modules: modules)
+            } else {
+                Text("This result was saved by a newer version of Spia.")
+                    .font(.caption)
+                    .foregroundStyle(Palette.secondary)
+            }
+        }
+    }
+}
+
+/// An entry in the board's words: "Airbag controller", "80011B 80021B · Failing now · …".
+private struct LedgerSummary {
+    let title: String
+    let text: String
+    let failed: Bool
+
+    init(entry: TimelineEntry, modules: [ModulePreset]) {
+        failed = entry.kind == .failure
+        guard entry.kind == .result else {
+            title = entry.kind == .note ? "Note" : entry.title
+            text = entry.body
+            return
+        }
+        guard let payload = entry.result?.payload else {
+            title = entry.title
+            text = "Saved by a newer version of Spia"
+            return
+        }
+        switch payload {
+        case .adapter(let status):
+            title = "Adapter check"
+            text = [
+                status.hardware ?? status.identity,
+                status.voltage.map { String(format: "Battery at %.1f V", $0) },
+            ].compactMap { $0 }.joined(separator: " · ")
+        case .vehicleInfo(let ecus):
+            title = "Vehicle information"
+            text =
+                ecus.compactMap(\.vin.value).first.map { "VIN \($0)" }
+                ?? (ecus.count == 1 ? "1 computer answered" : "\(ecus.count) computers answered")
+        case .genericScan, .moduleDTCs:
+            let board = SessionBoard(
+                modules: modules.compactMap { preset in
+                    preset.target.map { SessionBoard.Module(label: preset.label, target: $0) }
+                },
+                results: [SessionBoard.Result(date: entry.date, payload: payload)])
+            let row = board.rows.first { $0.date != nil }
+            title = row?.name ?? entry.title
+            text =
+                row.map { row in
+                    ([row.codes.joined(separator: " ")].filter { !$0.isEmpty } + [row.detail])
+                        .joined(separator: " · ")
+                } ?? entry.body
         }
     }
 }

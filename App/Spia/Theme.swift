@@ -38,20 +38,6 @@ extension View {
             .overlay(shape.strokeBorder(tint.map { $0.opacity(0.4) } ?? Palette.hairline))
     }
 
-    /// An instrument panel: darker than a card, with light catching its top edge.
-    func panel() -> some View {
-        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
-        return padding(18)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Palette.panel, in: shape)
-            .overlay(shape.strokeBorder(Palette.hairline))
-            .overlay(
-                shape.strokeBorder(
-                    LinearGradient(
-                        colors: [Palette.bezel, .clear], startPoint: .top, endPoint: .center))
-            )
-    }
-
     /// Small caps over a reading, as on a dash: "BATTERY", "CHECK ENGINE".
     func instrumentCaption() -> some View {
         font(.caption2.weight(.semibold))

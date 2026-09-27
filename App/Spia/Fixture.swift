@@ -82,6 +82,8 @@
             await workbench.connect()
             _ = await workbench.run(.genericScan, in: session)
             _ = await workbench.run(.moduleDTCs(DemoGarage.airbag.target), in: session)
+            _ = await workbench.run(.moduleDTCs(DemoGarage.abs.target), in: session)
+            _ = await workbench.run(.moduleDTCs(DemoGarage.bodyComputer.target), in: session)
             if let error = workbench.lastError { print("Spia fixture check failed: \(error)") }
         }
     }

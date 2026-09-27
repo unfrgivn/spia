@@ -25,6 +25,17 @@ public enum DTCStatus {
         let meaningful = availability.map { status & $0 } ?? status
         return flags.filter { meaningful & $0.bit != 0 }
     }
+
+    /// The set flags that describe a problem, as one line: "Failing now · Confirmed". Failing
+    /// now already says it failed this drive cycle and is pending, so those drop out.
+    public static func summary(for status: UInt8, availability: UInt8? = nil) -> String {
+        let set = flags(for: status, availability: availability)
+        let failingNow = set.contains { $0.bit == 0x01 }
+        let active = set.filter { flag in
+            flag.isActive && !(failingNow && (flag.bit == 0x02 || flag.bit == 0x04))
+        }
+        return active.isEmpty ? "Not active now" : active.map(\.label).joined(separator: " · ")
+    }
 }
 
 /// UDS negative response codes a user might see, in plain English.
