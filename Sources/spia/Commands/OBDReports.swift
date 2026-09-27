@@ -7,85 +7,10 @@ struct Scan: AsyncParsableCommand {
     @OptionGroup var global: GlobalOptions
 
     func run() async throws {
-        var options = global
-        if options.protocol == .automatic { options.protocol = .can11bit500k }
-        try validateGenericProtocol(options.protocol)
+        let options = try genericOptions(global)
         try await Connection.with(options) { connection in
-            var observations: [OBDObservation] = []
-            var ecus = Set<UInt32>()
-            var requested: [OBDRequest] = []
-            for request in OBDScanPlan.standard.requests {
-                requested.append(request)
-                do {
-                    let values = try await connection.session.request(request)
-                    for value in values {
-                        ecus.insert(value.ecu)
-                        let response = ServiceResponse.decode(value.payload)
-                        observations.append(
-                            OBDObservation(
-                                request: request, ecu: value.ecu,
-                                outcome: .response(response)))
-                    }
-                } catch ELM327Error.adapter(.noData) {
-                    stderr("\(request.hex): no response")
-                }
-            }
-            let freezeFrame = OBDScanPlan.freezeFrameDTC
-            requested.append(freezeFrame)
-            do {
-                let values = try await connection.session.request(freezeFrame)
-                for value in values {
-                    ecus.insert(value.ecu)
-                    observations.append(
-                        OBDObservation(
-                            request: freezeFrame, ecu: value.ecu,
-                            outcome: .response(ServiceResponse.decode(value.payload))))
-                }
-            } catch ELM327Error.adapter(.noData) {
-                stderr("\(freezeFrame.hex): no response")
-            }
-            let hasFreezeFrameDTC = observations.contains {
-                guard $0.request == OBDScanPlan.freezeFrameDTC,
-                    case .response(.freezeFrameDTC(frame: 0, dtc: let dtc)) = $0.outcome
-                else { return false }
-                return dtc != nil
-            }
-            if hasFreezeFrameDTC {
-                let support = OBDScanPlan.freezeFrameSupport
-                requested.append(support)
-                do {
-                    let values = try await connection.session.request(support)
-                    for value in values {
-                        ecus.insert(value.ecu)
-                        let response = ServiceResponse.decode(value.payload)
-                        observations.append(
-                            OBDObservation(
-                                request: support, ecu: value.ecu, outcome: .response(response)))
-                    }
-                } catch ELM327Error.adapter(.noData) {
-                    stderr("\(support.hex): freeze-frame PID support unavailable")
-                }
-                for useful in OBDScanPlan.freezeFrameFollowUpRequests(observations: observations) {
-                    do {
-                        requested.append(useful)
-                        let values = try await connection.session.request(useful)
-                        observations += values.map { value in
-                            ecus.insert(value.ecu)
-                            return OBDObservation(
-                                request: useful, ecu: value.ecu,
-                                outcome: .response(ServiceResponse.decode(value.payload)))
-                        }
-                    } catch ELM327Error.adapter(.noData) {
-                        stderr("\(useful.hex): freeze-frame value unavailable")
-                    }
-                }
-            }
-            let finalized = OBDReportBuilder.finalizeObservations(
-                observations, requests: requested, ecus: ecus)
-            let reports = OBDReportBuilder.scan(observations: finalized)
-            if reports.isEmpty {
-                stderr("No ECU responded; vehicle health is unknown.")
-                throw ValidationError("no ECU responded")
+            let reports = try await reportingNoVehicle("vehicle health") {
+                try await GenericOBDWorkflow.scan(on: connection.session, onEvent: logNoResponse)
             }
             for report in reports { print(report.formatted) }
         }
@@ -98,37 +23,38 @@ struct Info: AsyncParsableCommand {
     @OptionGroup var global: GlobalOptions
 
     func run() async throws {
-        var options = global
-        if options.protocol == .automatic { options.protocol = .can11bit500k }
-        try validateGenericProtocol(options.protocol)
+        let options = try genericOptions(global)
         try await Connection.with(options) { connection in
-            var observations: [OBDObservation] = []
-            var ecus = Set<UInt32>()
-            var requested: [OBDRequest] = []
-            for request in OBDInfoPlan.standard.requests {
-                requested.append(request)
-                do {
-                    let values = try await connection.session.request(request)
-                    for value in values {
-                        ecus.insert(value.ecu)
-                        observations.append(
-                            OBDObservation(
-                                request: request, ecu: value.ecu,
-                                outcome: .response(ServiceResponse.decode(value.payload))))
-                    }
-                } catch ELM327Error.adapter(.noData) {
-                    stderr("\(request.hex): optional data unavailable")
-                }
-            }
-            let finalized = OBDReportBuilder.finalizeObservations(
-                observations, requests: requested, ecus: ecus)
-            let reports = OBDReportBuilder.info(observations: finalized)
-            if reports.isEmpty {
-                stderr("No ECU responded; vehicle identity is unknown.")
-                throw ValidationError("no ECU responded")
+            let reports = try await reportingNoVehicle("vehicle identity") {
+                try await GenericOBDWorkflow.info(on: connection.session, onEvent: logNoResponse)
             }
             for report in reports { print(report.formatted) }
         }
+    }
+}
+
+private func genericOptions(_ global: GlobalOptions) throws -> GlobalOptions {
+    var options = global
+    if options.protocol == .automatic { options.protocol = .can11bit500k }
+    try validateGenericProtocol(options.protocol)
+    return options
+}
+
+@Sendable private func logNoResponse(_ event: GenericOBDWorkflow.Event) {
+    if case .noResponse(let request) = event { stderr("\(request.hex): no response") }
+}
+
+/// Runs a generic read and turns "nobody answered" into a clear, nonzero exit.
+private func reportingNoVehicle<Report>(
+    _ subject: String, _ body: () async throws -> [Report]
+) async throws -> [Report] {
+    do {
+        let reports = try await body()
+        guard !reports.isEmpty else { throw GenericOBDWorkflow.Failure.noVehicleResponse(.noData) }
+        return reports
+    } catch let failure as GenericOBDWorkflow.Failure {
+        stderr("No ECU responded; \(subject) is unknown. Is the ignition on?")
+        throw ValidationError(failure.description)
     }
 }
 

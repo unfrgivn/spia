@@ -53,7 +53,7 @@ public enum DiagnosticAddress: Equatable, Hashable, Sendable, CustomStringConver
 }
 
 /// Which CAN transceiver in the adapter, hence which DLC pins.
-public enum CANBus: String, CaseIterable, Sendable {
+public enum CANBus: String, CaseIterable, Codable, Sendable {
     /// DLC pins 6/14, ISO 15765-4 at 500k. Legislated OBD, powertrain. Plain ELM327 `ATSP`.
     case highSpeed = "hs"
     /// DLC pins 3/11 at 125k. Ford calls it MS-CAN, FCA calls it CAN-IHS (interior). Only on

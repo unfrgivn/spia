@@ -20,6 +20,14 @@ public enum UDSNegativeResponseCode: Equatable, Sendable {
         default: self = .other(byte)
         }
     }
+
+    public var byte: UInt8 {
+        switch self {
+        case .conditionsNotCorrect: return 0x22
+        case .responsePending: return 0x78
+        case .other(let value): return value
+        }
+    }
 }
 
 public enum UDSDTCResponse: Equatable, Sendable {

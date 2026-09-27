@@ -47,6 +47,23 @@ Targets:
 - `spia`: CLI executable.
 - `OBDCoreTests`: Swift Testing. Fixtures under `Tests/Fixtures/` are verbatim recorded transcripts.
 
+## Desktop app (macOS 14+, universal)
+
+The CLI and the app share one engine. Layers, bottom up:
+
+- `OBDCore`: protocol, decoders, `GenericOBDWorkflow` (the one generic scan/info sequence).
+- `SpiaKit`: `ConnectionManager` (sole owner of an adapter session), `JobRunner` (one read-only check at a time, progress, "needs you" prompts), typed `JobResult` snapshots, per-check transcripts, and `DemoBackend`. iOS-compatible.
+- `SpiaStore`: SwiftData schema v1 (vehicles, adapter profiles, modules, sessions, timeline), transcript files, and the `Workbench` model the screens bind to. iOS-compatible.
+- `App/SpiaApp.xcodeproj`: SwiftUI screens only. Sandbox with serial, Bluetooth, network client, and user-selected files.
+
+Run it: open `App/SpiaApp.xcodeproj` and run the `Spia` scheme, or `xcodebuild -project App/SpiaApp.xcodeproj -scheme Spia build`. Choose "Explore the demo" to use the Ghibli recordings without a car.
+
+Demo mode replays recordings through the same code as a live adapter where the recorded command order matches (adapter check, airbag module), and decodes the rest from their recordings with the production decoders (generic scan, vehicle info, ABS, body computer). Results are labelled "From recording". The steering-column module has no recording and says so.
+
+Verified: engine and store behaviour by `swift test` against the real recordings; app builds universal with warnings as errors; app launches. Not verified: the app against the live car, sandboxed serial access to the vLinker FS, and the screens by eye.
+
+App phases: 1 foundation (this), 2 assistant (on-device or cloud per message, read-only proposals the user approves), 3 media (photos, video, audio), 4 guided workflow from symptoms to tests to a solution.
+
 ## Milestones
 
 | # | Milestone | Verified by | Status |
