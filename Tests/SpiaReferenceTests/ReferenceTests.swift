@@ -111,12 +111,12 @@ struct ReferenceParsingTests {
 
     @Test("Commons: photos naming 2017 first, the 1971 Ghibli dropped, credit in plain text")
     func photos() throws {
-        let photos = try Commons.photos(
-            from: fixture("commons-search-2017-maserati-ghibli.json"), modelYear: 2017)
-        #expect(photos.count == 8)
+        let photos = Commons.rank(
+            [try Commons.candidates(from: fixture("commons-search-2017-maserati-ghibli.json"))],
+            for: PhotoQuery(make: "Maserati", model: "Ghibli", year: 2017))
+        #expect(photos.count == 11)
         #expect(photos.first?.caption == "2017 Maserati Ghibli (M157) Automatic 3.0 Front")
         #expect(photos.first?.credit == "Makizox · CC BY-SA 4.0")
-        #expect(photos.last?.id == "File:Würgau Bergrennen2017 Maserati Ghibli 0155-PSD-2.jpg")
         #expect(!photos.contains { $0.id.contains("1971") })
         #expect(photos.allSatisfy { $0.imageURL.host?.hasSuffix(".wikimedia.org") == true })
         #expect(photos.contains { $0.artist == "RL GNZLZ from Chile" })
@@ -210,8 +210,9 @@ struct LiveReferenceTests {
         #expect(safety.bulletins.count >= 90)
         let documents = try await client.documents(forBulletin: 11_034_165)
         #expect(documents.first?.url.pathExtension == "pdf")
-        let photos = try await client.photos(for: identity)
-        #expect(!photos.isEmpty)
+        let photos = try await client.photos(
+            matching: PhotoQuery(identity: identity, trim: "S Q4", color: .black, colorName: nil))
+        #expect(photos.first?.caption.contains("S Q4") == true)
         let image = try await client.get(try #require(photos.first).imageURL)
         #expect(image.count > 10_000)
     }
@@ -242,5 +243,70 @@ struct BulletinSummaryTests {
             .bulletins
         let thermostat = bulletins.filter { $0.number == "MAS005184 MTB 26-10" }
         #expect(thermostat.map(\.id) == [11_034_165])
+    }
+}
+
+@Suite("Photos for the trim and colour")
+struct PhotoMatchTests {
+    let sq4Blue = PhotoQuery(
+        make: "Maserati", model: "Ghibli", year: 2017, series: "M157", trim: "S Q4", color: .blue)
+
+    private func results(_ names: [String]) throws -> [[Commons.Candidate]] {
+        try names.map { try Commons.candidates(from: fixture($0)) }
+    }
+
+    @Test("searches run from trim and colour down to the model year")
+    func plan() {
+        #expect(
+            sq4Blue.searches == [
+                #"Maserati Ghibli "S Q4" blue"#, #"Maserati Ghibli "S Q4""#,
+                "2017 Maserati Ghibli blue", "2017 Maserati Ghibli",
+            ])
+        #expect(sq4Blue.summary == "2017 Maserati Ghibli S Q4 · Blue")
+        var named = sq4Blue
+        named.colorName = "Blu Emozione"
+        #expect(named.searches.first == #"Maserati Ghibli "S Q4" "Blu Emozione""#)
+        #expect(named.summary == "2017 Maserati Ghibli S Q4 · Blu Emozione")
+        #expect(PhotoQuery(name: "My car").searches == ["My car"])
+    }
+
+    @Test("S Q4 photos come first; the blue 1966 Ghibli I and the Ghibli II are left out")
+    func blue() throws {
+        let photos = Commons.rank(
+            try results((1...4).map { "commons-ghibli-sq4-blue-\($0).json" }), for: sq4Blue)
+        #expect(photos.count == 12)
+        #expect(photos.prefix(8).allSatisfy { $0.caption.contains("S Q4") })
+        #expect(!photos.contains { $0.id.contains("Würgau") })
+        #expect(!photos.contains { $0.id.contains("Cockpit") || $0.id.contains("1995") })
+    }
+
+    @Test("a black S Q4 ranks first when the car is black")
+    func black() throws {
+        var query = sq4Blue
+        query.color = .black
+        let photos = Commons.rank(
+            try results([
+                "commons-ghibli-sq4-black-1.json", "commons-ghibli-sq4-blue-2.json",
+                "commons-ghibli-sq4-black-3.json", "commons-ghibli-sq4-blue-4.json",
+            ]), for: query)
+        #expect(photos.first?.id == "File:Maserati ABA-MG30AA Ghibli S Q4 (23112613075).jpg")
+    }
+
+    @Test("a category's model year beats the year the photo was taken")
+    func categoryYear() throws {
+        let photos = Commons.rank(
+            try results(["commons-ghibli-sq4-blue-4.json"]),
+            for: PhotoQuery(make: "Maserati", model: "Ghibli", year: 2017), limit: 30)
+        #expect(photos.contains { $0.id == "File:Maserati Ghibli (L44 HMS) - 4 July 2026.jpg" })
+        #expect(!photos.contains { $0.id == "File:1995 Maserati Ghibli (2).jpg" })
+    }
+
+    @Test("phrases match whole words, and S Q4 matches SQ4")
+    func text() {
+        let text = Commons.Text("Maserati Ghibli SQ4 GranLusso M157 Grigio Maratea")
+        #expect(text.contains("S Q4"))
+        #expect(text.contains("grigio"))
+        #expect(!text.contains("Q4 S"))
+        #expect(!Commons.Text("Maserati Ghiblis").contains("Ghibli"))
     }
 }

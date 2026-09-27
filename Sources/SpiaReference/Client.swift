@@ -7,18 +7,22 @@ public struct ReferenceSnapshot: Codable, Sendable, Equatable {
     public var identity: VehicleIdentity?
     public var safety: SafetyRecord?
     public var photos: [ReferencePhoto]
+    /// What the photos were searched for, so a changed trim or colour searches again.
+    public var photoQuery: PhotoQuery?
     public var fetchedAt: Date
     /// What couldn't be loaded last time, in plain words.
     public var problems: [String]
 
     public init(
         vin: String?, identity: VehicleIdentity?, safety: SafetyRecord?,
-        photos: [ReferencePhoto], fetchedAt: Date, problems: [String]
+        photos: [ReferencePhoto], photoQuery: PhotoQuery? = nil, fetchedAt: Date,
+        problems: [String]
     ) {
         self.vin = vin
         self.identity = identity
         self.safety = safety
         self.photos = photos
+        self.photoQuery = photoQuery
         self.fetchedAt = fetchedAt
         self.problems = problems
     }
@@ -48,15 +52,36 @@ public struct ReferenceClient: Sendable {
                     make: identity.make, model: identity.model, year: identity.modelYear)))
     }
 
-    public func photos(for identity: VehicleIdentity) async throws -> [ReferencePhoto] {
-        try Commons.photos(
-            from: try await get(try Commons.searchURL(query: Commons.query(for: identity))),
-            modelYear: identity.modelYear)
-    }
-
-    /// For a vehicle without a VIN, photos found by its name alone.
-    public func photos(named name: String) async throws -> [ReferencePhoto] {
-        try Commons.photos(from: try await get(try Commons.searchURL(query: name)))
+    /// The best photos across the query's searches, run together. Fails only if every
+    /// search fails.
+    public func photos(matching query: PhotoQuery) async throws -> [ReferencePhoto] {
+        let searches = query.searches
+        let results = await withTaskGroup(of: (Int, Result<[Commons.Candidate], any Error>).self) {
+            group in
+            for (index, search) in searches.enumerated() {
+                group.addTask {
+                    do {
+                        let data = try await get(try Commons.searchURL(query: search))
+                        return (index, .success(try Commons.candidates(from: data)))
+                    } catch {
+                        return (index, .failure(error))
+                    }
+                }
+            }
+            var results: [(Int, Result<[Commons.Candidate], any Error>)] = []
+            for await result in group { results.append(result) }
+            return results.sorted { $0.0 < $1.0 }.map(\.1)
+        }
+        var candidates: [[Commons.Candidate]] = []
+        var failure: (any Error)?
+        for result in results {
+            switch result {
+            case .success(let found): candidates.append(found)
+            case .failure(let error): failure = failure ?? error
+            }
+        }
+        if candidates.isEmpty, let failure { throw failure }
+        return Commons.rank(candidates, for: query)
     }
 
     public func documents(forBulletin id: Int) async throws -> [BulletinDocument] {

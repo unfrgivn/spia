@@ -32,6 +32,15 @@ public struct SpiaFiles: Sendable {
         "Attachments/\(session.uuidString)/\(name)"
     }
 
+    /// The owner's photos of a vehicle. Their data, unlike `References`.
+    public func vehicleFolder(_ vehicle: UUID) -> URL {
+        root.appendingPathComponent("Vehicles/\(vehicle.uuidString)", isDirectory: true)
+    }
+
+    public func vehicleImagePath(vehicle: UUID, name: String) -> String {
+        "Vehicles/\(vehicle.uuidString)/Photos/\(name)"
+    }
+
     /// Every folder holding a session's files.
     public func folders(for session: UUID) -> [URL] {
         ["Transcripts", "Attachments"].map {
@@ -88,6 +97,7 @@ public final class Garage {
             notes:
                 "Recorded on the car on 2026-09-26. Wheel controls and horn dead, airbag lamp on.",
             isDemo: true)
+        vehicle.trim = "S Q4"
         context.insert(vehicle)
         vehicle.adapters.append(AdapterProfile(kind: .demo, name: DemoGarage.adapter.displayName))
         for (position, module) in DemoGarage.modules.enumerated() {
@@ -167,11 +177,12 @@ public final class Garage {
         try context.save()
     }
 
-    /// Deletes the vehicle, its sessions and history, their files, and its references.
+    /// Deletes the vehicle, its sessions and history, their files, its photos, and its
+    /// references.
     public func delete(_ vehicle: Vehicle) throws {
         let folders =
             vehicle.sessions.flatMap { files.folders(for: $0.id) }
-            + [files.referencesFolder(vehicle: vehicle.id)]
+            + [files.referencesFolder(vehicle: vehicle.id), files.vehicleFolder(vehicle.id)]
         context.delete(vehicle)
         try context.save()
         try removeFolders(folders)

@@ -33,8 +33,53 @@ extension Garage {
     }
 }
 
+/// What a lookup is based on, taken from the vehicle.
+public struct ReferenceInput: Sendable, Equatable {
+    public var vin: String?
+    public var name: String
+    public var trim: String?
+    public var color: PaintColor?
+    public var colorName: String?
+    /// A reference photo chosen as the cover, kept even when a new search doesn't find it.
+    public var keepPhoto: String?
+
+    public init(
+        vin: String?, name: String, trim: String? = nil, color: PaintColor? = nil,
+        colorName: String? = nil, keepPhoto: String? = nil
+    ) {
+        self.vin = vin
+        self.name = name
+        self.trim = trim
+        self.color = color
+        self.colorName = colorName
+        self.keepPhoto = keepPhoto
+    }
+
+    /// The photo search for this input, given what the VIN decoded to.
+    public func photoQuery(identity: VehicleIdentity?) -> PhotoQuery {
+        if let identity {
+            return PhotoQuery(identity: identity, trim: trim, color: color, colorName: colorName)
+        }
+        return PhotoQuery(name: name, trim: trim, color: color, colorName: colorName)
+    }
+}
+
+extension Vehicle {
+    public var referenceInput: ReferenceInput {
+        ReferenceInput(
+            vin: vin, name: name, trim: trim, color: color, colorName: colorName,
+            keepPhoto: coverReferenceID)
+    }
+}
+
+/// The photo standing for a vehicle, and its credit when it's a reference photo.
+public struct CoverImage: Equatable {
+    public let file: URL
+    public let reference: ReferencePhoto?
+}
+
 /// One vehicle's references: the VIN decoded by NHTSA, its recalls, complaints, and service
-/// bulletins, and photos of the model from Wikimedia Commons.
+/// bulletins, and photos of the model, trim, and colour from Wikimedia Commons.
 ///
 ///     VIN ──vPIC──▶ make, model, year ──┬─ NHTSA ──▶ recalls, complaints, bulletins
 ///                                       └─ Commons ─▶ photos ──▶ downloaded
@@ -70,20 +115,50 @@ public final class VehicleReferences {
         }
     }
 
-    /// Looks up again when nothing is cached, the VIN changed, or the cache is a week old.
-    public func refreshIfNeeded(vin: String?, name: String) async {
-        guard snapshot?.isStale(vin: vin) ?? true else { return }
-        await refresh(vin: vin, name: name)
+    /// Looks up again when nothing is cached, the VIN, trim, or colour changed, or the cache is
+    /// a week old.
+    public func refreshIfNeeded(_ input: ReferenceInput) async {
+        if let snapshot, !snapshot.isStale(vin: input.vin),
+            snapshot.photoQuery == input.photoQuery(identity: snapshot.identity)
+        {
+            return
+        }
+        await refresh(input)
     }
 
-    public func refresh(vin: String?, name: String) async {
+    public func refresh(_ input: ReferenceInput) async {
         guard !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false }
-        let fresh = await Self.lookUp(vin: vin, name: name, previous: snapshot, client: client)
-        await downloadPhotos(fresh.photos)
+        var fresh = await Self.lookUp(input, previous: snapshot, client: client)
+        if let keep = input.keepPhoto, !fresh.photos.contains(where: { $0.id == keep }),
+            let kept = snapshot?.photos.first(where: { $0.id == keep })
+        {
+            fresh.photos.append(kept)
+        }
+        await downloadPhotos(fresh.photos, keeping: input.keepPhoto)
         snapshot = fresh
         save(fresh)
+    }
+
+    /// The owner's chosen cover, else the best reference photo that's been downloaded.
+    public func cover(for vehicle: Vehicle) -> CoverImage? {
+        switch vehicle.cover {
+        case .image(let id):
+            if let image = vehicle.images.first(where: { $0.id == id }) {
+                let file = files.url(for: image.path)
+                if FileManager.default.fileExists(atPath: file.path) {
+                    return CoverImage(file: file, reference: nil)
+                }
+            }
+        case .reference(let id):
+            if let chosen = photos.first(where: { $0.photo.id == id }) {
+                return CoverImage(file: chosen.file, reference: chosen.photo)
+            }
+        case .automatic:
+            break
+        }
+        return photos.first.map { CoverImage(file: $0.file, reference: $0.photo) }
     }
 
     /// The bulletin's first document, downloaded once and kept.
@@ -107,8 +182,9 @@ public final class VehicleReferences {
     /// Everything that can be found for the vehicle. Pieces that fail fall back to `previous`
     /// and are named in `problems`; a lookup with problems keeps the old date, so it's retried.
     static func lookUp(
-        vin raw: String?, name: String, previous: ReferenceSnapshot?, client: ReferenceClient
+        _ input: ReferenceInput, previous: ReferenceSnapshot?, client: ReferenceClient
     ) async -> ReferenceSnapshot {
+        let raw = input.vin
         var problems: [String] = []
         let sameVIN = previous?.vin == raw
         var identity: VehicleIdentity?
@@ -122,40 +198,41 @@ public final class VehicleReferences {
         }
         var safety: SafetyRecord?
         var photos: [ReferencePhoto] = []
+        let query = input.photoQuery(identity: identity)
+        async let photoLookup = attempt { try await client.photos(matching: query) }
         if let identity {
-            async let safetyLookup = attempt { try await client.safety(for: identity) }
-            async let photoLookup = attempt { try await client.photos(for: identity) }
-            switch await safetyLookup {
+            switch await attempt({ try await client.safety(for: identity) }) {
             case .success(let record): safety = record
             case .failure(let error):
                 problems.append("Recalls and bulletins: \(error)")
                 safety = sameVIN ? previous?.safety : nil
             }
+        }
+        if !query.searches.isEmpty {
             switch await photoLookup {
             case .success(let found): photos = found
             case .failure(let error):
-                problems.append("Photos: \(error)")
-                photos = sameVIN ? previous?.photos ?? [] : []
-            }
-        } else if !name.trimmingCharacters(in: .whitespaces).isEmpty {
-            do {
-                photos = try await client.photos(named: name)
-            } catch {
                 problems.append("Photos: \(error)")
                 photos = previous?.photos ?? []
             }
         }
         let fetchedAt = problems.isEmpty ? Date.now : (previous?.fetchedAt ?? .distantPast)
         return ReferenceSnapshot(
-            vin: raw, identity: identity, safety: safety, photos: photos, fetchedAt: fetchedAt,
-            problems: problems)
+            vin: raw, identity: identity, safety: safety, photos: photos, photoQuery: query,
+            fetchedAt: fetchedAt, problems: problems)
     }
 
-    private func downloadPhotos(_ photos: [ReferencePhoto]) async {
+    /// Reference photos kept on disk, enough to choose a cover from.
+    static let downloadedPhotos = 10
+
+    private func downloadPhotos(_ photos: [ReferencePhoto], keeping keptPhoto: String?) async {
         let folder = files.referencesFolder(vehicle: vehicleID).appendingPathComponent("Photos")
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         var keep = Set<String>()
-        for photo in photos.prefix(6) {
+        for photo in photos.prefix(Self.downloadedPhotos)
+            + photos.dropFirst(Self.downloadedPhotos)
+            .filter({ $0.id == keptPhoto })
+        {
             let file = files.photoURL(vehicle: vehicleID, photo: photo)
             keep.insert(file.lastPathComponent)
             guard !FileManager.default.fileExists(atPath: file.path),

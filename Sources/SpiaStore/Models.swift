@@ -2,6 +2,7 @@ import Foundation
 import OBDCore
 import SpiaAssist
 import SpiaKit
+import SpiaReference
 import SwiftData
 
 /// Version 1 of the on-disk store. Future versions add a new schema and a migration stage;
@@ -11,7 +12,7 @@ public enum SpiaSchemaV1: VersionedSchema {
     public static var models: [any PersistentModel.Type] {
         [
             Vehicle.self, AdapterProfile.self, ModulePreset.self, DiagnosticSession.self,
-            TimelineEntry.self, ChatMessage.self,
+            TimelineEntry.self, ChatMessage.self, VehicleImage.self,
         ]
     }
 
@@ -24,16 +25,49 @@ public enum SpiaSchemaV1: VersionedSchema {
         public var createdAt: Date
         /// The bundled 2017 Ghibli whose checks come from real recordings.
         public var isDemo: Bool
+        /// The trim as the owner knows it (e.g. `S Q4`); the decoder's is often a package name.
+        public var trim: String?
+        /// A `PaintColor`. VINs don't encode colour, so only the owner can say.
+        public var colorRaw: String?
+        /// The maker's paint name, e.g. `Blu Emozione`.
+        public var colorName: String?
+        /// The owner's photo shown as the cover, if they chose one.
+        public var coverImageID: UUID?
+        /// The reference photo (Commons file title) shown as the cover, if they chose one.
+        public var coverReferenceID: String?
         @Relationship(deleteRule: .cascade, inverse: \AdapterProfile.vehicle)
         public var adapters: [AdapterProfile] = []
         @Relationship(deleteRule: .cascade, inverse: \ModulePreset.vehicle)
         public var modules: [ModulePreset] = []
         @Relationship(deleteRule: .cascade, inverse: \DiagnosticSession.vehicle)
         public var sessions: [DiagnosticSession] = []
+        @Relationship(deleteRule: .cascade, inverse: \VehicleImage.vehicle)
+        public var images: [VehicleImage] = []
 
         public var orderedModules: [ModulePreset] { modules.sorted { $0.position < $1.position } }
         public var orderedSessions: [DiagnosticSession] {
             sessions.sorted { $0.updatedAt > $1.updatedAt }
+        }
+        public var orderedImages: [VehicleImage] { images.sorted { $0.addedAt < $1.addedAt } }
+
+        public var color: PaintColor? {
+            get { colorRaw.flatMap(PaintColor.init(rawValue:)) }
+            set { colorRaw = newValue?.rawValue }
+        }
+
+        public var cover: VehicleCover {
+            get {
+                if let coverImageID { return .image(coverImageID) }
+                if let coverReferenceID { return .reference(coverReferenceID) }
+                return .automatic
+            }
+            set {
+                switch newValue {
+                case .automatic: (coverImageID, coverReferenceID) = (nil, nil)
+                case .image(let id): (coverImageID, coverReferenceID) = (id, nil)
+                case .reference(let id): (coverImageID, coverReferenceID) = (nil, id)
+                }
+            }
         }
 
         public init(name: String, vin: String? = nil, notes: String = "", isDemo: Bool = false) {
@@ -180,6 +214,22 @@ public enum SpiaSchemaV1: VersionedSchema {
 }
 
 extension SpiaSchemaV1 {
+    /// A photo the owner added of their own car. The file is a JPEG under the app's storage
+    /// folder, resized and without location metadata.
+    @Model public final class VehicleImage {
+        @Attribute(.unique) public var id: UUID
+        /// Relative to the app's storage folder.
+        public var path: String
+        public var addedAt: Date
+        public var vehicle: Vehicle?
+
+        public init(path: String) {
+            id = UUID()
+            self.path = path
+            addedAt = .now
+        }
+    }
+
     /// One turn of the assistant conversation. Tool results are stored as user messages, as the
     /// providers require, and hidden in the UI behind the proposal they answer.
     @Model public final class ChatMessage {
@@ -278,6 +328,17 @@ public typealias ModulePreset = SpiaSchemaV1.ModulePreset
 public typealias DiagnosticSession = SpiaSchemaV1.DiagnosticSession
 public typealias TimelineEntry = SpiaSchemaV1.TimelineEntry
 public typealias ChatMessage = SpiaSchemaV1.ChatMessage
+public typealias VehicleImage = SpiaSchemaV1.VehicleImage
+
+/// Which photo stands for the vehicle.
+public enum VehicleCover: Sendable, Equatable {
+    /// The best-matching reference photo.
+    case automatic
+    /// One of the owner's photos.
+    case image(UUID)
+    /// A reference photo, by Commons file title.
+    case reference(String)
+}
 
 public enum SpiaMigrationPlan: SchemaMigrationPlan {
     public static var schemas: [any VersionedSchema.Type] { [SpiaSchemaV1.self] }

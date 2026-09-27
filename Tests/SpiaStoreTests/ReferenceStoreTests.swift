@@ -1,9 +1,12 @@
+import CoreGraphics
 import Foundation
+import ImageIO
 import SpiaAssist
 import SpiaKit
 import SpiaReference
 import SwiftData
 import Testing
+import UniformTypeIdentifiers
 
 @testable import SpiaStore
 
@@ -35,8 +38,9 @@ struct ReferenceStoreTests {
             vin: vehicle.vin,
             identity: try VPIC.identity(from: fixture("nhtsa-vpic-ZAM57RTS4H1249941.json")),
             safety: try NHTSA.safety(from: fixture("nhtsa-byymmt-2017-maserati-ghibli.json")),
-            photos: try Commons.photos(
-                from: fixture("commons-search-2017-maserati-ghibli.json"), modelYear: 2017),
+            photos: Commons.rank(
+                [try Commons.candidates(from: fixture("commons-search-2017-maserati-ghibli.json"))],
+                for: PhotoQuery(make: "Maserati", model: "Ghibli", year: 2017)),
             // Whole seconds: the cache stores dates as ISO 8601.
             fetchedAt: Date(timeIntervalSince1970: 1_790_000_000), problems: [])
         let encoder = JSONEncoder()
@@ -138,5 +142,68 @@ struct ReferenceStoreTests {
         try garage.delete(vehicle)
 
         #expect(!FileManager.default.fileExists(atPath: folder.path))
+    }
+
+    @Test("the owner's photos are stored as JPEG, can be the cover, and go with the vehicle")
+    func ownPhotos() throws {
+        let vehicle = try garage.addDemoVehicle()
+        _ = try cacheRecordedReferences(for: vehicle)
+        let references = VehicleReferences(vehicleID: vehicle.id, files: garage.files)
+        // Photos from the cache count only once downloaded; put one reference photo on disk.
+        let reference = try #require(references.snapshot?.photos.first)
+        let referenceFile = garage.files.photoURL(vehicle: vehicle.id, photo: reference)
+        try FileManager.default.createDirectory(
+            at: referenceFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try PhotoPreparation.jpeg(from: try Self.png()).write(to: referenceFile)
+        #expect(references.cover(for: vehicle)?.reference == reference)
+
+        let image = try garage.addImage(try Self.png(), to: vehicle, asCover: true)
+        let file = garage.files.url(for: image.path)
+        #expect(vehicle.cover == .image(image.id))
+        #expect(references.cover(for: vehicle) == CoverImage(file: file, reference: nil))
+        let source = try #require(CGImageSourceCreateWithURL(file as CFURL, nil))
+        #expect(CGImageSourceGetType(source) as String? == UTType.jpeg.identifier)
+
+        try garage.setCover(.reference(reference.id), for: vehicle)
+        #expect(references.cover(for: vehicle)?.file == referenceFile)
+        try garage.setCover(.image(image.id), for: vehicle)
+        try garage.delete(image)
+        #expect(vehicle.cover == .automatic)
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+
+        try garage.addImage(try Self.png(), to: vehicle)
+        let folder = garage.files.vehicleFolder(vehicle.id)
+        #expect(FileManager.default.fileExists(atPath: folder.path))
+        try garage.delete(vehicle)
+        #expect(!FileManager.default.fileExists(atPath: folder.path))
+    }
+
+    @Test("the photo search uses the owner's trim and colour over the decoder's trim")
+    func photoQuery() throws {
+        let identity = try VPIC.identity(from: fixture("nhtsa-vpic-ZAM57RTS4H1249941.json"))
+        let vehicle = try garage.addDemoVehicle()
+        vehicle.color = .blue
+        let query = vehicle.referenceInput.photoQuery(identity: identity)
+        #expect(query.trim == "S Q4")
+        #expect(query.searches.first == #"Maserati Ghibli "S Q4" blue"#)
+        vehicle.trim = nil
+        #expect(vehicle.referenceInput.photoQuery(identity: identity).trim == "Sport")
+    }
+
+    private static func png() throws -> Data {
+        let context = try #require(
+            CGContext(
+                data: nil, width: 1200, height: 800, bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(red: 0.1, green: 0.2, blue: 0.6, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: 1200, height: 800))
+        let image = try #require(context.makeImage())
+        let data = NSMutableData()
+        let destination = try #require(
+            CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        #expect(CGImageDestinationFinalize(destination))
+        return data as Data
     }
 }
