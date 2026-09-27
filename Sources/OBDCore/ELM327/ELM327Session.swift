@@ -93,23 +93,7 @@ public actor ELM327Session {
     private func sendUnlocked(_ command: String, timeout: Duration = .seconds(2)) async throws
         -> String
     {
-        try Task.checkCancellation()
-        transportUnsynchronized = true
-        try await transport.write(Array((command + "\r").utf8))
-        let deadline = clock.now + timeout
-        var received: [UInt8] = []
-        while true {
-            let remaining = clock.now.duration(to: deadline)
-            guard remaining > .zero else {
-                throw ELM327Error.timeout(command: command, partial: decode(received))
-            }
-            let chunk = try await transport.read(timeout: min(remaining, .milliseconds(250)))
-            received.append(contentsOf: chunk)
-            if let prompt = received.lastIndex(of: UInt8(ascii: ">")) {
-                transportUnsynchronized = false
-                return stripEcho(of: command, from: decode(Array(received[..<prompt])))
-            }
-        }
+        try await sendBounded(command, timeout: timeout, limit: 65_536)
     }
 
     /// Performs one bounded, read-only UDS ReadDTCByStatusMask transaction.
@@ -240,6 +224,9 @@ public actor ELM327Session {
     private func sendBounded(_ command: String, timeout: Duration, limit: Int) async throws
         -> String
     {
+        guard timeout > .zero, timeout <= .seconds(120), limit > 0 else {
+            throw ELM327Error.invalidTimeout
+        }
         try Task.checkCancellation()
         transportUnsynchronized = true
         try await transport.write(Array((command + "\r").utf8))

@@ -59,6 +59,17 @@ expect_discover_failure() {
     printf '%s\n' "$output" | grep -F "$expected" >/dev/null
 }
 
+expect_live_failure() {
+    expected=$1
+    shift
+    set +e
+    output=$($SPiA live --port "$PORT" "$@" 2>&1)
+    status=$?
+    set -e
+    test "$status" -ne 0
+    printf '%s\n' "$output" | grep -F "$expected" >/dev/null
+}
+
 expect_failure "Missing expected argument '--tx" --rx 4C4
 expect_failure "Missing expected argument '--rx" --tx 744
 expect_failure "11-bit hexadecimal CAN ID" --tx 800 --rx 4C4
@@ -70,8 +81,14 @@ expect_failure "at most 120" --tx 744 --rx 4C4 --timeout 121
 
 "$SPiA" scan --help >/dev/null
 "$SPiA" info --help >/dev/null
+"$SPiA" live --help >/dev/null
 expect_scan_failure "CAN 11-bit 500k" --protocol 3
 expect_info_failure "CAN 11-bit 500k" --protocol 8
+expect_live_failure "positive" --duration 0
+expect_live_failure "finite" --duration nan
+expect_live_failure "between 0.1 and 60" --interval 0
+expect_live_failure "one byte of hexadecimal" --pid GG
+expect_live_failure "support bitmap" --pid 00
 expect_capture_failure "finite, positive" --duration 0
 expect_capture_failure "ATMA or STMA" --command AT
 expect_capture_failure "requires CAN protocol" --protocol 3

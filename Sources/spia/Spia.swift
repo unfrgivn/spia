@@ -8,7 +8,7 @@ struct Spia: AsyncParsableCommand {
         abstract: "OBD-II scan tool for ELM327/STN adapters such as the Vgate vLinker FS.",
         subcommands: [
             Ports.self, Probe.self, Term.self, Capture.self, Discover.self, Scan.self, Info.self,
-            Inspect.self,
+            Inspect.self, Live.self,
             UDS.self,
         ])
 }
