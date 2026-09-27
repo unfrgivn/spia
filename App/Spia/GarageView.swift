@@ -26,13 +26,10 @@ struct GarageView: View {
                         alignment: .leading, spacing: 20
                     ) {
                         ForEach(vehicles) { vehicle in
-                            Button {
-                                open(vehicle, nil)
-                            } label: {
-                                VehicleCard(
-                                    vehicle: vehicle, references: model.references(for: vehicle))
-                            }
-                            .buttonStyle(.plain)
+                            ShowroomCard(
+                                vehicle: vehicle, references: model.references(for: vehicle),
+                                open: { open(vehicle, $0) }
+                            )
                             .contextMenu {
                                 Button("Open") { open(vehicle, nil) }
                                 Divider()
@@ -58,6 +55,7 @@ struct GarageView: View {
             .frame(maxWidth: 1200, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
+        .background(Palette.base)
         .navigationTitle("Spia")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -106,63 +104,112 @@ struct GarageView: View {
     }
 }
 
-/// A vehicle in the garage: its photo, what it is, and what's going on with it.
-private struct VehicleCard: View {
+/// A vehicle in the garage, shown like a car in a showroom: the photo edge to edge, what it
+/// is over a navy fade, and lamps for its open sessions and recalls.
+private struct ShowroomCard: View {
     let vehicle: Vehicle
     let references: VehicleReferences
+    /// Opens the vehicle, or one of its sessions.
+    let open: (DiagnosticSession?) -> Void
+    @State private var hovering = false
+
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 14, style: .continuous) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VehiclePhoto(vehicle: vehicle, references: references)
-                .frame(height: 170)
-                .clipped()
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(vehicle.name)
-                        .font(.title3.weight(.semibold))
-                        .lineLimit(1)
-                    Spacer(minLength: 4)
-                    if vehicle.isDemo { Chip(text: "Demo") }
-                }
-                Text(subtitle)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                HStack(spacing: 8) {
-                    Chip(text: sessionsText, color: openSessions > 0 ? .accentColor : .secondary)
-                    if let recalls = references.safety?.recalls.count, recalls > 0 {
-                        Chip(text: "\(recalls) recall\(recalls == 1 ? "" : "s")", color: .orange)
-                    }
-                    if references.isRefreshing {
-                        ProgressView().controlSize(.mini)
-                    }
-                }
-                .padding(.top, 4)
+        // Continue sits beside the card's button, not in it, so each can be pressed.
+        ZStack(alignment: .bottomTrailing) {
+            Button {
+                open(nil)
+            } label: {
+                showroom
             }
-            .padding(14)
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens the vehicle")
+            if let session = openSession {
+                Button("Continue") { open(session) }
+                    .buttonStyle(.borderedProminent)
+                    .help("Continue “\(session.title)”")
+                    .padding(14)
+            }
         }
-        .background(PlatformColor.controlBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.1))
-        )
-        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .scaleEffect(hovering ? 1.015 : 1)
+        .shadow(color: .black.opacity(hovering ? 0.25 : 0), radius: 14, y: 6)
+        .animation(.easeOut(duration: 0.15), value: hovering)
+        .onHover { hovering = $0 }
         .task(id: vehicle.referenceInput) {
             await references.refreshIfNeeded(vehicle.referenceInput)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityHint("Opens the vehicle")
+    }
+
+    private var showroom: some View {
+        VehiclePhoto(vehicle: vehicle, references: references)
+            .aspectRatio(16 / 9, contentMode: .fit)
+            .overlay {
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0.35),
+                        .init(color: Palette.scrim, location: 1),
+                    ],
+                    startPoint: .top, endPoint: .bottom)
+            }
+            .overlay(alignment: .topTrailing) {
+                if vehicle.isDemo { Chip(text: "Demo").padding(12) }
+            }
+            .overlay(alignment: .bottomLeading) { caption }
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(Palette.hairline))
+            .contentShape(shape)
+    }
+
+    /// Over the photo, always in night colours so it reads on the fade.
+    private var caption: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(vehicle.name)
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(Palette.primary)
+                    .lineLimit(2)
+                Text(subtitle)
+                    .font(.callout)
+                    .foregroundStyle(Palette.secondary)
+                    .lineLimit(1)
+            }
+            HStack(spacing: 22) {
+                Lamp(
+                    tone: openSessions > 0 ? .working : .neutral, symbol: "stethoscope",
+                    label: "Sessions", value: sessionsText)
+                recalls
+            }
+            // Clear of the Continue button, which sits level with the lamps.
+            .padding(.trailing, openSession == nil ? 0 : 96)
+        }
+        .padding(16)
+        .environment(\.colorScheme, .dark)
+    }
+
+    @ViewBuilder private var recalls: some View {
+        if let count = references.safety?.recalls.count {
+            Lamp(
+                tone: count > 0 ? .attention : .good,
+                symbol: count > 0 ? "exclamationmark.triangle" : "checkmark", label: "Recalls",
+                value: count > 0 ? "\(count)" : "None")
+        } else {
+            Lamp(
+                tone: .neutral, symbol: "exclamationmark.triangle", label: "Recalls",
+                value: references.isRefreshing ? "Looking up" : "Unknown")
+        }
+    }
+
+    private var openSession: DiagnosticSession? {
+        vehicle.orderedSessions.first { $0.status == .open }
     }
 
     private var openSessions: Int { vehicle.sessions.filter { $0.status == .open }.count }
 
     private var sessionsText: String {
         let count = vehicle.sessions.count
-        guard count > 0 else { return "No sessions" }
-        return openSessions > 0
-            ? "\(openSessions) open session\(openSessions == 1 ? "" : "s")"
-            : "\(count) session\(count == 1 ? "" : "s")"
+        guard count > 0 else { return "None" }
+        return openSessions > 0 ? "\(openSessions) open" : "\(count)"
     }
 
     private var subtitle: String {
@@ -184,18 +231,22 @@ private struct AddCard: View {
                 Image(systemName: symbol)
                     .font(.system(size: 30))
                     .foregroundStyle(.tint)
-                Text(title).font(.headline)
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(Palette.primary)
                 Text(detail)
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Palette.secondary)
                     .multilineTextAlignment(.center)
             }
             .padding(20)
-            .frame(maxWidth: .infinity, minHeight: 260)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .aspectRatio(16 / 9, contentMode: .fit)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .strokeBorder(
-                        Color.primary.opacity(0.18), style: StrokeStyle(lineWidth: 1.5, dash: [6]))
+                        Palette.tertiary.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [6])
+                    )
             )
             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }

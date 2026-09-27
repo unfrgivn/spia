@@ -16,7 +16,14 @@ struct SessionView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                header
+                if let workbench, let vehicle = session.vehicle {
+                    ClusterHeader(
+                        session: session, vehicle: vehicle,
+                        references: model.references(for: vehicle), workbench: workbench
+                    ) { showConnection = true }
+                } else {
+                    header
+                }
                 ProblemCard(problem: $session.problem)
                 if let workbench {
                     if let activity = workbench.activity, activity.sessionID == session.id {
@@ -24,7 +31,8 @@ struct SessionView: View {
                     }
                     ChecksSection(
                         vehicle: session.vehicle, workbench: workbench, session: session,
-                        connect: { showConnection = true }, editModules: { editingModules = true })
+                        connect: { showConnection = true },
+                        editModules: { editingModules = true })
                 }
                 TimelineSection(session: session, showTranscript: { transcript = $0 })
                 NoteComposer(note: $note, add: addNote)
@@ -33,13 +41,12 @@ struct SessionView: View {
             .frame(maxWidth: 860, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
+        .background(Palette.base)
         .navigationTitle(session.title)
         .platformSubtitle(subtitle)
+        .platformInlineTitle()
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                if let workbench {
-                    ConnectionPill(workbench: workbench) { showConnection = true }
-                }
                 Menu {
                     Button("Edit Modules…") { editingModules = true }
                         .disabled(session.vehicle == nil)

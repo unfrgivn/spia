@@ -52,6 +52,15 @@ extension View {
         #endif
     }
 
+    /// A small title in the navigation bar on iOS, where the screen carries its own big one.
+    @ViewBuilder func platformInlineTitle() -> some View {
+        #if os(iOS)
+            navigationBarTitleDisplayMode(.inline)
+        #else
+            self
+        #endif
+    }
+
     @ViewBuilder func platformBorderlessMenu() -> some View {
         #if os(macOS)
             menuStyle(.borderlessButton)

@@ -145,7 +145,7 @@ private struct RequirementChip: View {
     var body: some View {
         switch requirement {
         case .none: Chip(text: "No car needed")
-        case .ignitionOn: Chip(text: "Ignition on", color: .orange)
+        case .ignitionOn: Chip(text: "Ignition on", color: Palette.caution)
         }
     }
 }
@@ -160,18 +160,18 @@ struct ActivityPanel: View {
             VStack(alignment: .leading, spacing: 12) {
                 Label(prompt.action.title, systemImage: "hand.raised.fill")
                     .font(.title3.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Palette.caution)
                 Text(prompt.action.instructions)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack {
                     Button("Done, try again") { Task { await workbench.confirmPrompt() } }
                         .buttonStyle(.borderedProminent)
-                        .tint(.orange)
+                        .tint(Palette.caution)
                         .keyboardShortcut(.defaultAction)
                     Button("Cancel Check") { Task { await workbench.cancel() } }
                 }
             }
-            .card(tint: .orange)
+            .card(tint: Palette.caution)
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Action needed: \(prompt.action.title)")
         } else {
@@ -200,35 +200,5 @@ struct ActivityPanel: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Reading from the car: \(activity.job.title)")
         }
-    }
-}
-
-/// Always-visible connection status in the toolbar.
-struct ConnectionPill: View {
-    let workbench: Workbench
-    let action: () -> Void
-
-    var body: some View {
-        let summary = ConnectionSummary(adapter: workbench.adapter, state: workbench.connection)
-        let busy = workbench.activity != nil
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: summary.symbol)
-                Circle()
-                    .fill((busy ? Tone.working : summary.tone).color)
-                    .frame(width: 8, height: 8)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(busy ? "Reading from the car" : summary.title)
-                        .font(.subheadline.weight(.medium))
-                    Text(summary.detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: 260, alignment: .leading)
-            }
-        }
-        .help("Adapter connection")
-        .accessibilityLabel("Connection: \(summary.title), \(summary.detail)")
     }
 }

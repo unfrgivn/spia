@@ -4,11 +4,11 @@ import SwiftUI
 extension Tone {
     var color: Color {
         switch self {
-        case .neutral: return .secondary
-        case .working: return .blue
-        case .attention: return .orange
-        case .good: return .green
-        case .bad: return .red
+        case .neutral: return Palette.secondary
+        case .working: return Palette.working
+        case .attention: return Palette.caution
+        case .good: return Palette.pass
+        case .bad: return Palette.fault
         }
     }
 }
@@ -28,25 +28,43 @@ extension View {
         }
     }
 
-    /// The rounded, lightly filled container used for cards throughout the app.
+    /// A card: the card surface with a hairline edge. A tint marks a card that's about one
+    /// thing, such as a check waiting for the user.
     func card(tint: Color? = nil) -> some View {
-        padding(16)
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        return padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(tint.map { $0.opacity(0.08) } ?? PlatformColor.controlBackground)
-            )
+            .background(tint.map { $0.opacity(0.10) } ?? Palette.card, in: shape)
+            .overlay(shape.strokeBorder(tint.map { $0.opacity(0.4) } ?? Palette.hairline))
+    }
+
+    /// An instrument panel: darker than a card, with light catching its top edge.
+    func panel() -> some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        return padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Palette.panel, in: shape)
+            .overlay(shape.strokeBorder(Palette.hairline))
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(tint.map { $0.opacity(0.35) } ?? Color.primary.opacity(0.08))
+                shape.strokeBorder(
+                    LinearGradient(
+                        colors: [Palette.bezel, .clear], startPoint: .top, endPoint: .center))
             )
+    }
+
+    /// Small caps over a reading, as on a dash: "BATTERY", "CHECK ENGINE".
+    func instrumentCaption() -> some View {
+        font(.caption2.weight(.semibold))
+            .textCase(.uppercase)
+            .tracking(0.6)
+            .foregroundStyle(Palette.tertiary)
     }
 }
 
 /// Small rounded label, e.g. a DTC status flag.
 struct Chip: View {
     let text: String
-    var color: Color = .secondary
+    var color: Color = Palette.secondary
 
     var body: some View {
         Text(text)

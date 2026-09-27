@@ -97,6 +97,8 @@ private struct WorkspaceSidebar: View {
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .background(Palette.panel)
         .confirmationDialog(
             "Delete “\(deleting?.title ?? "")”?",
             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),

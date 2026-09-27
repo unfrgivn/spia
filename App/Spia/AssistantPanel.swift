@@ -54,6 +54,7 @@ struct AssistantPanel: View {
             addPhotos(urls)
             return true
         }
+        .background(Palette.panel)
         .errorAlert($problem)
         #if os(iOS)
             .sheet(isPresented: $showingSettings) {

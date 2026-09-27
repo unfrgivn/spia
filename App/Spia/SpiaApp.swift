@@ -25,6 +25,7 @@ struct SpiaApp: App {
                 }
             }
             .platformWindowFrame()
+            .tint(Palette.accent)
             #if DEBUG
                 .preferredColorScheme(Fixture.colorScheme)
             #endif
