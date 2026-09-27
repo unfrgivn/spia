@@ -14,32 +14,43 @@ struct SessionView: View {
     @State private var error: String?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                if let workbench, let vehicle = session.vehicle {
-                    ClusterHeader(
-                        session: session, vehicle: vehicle,
-                        references: model.references(for: vehicle), workbench: workbench
-                    ) { showConnection = true }
-                } else {
-                    header
-                }
-                ProblemCard(problem: $session.problem)
-                if let workbench {
-                    if let activity = workbench.activity, activity.sessionID == session.id {
-                        ActivityPanel(activity: activity, workbench: workbench)
+        ScrollViewReader { scroller in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    if let workbench, let vehicle = session.vehicle {
+                        ClusterHeader(
+                            session: session, vehicle: vehicle,
+                            references: model.references(for: vehicle), workbench: workbench
+                        ) { showConnection = true }
+                    } else {
+                        header
                     }
-                    ChecksSection(
-                        vehicle: session.vehicle, workbench: workbench, session: session,
-                        connect: { showConnection = true },
-                        editModules: { editingModules = true })
+                    ProblemCard(problem: $session.problem)
+                    if let workbench {
+                        if let activity = workbench.activity, activity.sessionID == session.id {
+                            ActivityPanel(activity: activity, workbench: workbench)
+                        }
+                        ChecksSection(
+                            vehicle: session.vehicle, workbench: workbench, session: session,
+                            connect: { showConnection = true },
+                            editModules: { editingModules = true })
+                    }
+                    TimelineSection(session: session, showTranscript: { transcript = $0 })
+                        .id(Self.timelineID)
+                    NoteComposer(note: $note, add: addNote)
                 }
-                TimelineSection(session: session, showTranscript: { transcript = $0 })
-                NoteComposer(note: $note, add: addNote)
+                .padding(28)
+                .frame(maxWidth: 860, alignment: .leading)
+                .frame(maxWidth: .infinity)
             }
-            .padding(28)
-            .frame(maxWidth: 860, alignment: .leading)
-            .frame(maxWidth: .infinity)
+            #if DEBUG
+                .task {
+                    guard Fixture.screen == .timeline else { return }
+                    // After the fixture's checks have added their results.
+                    try? await Task.sleep(for: .seconds(3))
+                    scroller.scrollTo(Self.timelineID, anchor: .top)
+                }
+            #endif
         }
         .background(Palette.base)
         .navigationTitle(session.title)
@@ -88,6 +99,8 @@ struct SessionView: View {
         }
         .errorAlert($error)
     }
+
+    private static let timelineID = "timeline"
 
     private var subtitle: String {
         guard let vehicle = session.vehicle else { return "" }

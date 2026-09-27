@@ -16,6 +16,8 @@
     enum Fixture {
         enum Screen: String {
             case garage, overview, references, photos, session, settings
+            /// The session, scrolled down to its timeline.
+            case timeline
         }
 
         static var enabled: Bool { UserDefaults.standard.string(forKey: "SpiaFixture") != nil }
@@ -51,7 +53,7 @@
             case .overview: .overview
             case .references: .references
             case .photos: .photos
-            case .session: vehicle.orderedSessions.first.map { .session($0.id) }
+            case .session, .timeline: vehicle.orderedSessions.first.map { .session($0.id) }
             case .garage, .settings, nil: nil
             }
         }
