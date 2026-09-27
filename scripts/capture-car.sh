@@ -1,24 +1,27 @@
 #!/usr/bin/env bash
 # Records everything spia needs from a real car into Tests/Fixtures/.
 #
-# Usage: scripts/capture-car.sh <label>
+# Usage: scripts/capture-car.sh <label> [spia options...]
 #   label: something like "ghibli-ignition-on" or "ghibli-idle"
+#   spia options: passed to both runs, e.g. --port /dev/cu.<adapter> for a
+#   Bluetooth adapter (only USB ports are picked automatically)
 #
 # Produces two transcripts: a probe (adapter + protocol + supported PIDs) and a
 # scripted terminal session covering DTCs, freeze frame, VIN, readiness, and a
 # few live PIDs. Every byte in both directions is captured; nothing is edited.
 set -euo pipefail
 
-label="${1:?usage: $0 <label>}"
+label="${1:?usage: $0 <label> [spia options...]}"
+shift
 cd "$(dirname "$0")/.."
 mkdir -p Tests/Fixtures
 
 echo "== probe"
-swift run -q spia probe --record "Tests/Fixtures/${label}-probe.txt"
+swift run -q spia probe --record "Tests/Fixtures/${label}-probe.txt" "$@"
 
 echo
 echo "== scripted terminal"
-swift run -q spia term --record "Tests/Fixtures/${label}-term.txt" <<'EOF'
+swift run -q spia term --record "Tests/Fixtures/${label}-term.txt" "$@" <<'EOF'
 0100
 0120
 0140
