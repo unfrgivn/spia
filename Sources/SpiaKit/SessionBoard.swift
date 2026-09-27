@@ -372,3 +372,34 @@ public struct SessionBoard: Equatable, Sendable {
         "\(codes.count) \(noun(codes.count, word))"
     }
 }
+
+extension SessionBoard.Row {
+    /// What Explain asks the assistant about this row, or nil when there's nothing to explain.
+    /// A row always asks the same words, which is how its answer is found again.
+    public var question: String? {
+        let place =
+            shortName.map { "\(SessionBoard.prose(name)) (\($0))" } ?? SessionBoard.prose(name)
+        switch status {
+        case .fault where codes.isEmpty:
+            return
+                "The check-engine light is on, but no codes are stored. What could that mean on this car, and what should I check first?"
+        case .fault, .codes:
+            let verb = codes.count == 1 ? "does" : "do"
+            return
+                "What \(verb) \(Self.list(codes)) from the \(place) mean on this car, and what should I check first?"
+        case .low, .high:
+            return
+                "The battery reads \(value ?? "an unusual voltage") at the OBD port. Is that a problem, and what should I check?"
+        case .noAnswer:
+            return "The \(place) didn't answer. Why might that be, and what should I try?"
+        case .notRead, .clear, .ok:
+            return nil
+        }
+    }
+
+    /// "80011B", "80011B and 80021B", "P0301, P0302 and P0420".
+    private static func list(_ codes: [String]) -> String {
+        guard let last = codes.last, codes.count > 1 else { return codes.first ?? "" }
+        return codes.dropLast().joined(separator: ", ") + " and " + last
+    }
+}

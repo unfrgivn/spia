@@ -69,6 +69,35 @@ struct SessionBoardTests {
         )
     }
 
+    @Test("a row with something to explain asks the same question every time")
+    func questions() async throws {
+        let results = try await demoResults([
+            .adapterCheck, .genericScan, .moduleDTCs(DemoGarage.airbag.target),
+            .moduleDTCs(DemoGarage.bodyComputer.target),
+        ])
+        let board = SessionBoard(modules: modules, results: results)
+        func question(_ name: String) -> String? {
+            board.rows.first { $0.name == name }?.question
+        }
+        #expect(
+            question("Airbag controller")
+                == "What do 80011B and 80021B from the airbag controller (ORC) mean on this car, and what should I check first?"
+        )
+        #expect(
+            question("Body computer")
+                == "What does 100900 from the body computer (BCM) mean on this car, and what should I check first?"
+        )
+        #expect(
+            question("Battery")
+                == "The battery reads 11.7 V at the OBD port. Is that a problem, and what should I check?"
+        )
+        #expect(question("Engine and transmission") == nil)
+        #expect(question("Steering column") == nil)
+        #expect(
+            SessionBoard(modules: modules, results: results).rows.map(\.question)
+                == board.rows.map(\.question))
+    }
+
     @Test("nothing read yet: every row says so, and the board says to run a check")
     func nothingRead() {
         let board = SessionBoard(modules: modules, results: [])
