@@ -19,6 +19,8 @@ struct VINTests {
         let vin = try VIN("zam57rts4h1249941")
         #expect(vin.value == "ZAM57RTS4H1249941")
         #expect(vin.checkDigitMatches)
+        #expect(!vin.isNorthAmerican)
+        #expect(try VIN("1FTFW1ET5DFC10312").isNorthAmerican)
         #expect(VIN.checkDigit(for: "ZAM57RTS4H1249941") == "4")
     }
 
@@ -74,7 +76,7 @@ struct ReferenceParsingTests {
         #expect(VPIC.displayMake("BMW") == "BMW")
     }
 
-    @Test("byYmmt: AWD and RWD variants merge into 5 recalls, 21 complaints, 110 bulletins")
+    @Test("byYmmt: variants and re-filings merge into 5 recalls, 21 complaints, 102 bulletins")
     func safety() throws {
         let record = try NHTSA.safety(from: fixture("nhtsa-byymmt-2017-maserati-ghibli.json"))
         #expect(
@@ -82,7 +84,7 @@ struct ReferenceParsingTests {
                 "18V173000", "17V046000", "16V856000", "16V840000", "16V839000",
             ])
         #expect(record.complaints.count == 21)
-        #expect(record.bulletins.count == 110)
+        #expect(record.bulletins.count == 102)
         let newest = try #require(record.bulletins.first)
         #expect(newest.number == "MAS005184 MTB 26-10")
         #expect(
@@ -205,12 +207,40 @@ struct LiveReferenceTests {
         #expect(identity.title == "2017 Maserati Ghibli")
         let safety = try await client.safety(for: identity)
         #expect(safety.recalls.count >= 5)
-        #expect(safety.bulletins.count >= 100)
+        #expect(safety.bulletins.count >= 90)
         let documents = try await client.documents(forBulletin: 11_034_165)
         #expect(documents.first?.url.pathExtension == "pdf")
         let photos = try await client.photos(for: identity)
         #expect(!photos.isEmpty)
         let image = try await client.get(try #require(photos.first).imageURL)
         #expect(image.count > 10_000)
+    }
+}
+
+@Suite("Bulletin summaries")
+struct BulletinSummaryTests {
+    @Test("a heading line becomes the title; hard-wrapped text is unwrapped to its first sentence")
+    func titles() throws {
+        let bulletins = try NHTSA.safety(from: fixture("nhtsa-byymmt-2017-maserati-ghibli.json"))
+            .bulletins
+        let exhaust = try #require(bulletins.first { $0.number == "MAS004816_A MTB 26-04" })
+        #expect(
+            exhaust.title
+                == "This bulletin outlines the refinishing procedure for restoring the black coating on exhaust tips affected by peeling or flaking paint."
+        )
+        let steering = try #require(bulletins.first { $0.number == "MAS003095 MTB 24-21" })
+        #expect(steering.title.hasSuffix("possible steering wheel vibration when braking."))
+        #expect(steering.detail == "This Bulletin serves as an ADDENDUM to MAS002731")
+        let wheels = try #require(bulletins.first { $0.number == "MAS004669 MTB 25-13" })
+        #expect(wheels.title == "Wheel Size Vehicle Config Update Info")
+        #expect(wheels.detail.hasPrefix("In case of rim replacement, which may involve"))
+    }
+
+    @Test("a bulletin filed three times appears once, as its newest filing")
+    func refilings() throws {
+        let bulletins = try NHTSA.safety(from: fixture("nhtsa-byymmt-2017-maserati-ghibli.json"))
+            .bulletins
+        let thermostat = bulletins.filter { $0.number == "MAS005184 MTB 26-10" }
+        #expect(thermostat.map(\.id) == [11_034_165])
     }
 }

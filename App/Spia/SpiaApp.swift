@@ -45,48 +45,26 @@ struct SpiaApp: App {
     }
 }
 
+/// The garage until a vehicle is opened; then that vehicle's workspace.
 struct ContentView: View {
-    @Environment(AppModel.self) private var model
     @Query(sort: \Vehicle.createdAt) private var vehicles: [Vehicle]
-    @State private var selection: UUID?
-    @State private var editingVehicle = false
-    @State private var problem: String?
+    /// The open vehicle, kept per window across launches.
+    @SceneStorage("openVehicle") private var openVehicleID = ""
+    @State private var initialSection: WorkspaceSection?
 
     var body: some View {
-        NavigationSplitView {
-            SidebarView(selection: $selection, addVehicle: { editingVehicle = true })
-                .navigationSplitViewColumnWidth(min: 220, ideal: 260)
-        } detail: {
-            if let session = selectedSession {
-                SessionView(session: session)
-                    .id(session.id)
-            } else if vehicles.isEmpty {
-                WelcomeView(addVehicle: { editingVehicle = true }, addDemo: addDemo)
-            } else {
-                ContentUnavailableView(
-                    "Choose a session", systemImage: "stethoscope",
-                    description: Text(
-                        "Pick a session in the sidebar, or start a new one for a vehicle."))
+        if let vehicle = vehicles.first(where: { $0.id.uuidString == openVehicleID }) {
+            VehicleWorkspace(
+                vehicle: vehicle, leave: { openVehicleID = "" }, selection: initialSection
+            )
+            .id(vehicle.id)
+        } else {
+            NavigationStack {
+                GarageView { vehicle, session in
+                    initialSection = session.map { .session($0.id) } ?? .overview
+                    openVehicleID = vehicle.id.uuidString
+                }
             }
-        }
-        .sheet(isPresented: $editingVehicle) {
-            VehicleEditor { vehicle in
-                selection = vehicle.orderedSessions.first?.id
-            }
-        }
-        .errorAlert($problem)
-    }
-
-    private var selectedSession: DiagnosticSession? {
-        guard let selection else { return nil }
-        return vehicles.lazy.flatMap(\.sessions).first { $0.id == selection }
-    }
-
-    private func addDemo() {
-        do {
-            selection = try model.garage.addDemoVehicle().orderedSessions.first?.id
-        } catch {
-            problem = String(describing: error)
         }
     }
 }

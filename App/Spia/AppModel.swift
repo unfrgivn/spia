@@ -7,8 +7,8 @@ import SpiaStore
 import SwiftData
 
 /// App-wide state: the garage, one workbench per adapter so a connection survives switching
-/// between sessions of the same vehicle, and one assistant conversation per session so a reply
-/// keeps arriving while the user looks elsewhere.
+/// between sessions of the same vehicle, one assistant conversation per session so a reply
+/// keeps arriving while the user looks elsewhere, and one set of references per vehicle.
 @MainActor
 @Observable
 final class AppModel {
@@ -17,6 +17,7 @@ final class AppModel {
     let assistant = AssistantConfiguration()
     private var workbenches: [UUID: Workbench] = [:]
     private var conversations: [UUID: AssistantConversation] = [:]
+    private var referenceSets: [UUID: VehicleReferences] = [:]
 
     init(container: ModelContainer, files: SpiaFiles) {
         self.container = container
@@ -45,6 +46,13 @@ final class AppModel {
         return conversation
     }
 
+    func references(for vehicle: Vehicle) -> VehicleReferences {
+        if let existing = referenceSets[vehicle.id] { return existing }
+        let references = VehicleReferences(vehicleID: vehicle.id, files: garage.files)
+        referenceSets[vehicle.id] = references
+        return references
+    }
+
     func delete(_ session: DiagnosticSession) throws {
         conversations.removeValue(forKey: session.id)?.stop()
         try garage.delete(session)
@@ -52,6 +60,7 @@ final class AppModel {
 
     func delete(_ vehicle: Vehicle) throws {
         for session in vehicle.sessions { conversations.removeValue(forKey: session.id)?.stop() }
+        referenceSets.removeValue(forKey: vehicle.id)
         try garage.delete(vehicle)
     }
 

@@ -391,8 +391,24 @@ private struct ToolCallCard: View {
         switch try? AssistantTools.parse(call) {
         case .proposeCheck(let proposal)?: proposalCard(proposal)
         case .askUser(let question)?: questionCard(question)
+        case .searchBulletins(let query)?: searchRow(query)
         case nil: status.card()
         }
+    }
+
+    /// Searches run by themselves, so they're a quiet line rather than a card.
+    private func searchRow(_ query: String) -> some View {
+        Label {
+            if case .completed(let summary) = resolution {
+                Text(summary)
+            } else {
+                Text("Searching bulletins for “\(query)”")
+            }
+        } icon: {
+            Image(systemName: "doc.text.magnifyingglass")
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
 
     private func proposalCard(_ proposal: CheckProposal) -> some View {

@@ -59,7 +59,7 @@ struct ReferenceStoreTests {
         #expect(loaded.fetchedAt == snapshot.fetchedAt)
         let references = VehicleReferences(vehicleID: vehicle.id, files: garage.files)
         #expect(references.identity?.title == "2017 Maserati Ghibli")
-        #expect(references.safety?.bulletins.count == 110)
+        #expect(references.safety?.bulletins.count == 102)
         // Nothing is downloaded yet, so no photos are shown.
         #expect(references.photos.isEmpty)
     }
@@ -75,7 +75,7 @@ struct ReferenceStoreTests {
         #expect(references.decodedVehicle?.hasPrefix("2017 Maserati Ghibli, Sport, M157") == true)
         #expect(references.recalls.map(\.campaign).first == "18V173000")
         #expect(references.recalls.first?.date == "2018-03-14")
-        #expect(references.bulletinCount == 110)
+        #expect(references.bulletinCount == 102)
         #expect(references.complaintsByComponent.prefix(2) == ["ENGINE: 7", "POWER TRAIN: 7"])
         let instructions = AssistantInstructions.make(
             briefing: garage.briefing(for: session, adapter: nil), provider: .anthropic,

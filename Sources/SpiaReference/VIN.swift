@@ -35,6 +35,9 @@ public struct VIN: Sendable, Hashable, Codable, CustomStringConvertible {
 
     public var description: String { value }
 
+    /// North American VINs (first character 1-5) must carry a valid check digit.
+    public var isNorthAmerican: Bool { value.first.map { "12345".contains($0) } ?? false }
+
     /// The check digit for a 17-character VIN of valid characters: a weighted sum of
     /// transliterated values, modulo 11, with 10 written as `X`.
     public static func checkDigit(for vin: String) -> Character? {

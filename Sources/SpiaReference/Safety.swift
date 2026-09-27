@@ -33,12 +33,12 @@ public struct Complaint: Codable, Sendable, Equatable, Identifiable {
 /// filed with NHTSA for this make, model, and year. Filings are often broad: a bulletin may
 /// cover other models or conditions this car doesn't have.
 public struct Bulletin: Codable, Sendable, Equatable, Identifiable {
-    /// NHTSA ID, used to fetch the documents.
+    /// NHTSA ID of the newest filing, used to fetch the documents.
     public let id: Int
     /// The maker's number, e.g. `MAS005184 MTB 26-10`.
     public let number: String
     public let date: Date?
-    /// The first line of the summary.
+    /// The summary's heading, or its first sentence.
     public let title: String
     /// The rest of the summary, often empty.
     public let detail: String
@@ -105,7 +105,8 @@ public enum NHTSA {
     }
 
     /// Reads a `byYmmt` reply. NHTSA lists each variant (e.g. AWD and RWD) separately with
-    /// mostly the same records, so records are merged by ID.
+    /// mostly the same records, so records are merged by ID; a bulletin filed more than once
+    /// under the same number keeps only its newest filing.
     public static func safety(from data: Data) throws -> SafetyRecord {
         guard let reply = try? JSONDecoder().decode(YMMTReply.self, from: data) else {
             throw ReferenceError.malformed("NHTSA")
@@ -127,10 +128,19 @@ public enum NHTSA {
                 bulletins[bulletin.id] = bulletins[bulletin.id] ?? bulletin
             }
         }
+        var newestByNumber: [String: Bulletin] = [:]
+        for bulletin in bulletins.values {
+            if let kept = newestByNumber[bulletin.number],
+                newestFirst(\Bulletin.date, \Bulletin.id)(kept, bulletin)
+            {
+                continue
+            }
+            newestByNumber[bulletin.number] = bulletin
+        }
         return SafetyRecord(
             recalls: recalls.values.sorted(by: newestFirst(\.reportDate, \.id)),
             complaints: complaints.values.sorted(by: newestFirst(\.dateFiled, \.id)),
-            bulletins: bulletins.values.sorted(by: newestFirst(\.date, \.id)))
+            bulletins: newestByNumber.values.sorted(by: newestFirst(\.date, \.id)))
     }
 
     public static func bulletinDocuments(from data: Data) throws -> [BulletinDocument] {
@@ -228,15 +238,45 @@ private struct RawCommunication: Decodable {
     let associatedDocumentsCount: Int?
 
     var bulletin: Bulletin {
-        let lines = (summary ?? "").split(whereSeparator: \.isNewline).map {
-            $0.trimmingCharacters(in: .whitespaces)
-        }.filter { !$0.isEmpty }
         let number = manufacturerCommunicationNumber ?? "NHTSA \(nhtsaIdNumber)"
+        let (title, detail) = Self.split(summary ?? "")
         return Bulletin(
             id: nhtsaIdNumber, number: number, date: NHTSA.date(communicationDate),
-            title: lines.first ?? number, detail: lines.dropFirst().joined(separator: "\n"),
+            title: title.isEmpty ? number : title, detail: detail,
             components: components?.map(\.name) ?? [], documentCount: associatedDocumentsCount ?? 0
         )
+    }
+
+    /// Summaries are hard-wrapped near 95 characters. A short first line without a full stop,
+    /// followed by a capitalised line, is a heading; otherwise the unwrapped text's first
+    /// sentence is. List items stay on their own lines.
+    static func split(_ summary: String) -> (title: String, detail: String) {
+        let lines = summary.split(whereSeparator: \.isNewline).map {
+            $0.trimmingCharacters(in: .whitespaces)
+        }.filter { !$0.isEmpty }
+        guard let first = lines.first else { return ("", "") }
+        if lines.count > 1, first.count <= 80, !first.hasSuffix("."),
+            lines[1].first?.isUppercase == true
+        {
+            return (first, unwrap(lines.dropFirst()))
+        }
+        let text = unwrap(lines[...])
+        guard let stop = text.range(of: ". ") else { return (text, "") }
+        return (
+            String(text[..<stop.lowerBound]) + ".",
+            String(text[stop.upperBound...]).trimmingCharacters(in: .whitespaces)
+        )
+    }
+
+    private static func unwrap(_ lines: ArraySlice<String>) -> String {
+        var text = ""
+        for line in lines {
+            if !text.isEmpty {
+                text += "•-*".contains(line.prefix(1)) ? "\n" : " "
+            }
+            text += line
+        }
+        return text
     }
 }
 
