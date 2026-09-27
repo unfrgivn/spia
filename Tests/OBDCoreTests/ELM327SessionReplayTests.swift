@@ -117,4 +117,83 @@ struct ELM327SessionReplayTests {
             try await session.send("ATI")
         }
     }
+
+    @Test("replays the original generic OBD command sequence into production reports")
+    func ghibliGenericReports() async throws {
+        let url = fixtureURL("ghibli-ignition-on-term.txt")
+        let events = try Transcript.decodeFile(String(contentsOf: url, encoding: .utf8))
+        let transport = try ReplayTransport(contentsOf: url)
+        let session = ELM327Session(transport: transport)
+        _ = try await session.connect(protocol: .automatic)
+
+        guard
+            let start = events.firstIndex(where: {
+                $0.direction == .tx && $0.bytes == Array("ATSP0\r".utf8)
+            }),
+            let end = events[start...].firstIndex(where: {
+                $0.direction == .tx && $0.bytes == Array("ATDP\r".utf8)
+            })
+        else { throw ReplayError.exhausted }
+
+        var observations: [OBDObservation] = []
+        for event in events[(start + 1)..<end] where event.direction == .tx {
+            let text = String(decoding: event.bytes.dropLast(), as: UTF8.self)
+            guard text.count.isMultiple(of: 2), let bytes = hexBytes(text) else { continue }
+            let request = OBDRequest(raw: bytes)
+            do {
+                let responses = try await session.request(request)
+                observations += responses.map {
+                    OBDObservation(
+                        request: request, ecu: $0.ecu,
+                        outcome: .response(ServiceResponse.decode($0.payload)))
+                }
+            } catch ELM327Error.adapter(.noData) {
+                // The fixture has no ECU identity to attach to NO DATA. Positive responses below
+                // still prove the production parser/report path for both responding ECUs.
+            }
+        }
+
+        let reports = OBDReportBuilder.info(observations: observations)
+        #expect(reports.count == 2)
+        #expect(reports.contains { $0.vin == .positive("ZAM57RTS4H1249941") })
+        #expect(reports.contains { $0.vin == .unavailable("not requested") })
+        #expect(reports.contains { $0.calibrationIDs == .positive(["670106994 G"]) })
+        #expect(reports.contains { $0.calibrationIDs == .positive(["670101187"]) })
+        #expect(reports.contains { $0.cvns == .positive(["5E4C9C84"]) })
+        #expect(reports.contains { $0.cvns == .positive(["FD5A5568"]) })
+        #expect(reports.contains { $0.name == .positive("ECM1-EngineControl1\0") })
+        #expect(reports.contains { $0.name == .positive("TCM\0-TransmisCtrl\0\0\0") })
+
+        let scans = OBDReportBuilder.scan(observations: observations)
+        #expect(scans.count == 2)
+        #expect(
+            scans.allSatisfy {
+                $0.stored == .positive([]) && $0.pending == .positive([])
+                    && $0.permanent == .positive([])
+            })
+        #expect(scans.allSatisfy { $0.freezeFrameDTC == .positive(nil) })
+        #expect(
+            scans.allSatisfy {
+                if case .positive(let status) = $0.readiness {
+                    return !status.milOn && status.dtcCount == 0
+                        && status.complete.values.allSatisfy { $0 }
+                }
+                return false
+            })
+    }
+
+    private func hexBytes(_ text: String) -> [UInt8]? {
+        stride(from: 0, to: text.count, by: 2).map { index in
+            let start = text.index(text.startIndex, offsetBy: index)
+            let end = text.index(start, offsetBy: 2)
+            return UInt8(text[start..<end], radix: 16)
+        }.reduce(into: [UInt8]()) { result, byte in
+            guard let byte else { result.removeAll(); return }
+            result.append(byte)
+        }.nilIfEmpty
+    }
+}
+
+private extension Array where Element == UInt8 {
+    var nilIfEmpty: [UInt8]? { isEmpty ? nil : self }
 }

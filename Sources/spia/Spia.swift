@@ -6,7 +6,10 @@ struct Spia: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "spia",
         abstract: "OBD-II scan tool for ELM327/STN adapters such as the Vgate vLinker FS.",
-        subcommands: [Ports.self, Probe.self, Term.self, Capture.self, Discover.self, UDS.self])
+        subcommands: [
+            Ports.self, Probe.self, Term.self, Capture.self, Discover.self, Scan.self, Info.self,
+            UDS.self,
+        ])
 }
 
 struct GlobalOptions: ParsableArguments {

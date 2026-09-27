@@ -56,7 +56,7 @@ Targets:
 | 3 | Recording/replay transports + `--record` flag | Real transcripts land in `Tests/Fixtures/` | done, including car captures |
 | 4 (#4) | `spia capture` (ATMA monitor, candump log, per-ID summary, 2 Mbps UART) | Ghibli traffic captured without reported overflow at 2 Mbps | shipped (PR #9); second-bus traffic also observed with STP 53 |
 | 5 (#5) | UDS/ISO-TP client and module discovery, reads first | Complete DTC replies with explicit request/reply IDs and correct flow control | in progress; live ORC/ABS/BCM reads recorded, CLI integration pending |
-| 6 (#1) | `spia scan` (stored/pending/permanent DTCs, freeze frame, readiness) + `spia info` (VIN, CAL IDs) | Ghibli replay fixtures already recorded; decode matches `term` output | pending |
+| 6 (#1) | `spia scan` (stored/pending/permanent DTCs, freeze frame, readiness) + `spia info` (VIN, CAL IDs) | Pure report/decoder tests, original `ghibli-ignition-on-term.txt` replay through production request/decode paths, CLI help/validation; live execution remains unverified | offline milestone implemented; live unverified |
 | 7 (#2) | `spia clear` | Codes clear, CEL off, re-scan clean | pending |
 | 8 (#3) | `spia live` with CSV logging | RPM/coolant/etc. track reality at idle | pending |
 | iOS (#6) | `BLETransport` (CoreBluetooth), SwiftUI shell | Bluetooth FS on iPhone | future |

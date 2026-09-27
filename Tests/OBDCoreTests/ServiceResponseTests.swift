@@ -80,7 +80,10 @@ struct ServiceResponseTests {
 
     @Test("service 09 ECU name and supported info types")
     func ecuNameAndSupport() {
-        #expect(ServiceResponse.decode([0x49, 0x0A, 0x01] + Array("ECM".utf8)) == .ecuName("ECM"))
+        #expect(
+            ServiceResponse.decode(
+                [0x49, 0x0A, 0x01] + Array("ECM".utf8) + Array(repeating: UInt8(0), count: 17))
+                == .ecuName("ECM\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"))
         #expect(
             ServiceResponse.decode([0x49, 0x00, 0x55, 0x40, 0x00, 0x00])
                 == .supportedInfoTypes([0x02, 0x04, 0x06, 0x08, 0x0A]))
