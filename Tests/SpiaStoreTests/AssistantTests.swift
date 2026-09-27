@@ -16,7 +16,7 @@ struct AssistantConversationTests {
     let configuration: AssistantConfiguration
 
     init() throws {
-        container = try Garage.container(inMemory: true)
+        container = try Garage.inMemoryContainer()
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
             "spia-assist-\(UUID().uuidString)")
         garage = Garage(context: container.mainContext, files: SpiaFiles(root: root))

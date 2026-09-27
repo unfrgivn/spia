@@ -21,6 +21,9 @@ public struct SpiaFiles: Sendable {
         "Transcripts/\(session.uuidString)/\(entry.uuidString).txt"
     }
 
+    /// The database of vehicles, sessions, and conversations.
+    public var storeURL: URL { root.appendingPathComponent("Library.store") }
+
     public func url(for relativePath: String) -> URL {
         root.appendingPathComponent(relativePath)
     }
@@ -48,10 +51,23 @@ public final class Garage {
         self.files = files
     }
 
-    public static func container(inMemory: Bool = false) throws -> ModelContainer {
-        let schema = Schema(versionedSchema: SpiaSchemaV1.self)
-        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: inMemory)
-        return try ModelContainer(
+    /// The library stored in `files`. Always an explicit path: SwiftData's default is a
+    /// `default.store` shared by every unsandboxed app, and opening another app's store migrates
+    /// it to this schema, deleting that app's data.
+    public static func container(at files: SpiaFiles) throws -> ModelContainer {
+        try FileManager.default.createDirectory(at: files.root, withIntermediateDirectories: true)
+        return try container(ModelConfiguration(schema: schema, url: files.storeURL))
+    }
+
+    /// A library that lives only as long as the process, for tests.
+    public static func inMemoryContainer() throws -> ModelContainer {
+        try container(ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
+    }
+
+    private static let schema = Schema(versionedSchema: SpiaSchemaV1.self)
+
+    private static func container(_ configuration: ModelConfiguration) throws -> ModelContainer {
+        try ModelContainer(
             for: schema, migrationPlan: SpiaMigrationPlan.self, configurations: configuration)
     }
 

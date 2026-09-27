@@ -14,7 +14,7 @@ struct SpiaStoreTests {
     let root: URL
 
     init() throws {
-        container = try Garage.container(inMemory: true)
+        container = try Garage.inMemoryContainer()
         root = FileManager.default.temporaryDirectory.appendingPathComponent(
             "spia-store-\(UUID().uuidString)")
         garage = Garage(context: container.mainContext, files: SpiaFiles(root: root))
@@ -116,6 +116,21 @@ struct SpiaStoreTests {
         #expect(workbench.activity == nil)
         #expect(session.entries.isEmpty)
         #expect(workbench.connection.status != nil)
+    }
+
+    @Test("the library is written to Spia's own folder and reopens with its data")
+    func onDisk() throws {
+        let files = SpiaFiles(root: root.appendingPathComponent("disk", isDirectory: true))
+        do {
+            let container = try Garage.container(at: files)
+            try Garage(context: container.mainContext, files: files).addVehicle(name: "Ghibli")
+        }
+        #expect(FileManager.default.fileExists(atPath: files.storeURL.path))
+        #expect(files.storeURL.deletingLastPathComponent() == files.root)
+
+        let reopened = try Garage.container(at: files)
+        #expect(
+            try reopened.mainContext.fetch(FetchDescriptor<Vehicle>()).map(\.name) == ["Ghibli"])
     }
 
     @Test("notes are trimmed and empty notes are ignored")
