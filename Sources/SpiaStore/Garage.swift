@@ -84,7 +84,7 @@ public final class Garage {
     @discardableResult
     public func addDemoVehicle() throws -> Vehicle {
         let vehicle = Vehicle(
-            name: "\(DemoGarage.vehicleName) (demo)", vin: DemoGarage.vin,
+            name: DemoGarage.vehicleName, vin: DemoGarage.vin,
             notes:
                 "Recorded on the car on 2026-09-26. Wheel controls and horn dead, airbag lamp on.",
             isDemo: true)

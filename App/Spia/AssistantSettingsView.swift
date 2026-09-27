@@ -101,7 +101,7 @@ private struct ProviderKeySection: View {
                     }
                 }
                 if let keysURL {
-                    Link("Get a \(provider.displayName) API key", destination: keysURL)
+                    Link("Get an API key", destination: keysURL)
                         .font(.caption)
                 }
             }

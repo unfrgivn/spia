@@ -34,7 +34,7 @@ struct SessionView: View {
             .frame(maxWidth: .infinity)
         }
         .navigationTitle(session.title)
-        .navigationSubtitle(session.vehicle?.name ?? "")
+        .navigationSubtitle(subtitle)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 if let workbench {
@@ -80,6 +80,11 @@ struct SessionView: View {
             model.conversation(for: session).workbench = workbench
         }
         .errorAlert($error)
+    }
+
+    private var subtitle: String {
+        guard let vehicle = session.vehicle else { return "" }
+        return vehicle.isDemo ? "\(vehicle.name) · Demo" : vehicle.name
     }
 
     private var header: some View {

@@ -219,7 +219,7 @@ struct ConnectionPill: View {
                     .frame(width: 8, height: 8)
                 VStack(alignment: .leading, spacing: 0) {
                     Text(busy ? "Reading from the car" : summary.title)
-                        .font(.callout.weight(.medium))
+                        .font(.subheadline.weight(.medium))
                     Text(summary.detail)
                         .font(.caption)
                         .foregroundStyle(.secondary)
