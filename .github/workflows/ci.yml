@@ -24,4 +24,22 @@ jobs:
         run: swift test
 
       - name: Lint
-        run: swift format lint --strict --recursive Sources Tests Package.swift
+        run: swift format lint --strict --recursive Sources Tests Package.swift App
+
+  app:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.0.app || sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+
+      - name: Build the Mac app (universal, warnings are errors)
+        run: >
+          xcodebuild -project App/SpiaApp.xcodeproj -scheme Spia -configuration Release
+          -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO build
+
+      - name: iOS compile check for shared libraries
+        run: >
+          swift build --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          --triple arm64-apple-ios17.0-simulator --target SpiaStore -Xswiftc -warnings-as-errors
