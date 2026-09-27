@@ -30,6 +30,18 @@ struct Capture: AsyncParsableCommand {
     @Option(
         name: .long,
         help: ArgumentHelp(
+            "STN protocol number (STP) to select after connecting, overriding --protocol.",
+            discussion:
+                "53 is ISO 15765 11-bit on the second CAN transceiver (DLC pins 3/11, 125k), which "
+                + "is where FCA-derived cars put the interior bus. See the STN11xx reference."))
+    var stp: Int?
+
+    @Option(name: .long, help: "CAN bit rate for --stp (STPBR), e.g. 125000.")
+    var stpBaud: Int?
+
+    @Option(
+        name: .long,
+        help: ArgumentHelp(
             "Switch the adapter UART to this rate before monitoring (STN firmware only).",
             discussion:
                 "A busy 500k bus overflows the adapter at 115200. 0 keeps the connection rate."
@@ -53,6 +65,19 @@ struct Capture: AsyncParsableCommand {
             if uartBaud > 0, uartBaud != options.baud {
                 try await connection.session.switchBaud(to: uartBaud)
                 stderr("UART switched to \(uartBaud) baud.")
+            }
+            if let stp {
+                var setup = ["STP \(stp)"]
+                if let stpBaud {
+                    setup.append("STPBR \(stpBaud)")
+                }
+                for line in setup {
+                    let reply = try await connection.session.send(line)
+                    guard reply.contains("OK") else {
+                        throw ELM327Error.unexpectedResponse(command: line, response: reply)
+                    }
+                }
+                stderr("STN protocol \(stp): \(try await connection.session.send("STPRS"))")
             }
             stderr("Monitoring with \(command); Ctrl-C to stop.")
 
@@ -196,8 +221,4 @@ enum CandumpFormat {
     static func id(_ header: UInt32) -> String {
         String(format: header > 0x7FF ? "%08X" : "%03X", header)
     }
-}
-
-private func stderr(_ text: String) {
-    FileHandle.standardError.write(Data((text + "\n").utf8))
 }

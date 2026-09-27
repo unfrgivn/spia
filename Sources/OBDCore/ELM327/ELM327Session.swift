@@ -212,6 +212,16 @@ public actor ELM327Session {
         _ = try await readUntil(UInt8(ascii: ">"), timeout: .seconds(2), command: "stop monitor")
     }
 
+    /// Aims subsequent requests at one module. Each command must answer `OK`.
+    public func address(_ address: DiagnosticAddress, on bus: CANBus = .highSpeed) async throws {
+        for command in address.setupCommands(on: bus) {
+            let response = try await send(command)
+            guard response.contains("OK") else {
+                throw ELM327Error.unexpectedResponse(command: command, response: response)
+            }
+        }
+    }
+
     /// Sends an OBD request and returns one reassembled payload per responding ECU.
     ///
     /// Protocol auto-search can take several seconds on the first request, hence the long

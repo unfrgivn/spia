@@ -57,6 +57,11 @@ struct Connection {
     }
 }
 
+/// Human chatter goes to stderr so stdout can stay machine-readable.
+func stderr(_ text: String) {
+    FileHandle.standardError.write(Data((text + "\n").utf8))
+}
+
 /// Mirrors traffic to stderr for `--verbose`. Instrumentation only; it never alters bytes.
 actor LoggingTransport: Transport {
     private let base: Transport
