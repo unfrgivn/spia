@@ -54,12 +54,22 @@ Targets:
 | 1 | Package skeleton, `OBDCore` pure decoders + unit tests | `swift build`, `swift test` green | done |
 | 2 | `SerialTransport` + `ELM327Session` + `spia ports` / `spia probe` | Hardware day 1: `ATZ`, `ATI`, `ATRV`, `ATDP` answer from the FS | done |
 | 3 | Recording/replay transports + `--record` flag | Real transcripts land in `Tests/Fixtures/` | done (USB-only capture; car captures next) |
-| 4 (#1) | `spia scan` (stored/pending/permanent DTCs, freeze frame, readiness) + `spia info` (VIN, CAL IDs) | Reads the Ghibli's active codes; cross-check against dash / known scanner | pending |
-| 5 (#2) | `spia clear` | Codes clear, CEL off, re-scan clean | pending |
-| 6 (#3) | `spia live` with CSV logging | RPM/coolant/etc. track reality at idle | pending |
-| 7 (#4) | `spia capture` (ATMA monitor to file) | We see Maserati CAN traffic | pending |
-| 8 (#5) | UDS/ISO-TP client, Maserati module discovery | Non-powertrain ECUs answer | future |
+| 4 (#4) | `spia capture` (ATMA/STM monitor to file, ID filters, 125k pins 3/11 via `STP 33`) | We see Maserati CAN traffic; know which buses reach the DLC | next |
+| 5 (#5) | UDS/ISO-TP client: `0x19` ReadDTC, `0x22` ReadDID, `0x14` ClearDTC; module discovery | ORC and BCM answer; codes match the clock-spring diagnosis below | next |
+| 6 (#1) | `spia scan` (stored/pending/permanent DTCs, freeze frame, readiness) + `spia info` (VIN, CAL IDs) | Ghibli replay fixtures already recorded; decode matches `term` output | pending |
+| 7 (#2) | `spia clear` | Codes clear, CEL off, re-scan clean | pending |
+| 8 (#3) | `spia live` with CSV logging | RPM/coolant/etc. track reality at idle | pending |
 | iOS (#6) | `BLETransport` (CoreBluetooth), SwiftUI shell | Bluetooth FS on iPhone | future |
+
+Reordered 2026-09-26: the fault that started this project is not an emissions code (Mode 03/07/0A are clean), so UDS access to body modules moves ahead of the generic-OBD polish.
+
+## The Ghibli's actual fault (why UDS comes first)
+
+Symptoms: every steering-wheel control dead (volume, cluster menu, cruise), horn dead, airbag lamp on, ABS lamp on. Column-mounted paddles and wiper stalk work. Washer pump silent (separate fault, probably pump/fuse).
+
+Everything that routes through the clock spring ribbon is dead; everything that bypasses it works. The airbag lamp means the ORC sees the driver squib loop open, which also runs through the ribbon. Working diagnosis: clock spring, with "fuse or unplugged connector at the column base" as the cheap thing to rule out first.
+
+Modules to interrogate over UDS: **ORC** (expect a driver-squib-open B-code), **BCM** (horn/cruise switch faults, washer pump output), **SCCM** (steering column module; hosts the switches and steering angle sensor), **ABS** (probably a lost-comm/steering-angle U- or C-code). None of these answer Mode 01/03.
 
 ## Hardware notes
 
@@ -74,8 +84,11 @@ Confirmed on the bench (2026-09-26, USB power only, no car):
 - Ghibli M157: expect ISO 15765-4 CAN 11-bit 500k for generic OBD (`ATSP6`). Manufacturer modules are likely UDS over ISO-TP with no public address/DID map. FCA-derived electronics but not identical to Chrysler.
 - 2017 predates FCA's Security Gateway (introduced MY2018 on Chrysler/Jeep/RAM). Unverified for Maserati; check on the car.
 
-## Open questions (answer on the car)
+Confirmed on the car (2017 Ghibli S Q4, 2026-09-26; fixtures in `Tests/Fixtures/ghibli-*.txt`):
 
-- Exact `ATI` / `STI` strings and firmware version of the FS.
-- Which ECUs respond to functional request `7DF` (expect at least `7E8` engine, maybe `7E9` transmission).
-- Whether `ATMA` on the OBD port sees body-bus traffic or only the diagnostic CAN.
+- ISO 15765-4 CAN 11-bit 500k. `ATSP0` auto-detects as `A6`.
+- Functional `7DF` gets two answers: ECM `7E8` (22 PIDs in 01-20) and TCM `7E9` (6 PIDs). VIN `ZAM57RTS4H1249941`. ECM CAL ID `670106994 G`, TCM `670101187`. ECU names `ECM1-EngineControl1`, `TCM\0-TransmisCtrl`.
+- No stored/pending/permanent DTCs, MIL off, all monitors complete. Distance since clear: ECM 1673 km, TCM 1603 km.
+- Car must be in RUN, not ACC. In ACC the bus is alive (~40 IDs at 10-20 Hz, e.g. `102`, `10C`, `10D`, `2F9`) but `0100` gets `NO DATA` on `ATSP6`/`7` and `CAN ERROR` on `ATSP8`. ACC to RUN is one more START press without the brake.
+- STN commands: `STPRS` works; `STP`, `STPBR`, `STCSWM` returned `?`. Probably called without arguments; retry as `STP 33` / `STPBR 125000` when testing whether CAN-IHS (125k) is on DLC pins 3/11.
+- Open: is the SCCM/ORC/BCM traffic on the 500k bus we can see, or on IHS behind the BCM gateway? Decides whether UDS to body modules works from the DLC at all.
