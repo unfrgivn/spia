@@ -7,4 +7,7 @@ public protocol Transport: Sendable {
     func close() async
     func write(_ bytes: [UInt8]) async throws
     func read(timeout: Duration) async throws -> [UInt8]
+    /// Changes the line rate on the host side. Only meaningful for UART-backed transports;
+    /// Bluetooth and replay transports accept and ignore it.
+    func setBaud(_ baud: Int) async throws
 }

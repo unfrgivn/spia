@@ -54,7 +54,7 @@ Targets:
 | 1 | Package skeleton, `OBDCore` pure decoders + unit tests | `swift build`, `swift test` green | done |
 | 2 | `SerialTransport` + `ELM327Session` + `spia ports` / `spia probe` | Hardware day 1: `ATZ`, `ATI`, `ATRV`, `ATDP` answer from the FS | done |
 | 3 | Recording/replay transports + `--record` flag | Real transcripts land in `Tests/Fixtures/` | done (USB-only capture; car captures next) |
-| 4 (#4) | `spia capture` (ATMA/STM monitor to file, ID filters, 125k pins 3/11 via `STP 33`) | We see Maserati CAN traffic; know which buses reach the DLC | next |
+| 4 (#4) | `spia capture` (ATMA monitor, candump log, per-ID summary, 2 Mbps UART) | 124 IDs captured losslessly on the Ghibli; steering frames identified | done (PR #9); 125k pins 3/11 test still open |
 | 5 (#5) | UDS/ISO-TP client: `0x19` ReadDTC, `0x22` ReadDID, `0x14` ClearDTC; module discovery | ORC and BCM answer; codes match the clock-spring diagnosis below | next |
 | 6 (#1) | `spia scan` (stored/pending/permanent DTCs, freeze frame, readiness) + `spia info` (VIN, CAL IDs) | Ghibli replay fixtures already recorded; decode matches `term` output | pending |
 | 7 (#2) | `spia clear` | Codes clear, CEL off, re-scan clean | pending |
@@ -92,3 +92,14 @@ Confirmed on the car (2017 Ghibli S Q4, 2026-09-26; fixtures in `Tests/Fixtures/
 - Car must be in RUN, not ACC. In ACC the bus is alive (~40 IDs at 10-20 Hz, e.g. `102`, `10C`, `10D`, `2F9`) but `0100` gets `NO DATA` on `ATSP6`/`7` and `CAN ERROR` on `ATSP8`. ACC to RUN is one more START press without the brake.
 - STN commands: `STPRS` works; `STP`, `STPBR`, `STCSWM` returned `?`. Probably called without arguments; retry as `STP 33` / `STPBR 125000` when testing whether CAN-IHS (125k) is on DLC pins 3/11.
 - Open: is the SCCM/ORC/BCM traffic on the 500k bus we can see, or on IHS behind the BCM gateway? Decides whether UDS to body modules works from the DLC at all.
+
+### Bus observations, ignition on, engine off (2026-09-26, `spia capture`)
+
+- 124 IDs, ~2200 frames/s. Periodic rates are exact 100/50/20/10/5/2/1/0.5 Hz. Nothing above `44C` except one 29-bit `208262F0`.
+- The adapter overflows at 115200 within a second; 2 Mbps captures losslessly. Capture switches rates automatically.
+- `102`, `108`, `120`, `2F8` (100/50 Hz) change continuously while the wheel is moved and are static otherwise: steering angle/torque, so the column module is alive on this bus.
+- Horn and wheel-button presses (short and 3 s holds) change nothing on the bus. Consistent with an open ribbon on the switch side.
+- `328` and `3E0` carry variable-length UTF-16 text: radio now-playing metadata for the cluster.
+- `400`-`423`: eight `FD xx ...` frames at 1.3 Hz, likely network-management/status.
+- `214` bytes 1 and 3 drift slowly at idle (sensor value). `10C` byte 4 creeps up over minutes (temperature or voltage).
+- Battery sagged from 11.7 V to 11.6 V over ~15 minutes of ignition-on captures. Below ~11.5 V modules drop off; start the engine for longer sessions.

@@ -40,6 +40,9 @@ public actor ReplayTransport: Transport {
 
     public func close() async {}
 
+    /// Recorded sessions have no line; the rate is whatever it was when recorded.
+    public func setBaud(_ baud: Int) async throws {}
+
     public func write(_ bytes: [UInt8]) async throws {
         guard cursor < events.count else {
             throw ReplayError.unexpectedWrite(expected: nil, got: bytes)

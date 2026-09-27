@@ -32,7 +32,7 @@ struct Connection {
         if options.verbose {
             transport = LoggingTransport(transport)
         }
-        let session = ELM327Session(transport: transport)
+        let session = ELM327Session(transport: transport, baud: options.baud)
         let identity = try await session.connect(protocol: options.protocol)
         return Connection(session: session, adapterIdentity: identity)
     }
@@ -71,6 +71,11 @@ actor LoggingTransport: Transport {
 
     func close() async {
         await base.close()
+    }
+
+    func setBaud(_ baud: Int) async throws {
+        FileHandle.standardError.write(Data("-- host UART now \(baud) baud\n".utf8))
+        try await base.setBaud(baud)
     }
 
     func write(_ bytes: [UInt8]) async throws {
