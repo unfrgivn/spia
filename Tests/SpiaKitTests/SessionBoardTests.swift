@@ -165,6 +165,18 @@ struct SessionBoardTests {
         #expect(board.rows.contains { $0.name == "Module 7A1" && $0.status == .clear })
     }
 
+    @Test("each check fills one row, and each row names the check that reads it")
+    func subjects() {
+        let airbag = DemoGarage.airbag.target
+        #expect(SessionBoard.Subject(job: .genericScan) == .engine)
+        #expect(SessionBoard.Subject(job: .moduleDTCs(airbag)) == .module(airbag))
+        #expect(SessionBoard.Subject(job: .adapterCheck) == .battery)
+        #expect(SessionBoard.Subject(job: .vehicleInfo) == nil)
+        for subject in [SessionBoard.Subject.engine, .module(airbag), .battery] {
+            #expect(SessionBoard.Subject(job: subject.job) == subject)
+        }
+    }
+
     @Test("labels split into a name and the short name in parentheses")
     func labels() {
         #expect(SessionBoard.split("Airbag controller (ORC)") == ("Airbag controller", "ORC"))

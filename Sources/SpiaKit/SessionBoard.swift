@@ -34,6 +34,26 @@ public struct SessionBoard: Equatable, Sendable {
         case engine
         case module(ModuleTarget)
         case battery
+
+        /// The row a check fills in: engine and transmission for the generic scan, the module it
+        /// reads, the battery for the adapter check. Vehicle information has no row.
+        public init?(job: DiagnosticJob) {
+            switch job {
+            case .genericScan: self = .engine
+            case .moduleDTCs(let target): self = .module(target)
+            case .adapterCheck: self = .battery
+            case .vehicleInfo: return nil
+            }
+        }
+
+        /// The check that reads this row.
+        public var job: DiagnosticJob {
+            switch self {
+            case .engine: .genericScan
+            case .module(let target): .moduleDTCs(target)
+            case .battery: .adapterCheck
+            }
+        }
     }
 
     public enum Status: Equatable, Sendable {
