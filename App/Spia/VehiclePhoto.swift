@@ -141,11 +141,14 @@ struct PaintPicker: View {
 }
 
 extension Garage {
-    /// Adds picked or dropped image files as the owner's photos of the vehicle. Returns what
-    /// couldn't be added.
+    /// Adds picked or dropped image files as the owner's photos of the vehicle, in Finder's name
+    /// order (pickers and drops hand them over in any order). Returns what couldn't be added.
     func addImages(from urls: [URL], to vehicle: Vehicle, asCover: Bool = false) -> [String] {
+        let sorted = urls.sorted {
+            $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
+        }
         var problems: [String] = []
-        for (index, url) in urls.enumerated() {
+        for (index, url) in sorted.enumerated() {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             do {
