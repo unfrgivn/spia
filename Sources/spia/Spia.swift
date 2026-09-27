@@ -6,7 +6,11 @@ struct Spia: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "spia",
         abstract: "OBD-II scan tool for ELM327/STN adapters such as the Vgate vLinker FS.",
-        subcommands: [Ports.self, Probe.self, Term.self, Capture.self])
+        subcommands: [
+            Ports.self, Probe.self, Term.self, Capture.self, Discover.self, Scan.self, Info.self,
+            Inspect.self, Live.self,
+            UDS.self,
+        ])
 }
 
 struct GlobalOptions: ParsableArguments {
@@ -36,3 +40,5 @@ extension ELM327Protocol: ExpressibleByArgument {
         allCases.map(\.commandDigit)
     }
 }
+
+extension CANBus: ExpressibleByArgument {}

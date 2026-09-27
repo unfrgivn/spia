@@ -16,17 +16,31 @@ public enum MonitorEvent: Equatable, Sendable {
 /// A stream parser must not die on one bad line, so malformed input becomes `.unparsable`
 /// instead of throwing.
 public struct MonitorStreamParser: Sendable {
+    private static let maximumPendingBytes = 4096
     private var pending: [UInt8] = []
+    private var discardingOversizedLine = false
 
     public init() {}
 
     public mutating func feed(_ bytes: [UInt8]) -> [MonitorEvent] {
-        pending.append(contentsOf: bytes)
         var events: [MonitorEvent] = []
-        while let separator = pending.firstIndex(where: { $0 == 0x0D || $0 == 0x0A }) {
-            let line = String(decoding: pending[..<separator], as: UTF8.self)
-            pending.removeSubrange(...separator)
-            events.append(contentsOf: Self.events(for: line))
+        for byte in bytes {
+            if discardingOversizedLine {
+                if byte == 0x0D || byte == 0x0A { discardingOversizedLine = false }
+                continue
+            }
+            if byte == 0x0D || byte == 0x0A {
+                let line = String(decoding: pending, as: UTF8.self)
+                pending.removeAll(keepingCapacity: true)
+                events.append(contentsOf: Self.events(for: line))
+            } else {
+                pending.append(byte)
+                if pending.count > Self.maximumPendingBytes {
+                    events.append(.unparsable(String(decoding: pending, as: UTF8.self)))
+                    pending.removeAll(keepingCapacity: true)
+                    discardingOversizedLine = true
+                }
+            }
         }
         // The prompt never gets a line ending, so it would otherwise sit in `pending` forever.
         if pending == [UInt8(ascii: ">")] {
@@ -61,9 +75,23 @@ public struct MonitorStreamParser: Sendable {
             ]
         }
         let hex = body.filter { !$0.isWhitespace }
+        guard Self.isValidFrameShape(hex) else {
+            return [.unparsable(String(body))] + trailing
+        }
         guard let frame = try? ELM327ResponseParser.frame(fromHex: hex) else {
             return [.unparsable(String(body))] + trailing
         }
         return [.frame(frame)] + trailing
+    }
+
+    private static func isValidFrameShape(_ hex: String) -> Bool {
+        let digits = Array(hex)
+        guard digits.allSatisfy(\.isHexDigit) else { return false }
+        let headerLength = digits.count.isMultiple(of: 2) ? 8 : 3
+        guard digits.count >= headerLength + 2,
+            digits.count <= headerLength + 16,
+            let header = UInt32(String(digits[..<headerLength]), radix: 16)
+        else { return false }
+        return headerLength == 3 ? header <= 0x7FF : header <= 0x1FFF_FFFF
     }
 }
