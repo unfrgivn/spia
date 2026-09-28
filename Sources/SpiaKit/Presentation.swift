@@ -75,13 +75,17 @@ public struct ConnectionSummary: Sendable, Equatable {
             case .usbSerial: "cable.connector"
             case .bluetooth: "antenna.radiowaves.left.and.right"
             case .demo: "play.rectangle"
+            case .replay: "arrow.clockwise.circle"
             }
         switch state {
         case .disconnected:
             title = "Not connected"
             detail =
-                adapter.kind == .demo
-                ? "Demo recordings ready" : "Plug in the adapter, then connect"
+                switch adapter.kind {
+                case .demo: "Demo recordings ready"
+                case .replay: "Saved recordings ready"
+                default: "Plug in the adapter, then connect"
+                }
             tone = .neutral
         case .connecting:
             title = "Connecting"

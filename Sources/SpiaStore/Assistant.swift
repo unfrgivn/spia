@@ -29,11 +29,21 @@ extension Garage {
                 let fromRecording: Bool
                 if case .recording = result?.source {
                     fromRecording = true
+                } else if case .replay = result?.source {
+                    fromRecording = true
                 } else {
                     fromRecording = false
                 }
+                let summary: String
+                if case .replay(let recorded) = result?.source {
+                    summary =
+                        "Replayed from a recording of this car made on "
+                        + recorded.formatted(date: .abbreviated, time: .omitted) + ". " + entry.body
+                } else {
+                    summary = entry.body
+                }
                 return .init(
-                    date: entry.date, kind: entry.kindRaw, title: entry.title, summary: entry.body,
+                    date: entry.date, kind: entry.kindRaw, title: entry.title, summary: summary,
                     result: result?.payload, fromRecording: fromRecording, warnings: entry.warnings)
             },
             references: vehicle.flatMap(references(for:)).flatMap(Self.facts))
@@ -517,6 +527,11 @@ public final class AssistantConversation {
             var content = summary
             if case .recording(let name) = result.source {
                 content = "From the demo recording \"\(name)\", not a live car. " + content
+            } else if case .replay(let recorded) = result.source {
+                content =
+                    "Replayed from a recording of this car made on "
+                    + recorded.formatted(date: .abbreviated, time: .omitted)
+                    + ", not a new reading. " + content
             }
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]

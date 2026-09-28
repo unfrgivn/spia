@@ -18,7 +18,7 @@ extension DiagnosticSession {
     /// newer than any saved adapter check.
     func board(live: AdapterStatus? = nil) -> SessionBoard {
         let results = timeline.compactMap { entry in
-            entry.result.map { SessionBoard.Result(date: entry.date, payload: $0.payload) }
+            entry.boardResult
         }
         return SessionBoard(
             modules: vehicle?.orderedModules.boardModules ?? [], results: results, live: live)

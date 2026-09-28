@@ -11,13 +11,21 @@ public enum AdapterKind: String, Codable, Sendable, CaseIterable {
     case demo
 }
 
+/// How a connection reaches its bytes. Replay is runtime-only and is never persisted as a profile.
+public enum ConnectionKind: String, Codable, Sendable, Hashable {
+    case usbSerial
+    case bluetooth
+    case demo
+    case replay
+}
+
 /// Which adapter a connection uses, for display and for reconnecting.
 public struct AdapterDescriptor: Codable, Sendable, Hashable {
-    public let kind: AdapterKind
+    public let kind: ConnectionKind
     public let displayName: String
     public let devicePath: String?
 
-    public init(kind: AdapterKind, displayName: String, devicePath: String? = nil) {
+    public init(kind: ConnectionKind, displayName: String, devicePath: String? = nil) {
         self.kind = kind
         self.displayName = displayName
         self.devicePath = devicePath

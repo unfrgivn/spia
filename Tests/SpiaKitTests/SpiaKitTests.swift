@@ -251,6 +251,15 @@ struct SpiaKitTests {
         #expect(throws: JobResult.DecodingFailure.unsupportedSchemaVersion(2)) {
             try JSONDecoder().decode(JobResult.self, from: Data(future.utf8))
         }
+        let liveJSON =
+            #"{"schemaVersion":1,"job":{"genericScan":{}},"payload":{"genericScan":{"_0":[]}},"source":{"live":{}}}"#
+        let decodedLive = try JSONDecoder().decode(JobResult.self, from: Data(liveJSON.utf8))
+        #expect(decodedLive.source == .live)
+        let replay = JobResult(
+            job: .genericScan, payload: .genericScan([]),
+            source: .replay(recorded: Date(timeIntervalSince1970: 1_700_000_000)), transcript: nil)
+        #expect(
+            try JSONDecoder().decode(JobResult.self, from: JSONEncoder().encode(replay)) == replay)
     }
 
     @Test("no check can send a service that changes the car")
@@ -376,6 +385,40 @@ struct DemoBackendTests {
         let recordedStatus = await recorded.state.status
         let immediateStatus = await immediate.state.status
         #expect(recordedStatus == immediateStatus)
+    }
+
+    @Test("a replay backend rejects checks without saved recordings readably")
+    func replayBackendCoverage() async throws {
+        let saved = SavedCheck(
+            job: .moduleDTCs(DemoGarage.airbag.target), recorded: .now,
+            transcript: try DemoRecording.airbagCodes.url())
+        let backend = ReplayBackend(
+            displayName: "Saved recordings", checks: [saved], timing: .immediate)
+        #expect(!backend.canRun(.genericScan))
+        try await backend.connect()
+        let events = await collect(await backend.run(.genericScan, transcript: nil))
+        #expect(
+            events.compactMap(\.failure).first?.message.contains("saved recording")
+                == true)
+    }
+
+    @Test("replay connection prefers an adapter check and otherwise uses check identity")
+    func replayConnectionStatusSources() async throws {
+        let adapter = SavedCheck(
+            job: .adapterCheck, recorded: Date(timeIntervalSince1970: 100),
+            transcript: try DemoRecording.adapterProbe.url())
+        let module = SavedCheck(
+            job: .moduleDTCs(DemoGarage.airbag.target), recorded: Date(timeIntervalSince1970: 200),
+            transcript: try DemoRecording.airbagCodes.url())
+        let withAdapter = ReplayBackend(
+            displayName: "Saved", checks: [adapter, module], timing: .immediate)
+        try await withAdapter.connect()
+        #expect((await withAdapter.currentState()).status?.firmware == "STN1170 v4.3.2")
+
+        let withoutAdapter = ReplayBackend(
+            displayName: "Saved", checks: [module], timing: .immediate)
+        try await withoutAdapter.connect()
+        #expect((await withoutAdapter.currentState()).status?.firmware == nil)
     }
 
     @Test("a paced decoded check can be cancelled")

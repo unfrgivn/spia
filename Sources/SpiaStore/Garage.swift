@@ -1,4 +1,6 @@
+import CryptoKit
 import Foundation
+import OBDCore
 import SpiaKit
 import SwiftData
 
@@ -140,6 +142,39 @@ public final class Garage {
     public func newTranscript(for session: DiagnosticSession) -> (path: String, url: URL) {
         let path = files.transcriptPath(session: session.id, entry: UUID())
         return (path, files.url(for: path))
+    }
+
+    /// Finds the newest valid live transcript for each exact job on the vehicle.
+    public func savedChecks(for vehicle: Vehicle) -> [SavedCheck] {
+        var newest: [DiagnosticJob: SavedCheck] = [:]
+        for session in vehicle.sessions {
+            for entry in session.entries where entry.kind == .result {
+                guard let result = entry.result, result.source == .live,
+                    let reference = result.transcript, let path = entry.transcriptPath,
+                    let data = try? Data(contentsOf: files.url(for: path)),
+                    data.count == reference.byteCount,
+                    Self.sha256(data) == reference.sha256,
+                    Self.isStandaloneTranscript(data)
+                else { continue }
+                let check = SavedCheck(
+                    job: result.job, recorded: entry.date, transcript: files.url(for: path))
+                if newest[result.job]?.recorded ?? .distantPast < check.recorded {
+                    newest[result.job] = check
+                }
+            }
+        }
+        return newest.values.sorted { $0.recorded < $1.recorded }
+    }
+
+    private static func sha256(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func isStandaloneTranscript(_ data: Data) -> Bool {
+        guard let events = try? Transcript.decodeFile(String(decoding: data, as: UTF8.self)),
+            let first = events.first
+        else { return false }
+        return first.direction == .tx && first.bytes == Array("ATZ\r".utf8)
     }
 
     public func record(

@@ -34,6 +34,7 @@ public enum CheckOutcome: Sendable, Equatable {
 public final class Workbench {
     public let adapter: AdapterDescriptor
     public private(set) var connection: ConnectionState = .disconnected
+    public private(set) var liveStatus: AdapterStatus?
     public private(set) var activity: CheckActivity?
     /// The most recent problem to show the user, cleared when they act.
     public var lastError: String?
@@ -49,6 +50,7 @@ public final class Workbench {
             for await state in await backend.states() {
                 guard let self else { return }
                 self.connection = state
+                self.liveStatus = self.isPhysical ? state.status : nil
             }
         }
     }
@@ -66,11 +68,13 @@ public final class Workbench {
             lastError = error.readable
         }
         connection = await backend.currentState()
+        liveStatus = isPhysical ? connection.status : nil
     }
 
     public func disconnect() async {
         await backend.disconnect()
         connection = await backend.currentState()
+        liveStatus = isPhysical ? connection.status : nil
     }
 
     /// Runs `job` for `session`, keeping `activity` current, and saves the outcome to the
@@ -135,5 +139,9 @@ public final class Workbench {
         } catch {
             lastError = "Couldn't save the result: \(error.readable)"
         }
+    }
+
+    private var isPhysical: Bool {
+        adapter.kind == .usbSerial || adapter.kind == .bluetooth
     }
 }

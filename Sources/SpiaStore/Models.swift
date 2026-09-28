@@ -107,7 +107,14 @@ public enum SpiaSchemaV1: VersionedSchema {
         }
 
         public var descriptor: AdapterDescriptor {
-            AdapterDescriptor(kind: kind, displayName: name, devicePath: devicePath)
+            let connectionKind: ConnectionKind
+            switch kind {
+            case .usbSerial: connectionKind = .usbSerial
+            case .bluetooth: connectionKind = .bluetooth
+            case .demo: connectionKind = .demo
+            }
+            return AdapterDescriptor(
+                kind: connectionKind, displayName: name, devicePath: devicePath)
         }
     }
 
@@ -332,6 +339,15 @@ public typealias DiagnosticSession = SpiaSchemaV1.DiagnosticSession
 public typealias TimelineEntry = SpiaSchemaV1.TimelineEntry
 public typealias ChatMessage = SpiaSchemaV1.ChatMessage
 public typealias VehicleImage = SpiaSchemaV1.VehicleImage
+
+extension TimelineEntry {
+    /// Maps a stored result for the board, preserving the car's original replay date.
+    public var boardResult: SessionBoard.Result? {
+        result.map {
+            SessionBoard.Result(date: $0.source.replayDate ?? date, payload: $0.payload)
+        }
+    }
+}
 
 public enum SpiaMigrationPlan: SchemaMigrationPlan {
     public static var schemas: [any VersionedSchema.Type] { [SpiaSchemaV1.self] }

@@ -28,6 +28,40 @@ struct SpiaStoreTests {
         return (workbench, session)
     }
 
+    private func recordLive(
+        _ job: DiagnosticJob, recording: DemoRecording, in session: DiagnosticSession
+    ) async throws -> JobResult {
+        let transport = try ReplayTransport(contentsOf: recording.url())
+        let connection = ConnectionManager(adapter: DemoGarage.adapter) { transport }
+        try await connection.connect()
+        let transcript = garage.newTranscript(for: session)
+        var result: JobResult?
+        for await event in await JobRunner(connection: connection).run(
+            job, transcript: transcript.url)
+        {
+            if case .completed(let completed) = event { result = completed }
+        }
+        let completed = try #require(result)
+        try garage.record(completed, warnings: [], transcriptPath: transcript.path, in: session)
+        return completed
+    }
+
+    @Test("demo and replay workbenches do not expose a physical live status")
+    func nonPhysicalLiveStatus() async throws {
+        let (demo, _) = try await demoWorkbench()
+        #expect(demo.liveStatus == nil)
+        let replay = ReplayBackend(
+            displayName: "Saved recordings",
+            checks: [
+                SavedCheck(
+                    job: .moduleDTCs(DemoGarage.airbag.target), recorded: .now,
+                    transcript: try DemoRecording.airbagCodes.url())
+            ], timing: .immediate)
+        let workbench = Workbench(backend: replay, garage: garage)
+        await workbench.connect()
+        #expect(workbench.liveStatus == nil)
+    }
+
     @Test("the demo vehicle comes with its adapter, unconfirmed modules, and a first session")
     func demoVehicle() throws {
         let vehicle = try garage.addDemoVehicle()
@@ -89,6 +123,113 @@ struct SpiaStoreTests {
             })
     }
 
+    @Test("saved live checks replay through the production path")
+    func savedChecksReplay() async throws {
+        let vehicle = try garage.addVehicle(name: "Recorded car")
+        let session = try garage.addSession(to: vehicle, title: "Saved checks")
+        _ = try await recordLive(
+            .moduleDTCs(DemoGarage.airbag.target), recording: .airbagCodes, in: session)
+        _ = try await recordLive(.adapterCheck, recording: .adapterProbe, in: session)
+
+        let checks = garage.savedChecks(for: vehicle)
+        #expect(checks.map(\.job).contains(.adapterCheck))
+        #expect(checks.map(\.job).contains(.moduleDTCs(DemoGarage.airbag.target)))
+        let savedAirbag = try #require(
+            checks.first { $0.job == .moduleDTCs(DemoGarage.airbag.target) })
+        let savedEntry = try #require(
+            session.timeline.first {
+                $0.result?.job == savedAirbag.job && $0.result?.source == .live
+            })
+        let savedPayload = try #require(savedEntry.result?.payload)
+        let savedData = try Data(contentsOf: savedAirbag.transcript)
+
+        let replayBackend = ReplayBackend(
+            displayName: "Saved recordings", checks: checks, timing: .immediate)
+        let replayWorkbench = Workbench(backend: replayBackend, garage: garage)
+        await replayWorkbench.connect()
+        #expect(replayWorkbench.liveStatus == nil)
+        let replayOutcome = await replayWorkbench.run(savedAirbag.job, in: session)
+        guard case .completed(let replayResult) = replayOutcome else {
+            Issue.record("saved airbag check did not replay")
+            return
+        }
+        #expect(replayResult.payload == savedPayload)
+        #expect(replayResult.source == .replay(recorded: savedAirbag.recorded))
+        let replayEntry = try #require(
+            session.timeline.last { $0.result?.source == .replay(recorded: savedAirbag.recorded) })
+        let replayPath = try #require(replayEntry.transcriptPath)
+        #expect(try Data(contentsOf: garage.files.url(for: replayPath)) == savedData)
+    }
+
+    @Test("invalid and non-live saved results are excluded")
+    func savedCheckValidation() async throws {
+        let vehicle = try garage.addVehicle(name: "Validation car")
+        let session = try garage.addSession(to: vehicle, title: "Validation")
+        _ = try await recordLive(
+            .moduleDTCs(DemoGarage.airbag.target), recording: .airbagCodes, in: session)
+        let liveEntry = try #require(session.timeline.last)
+        let originalPath = try #require(liveEntry.transcriptPath)
+        let otherPath = "wrong-recording.txt"
+        try FileManager.default.copyItem(
+            at: DemoRecording.adapterProbe.url(), to: garage.files.url(for: otherPath))
+        liveEntry.transcriptPath = otherPath
+        #expect(garage.savedChecks(for: vehicle).isEmpty)
+        liveEntry.transcriptPath = originalPath
+        try FileManager.default.removeItem(at: garage.files.url(for: originalPath))
+        #expect(garage.savedChecks(for: vehicle).isEmpty)
+
+        let replayEntry = TimelineEntry(kind: .result, title: "Replay", body: "Replay")
+        replayEntry.resultData = try JSONEncoder().encode(
+            JobResult(
+                job: .moduleDTCs(DemoGarage.airbag.target),
+                payload: .moduleDTCs(
+                    ModuleDTCs(
+                        target: DemoGarage.airbag.target,
+                        outcome: .records(availability: 0, []))),
+                source: .replay(recorded: .now), transcript: nil))
+        session.entries.append(replayEntry)
+        #expect(garage.savedChecks(for: vehicle).isEmpty)
+    }
+
+    @Test("replay board results use the car date and lose to newer live results")
+    func replayBoardDating() throws {
+        let recorded = Date(timeIntervalSince1970: 100)
+        let liveDate = Date(timeIntervalSince1970: 200)
+        let payload = JobPayload.genericScan([])
+        let replayEntry = TimelineEntry(kind: .result, title: "Replay", date: liveDate)
+        replayEntry.resultData = try JSONEncoder().encode(
+            JobResult(
+                job: .genericScan, payload: payload, source: .replay(recorded: recorded),
+                transcript: nil))
+        let liveEntry = TimelineEntry(kind: .result, title: "Live", date: liveDate)
+        liveEntry.resultData = try JSONEncoder().encode(
+            JobResult(job: .genericScan, payload: payload, source: .live, transcript: nil))
+        let board = SessionBoard(
+            modules: [],
+            results: [replayEntry.boardResult, liveEntry.boardResult].compactMap { $0 })
+        #expect(board.rows.first(where: { $0.subject == .engine })?.date == liveDate)
+
+        let replayOnly = SessionBoard(
+            modules: [], results: [replayEntry.boardResult].compactMap { $0 })
+        #expect(replayOnly.rows.first(where: { $0.subject == .engine })?.date == recorded)
+    }
+
+    @Test("briefing marks replay results as recordings and keeps the date in prose")
+    func replayBriefing() throws {
+        let vehicle = try garage.addVehicle(name: "Briefing car")
+        let session = try garage.addSession(to: vehicle, title: "Replay")
+        let recorded = Date(timeIntervalSince1970: 100)
+        let entry = TimelineEntry(kind: .result, title: "Scan", date: .now)
+        entry.resultData = try JSONEncoder().encode(
+            JobResult(
+                job: .genericScan, payload: .genericScan([]), source: .replay(recorded: recorded),
+                transcript: nil))
+        session.entries.append(entry)
+        let briefing = garage.briefing(for: session, adapter: nil)
+        #expect(briefing.events.last?.fromRecording == true)
+        #expect(briefing.events.last?.summary.contains("Replayed from a recording") == true)
+    }
+
     @Test("the demo workbench offers only the checks the recordings answer")
     func demoChecks() async throws {
         let (workbench, _) = try await demoWorkbench()
@@ -144,7 +285,7 @@ struct SpiaStoreTests {
         #expect(workbench.activity?.prompt?.action == .turnIgnitionOn)
 
         await workbench.cancel()
-        await running.value
+        _ = await running.value
         #expect(workbench.activity == nil)
         #expect(session.entries.isEmpty)
         #expect(workbench.connection.status != nil)

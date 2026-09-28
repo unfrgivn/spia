@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import OBDCore
 
@@ -130,7 +129,7 @@ public actor DemoBackend: DiagnosticsBackend {
         let (stream, continuation) = AsyncStream.makeStream(of: JobEvent.self)
         guard case .ready = state else {
             continuation.yield(.started(job))
-            continuation.yield(.failed(Self.failure(ConnectionError.notConnected)))
+            continuation.yield(.failed(ReplaySupport.failure(ConnectionError.notConnected)))
             continuation.finish()
             return stream
         }
@@ -174,7 +173,7 @@ public actor DemoBackend: DiagnosticsBackend {
             }
         } catch {
             continuation.yield(.started(job))
-            continuation.yield(.failed(Self.failure(error)))
+            continuation.yield(.failed(ReplaySupport.failure(error)))
             continuation.finish()
         }
         return stream
@@ -199,8 +198,8 @@ public actor DemoBackend: DiagnosticsBackend {
     private func replay(_ recording: DemoRecording, timing: ReplayTiming) async throws -> (
         ReplayTransport, ConnectionManager
     ) {
-        let transport = try ReplayTransport(contentsOf: recording.url(), timing: timing)
-        let connection = ConnectionManager(adapter: adapter) { transport }
+        let (transport, connection) = try ReplaySupport.connection(
+            adapter: adapter, transcript: recording.url(), timing: timing)
         try await connection.connect()
         return (transport, connection)
     }
@@ -241,7 +240,7 @@ public actor DemoBackend: DiagnosticsBackend {
                 try await decoded(
                     job, recording: recording, transcript: transcript, to: continuation, extract)
             } catch {
-                continuation.yield(.failed(Self.failure(error)))
+                continuation.yield(.failed(ReplaySupport.failure(error)))
             }
             continuation.finish()
             pacedTask = nil
@@ -257,7 +256,7 @@ public actor DemoBackend: DiagnosticsBackend {
         let events = try recording.events()
         let report = TranscriptInspection.inspect(events)
         let payload = try extract(report)
-        let reference = try transcript.map { try Self.copy(recording, to: $0) }
+        let reference = try transcript.map { try ReplaySupport.copy(recording.url(), to: $0) }
         let pacedExchanges = report.exchanges.filter {
             $0.kind == "OBD" || $0.kind == "UDS"
         }
@@ -285,22 +284,4 @@ public actor DemoBackend: DiagnosticsBackend {
                     transcript: reference)))
     }
 
-    /// Saves the original recording as the check's transcript, unchanged.
-    private static func copy(_ recording: DemoRecording, to url: URL) throws -> TranscriptReference
-    {
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let data = try Data(contentsOf: recording.url())
-        try data.write(to: url)
-        return TranscriptReference(
-            fileName: url.lastPathComponent, byteCount: data.count,
-            sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined())
-    }
-
-    private static func failure(_ error: any Error) -> JobFailure {
-        JobFailure(
-            message: error.readable, reconnectRequired: false,
-            cancelled: error is CancellationError,
-            transcript: nil)
-    }
 }

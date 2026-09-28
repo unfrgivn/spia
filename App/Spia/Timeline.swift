@@ -159,7 +159,7 @@ private struct LedgerSummary {
         case .genericScan, .moduleDTCs:
             let board = SessionBoard(
                 modules: modules.boardModules,
-                results: [SessionBoard.Result(date: entry.date, payload: payload)])
+                results: entry.boardResult.map { [$0] } ?? [])
             let row = board.rows.first { $0.date != nil }
             title = row?.name ?? entry.title
             text =

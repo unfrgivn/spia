@@ -116,6 +116,11 @@ Demo mode can replay forward checks and decoded check steps at the timestamps in
 The app uses that recorded speed so the reading rows, progress text, cancellation, and prompts can
 be exercised. Tests and screenshot fixtures use immediate replay and remain instant.
 
+Completed live checks are standalone recordings tied to the vehicle. At the desk, only the newest
+valid live recording for an exact check can be replayed through the production connection and job
+runner. Its result is marked with the date the car was recorded, and replay results are never valid
+inputs for another replay.
+
 The in-place reset is not verified against a real adapter yet. A bench capture still needs the USB
 vLinker FS on USB power with no car: connect, read the airbag module, then run the scan. The scan
 transcript should start with `ATZ` through `ATSP0` and end with `UNABLE TO CONNECT`. USB and BLE
