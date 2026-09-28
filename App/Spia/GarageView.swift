@@ -164,25 +164,14 @@ private struct ShowroomBay: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .frame(height: featured ? 540 : 440)
             .background(alignment: .trailing) {
-                photo
+                ShowroomPhoto(vehicle: vehicle, references: references, raised: hovering)
                     .frame(width: featured ? 860 : 780)
-                    // Eased, not linear, so the fade has no edge where it starts.
-                    .mask(
-                        LinearGradient(
-                            stops: [
-                                .init(color: .black.opacity(0), location: 0),
-                                .init(color: .black.opacity(0.08), location: 0.2),
-                                .init(color: .black.opacity(0.35), location: 0.38),
-                                .init(color: .black.opacity(0.75), location: 0.55),
-                                .init(color: .black, location: 0.7),
-                            ],
-                            startPoint: .leading, endPoint: .trailing))
             }
     }
 
     private var stacked: some View {
         VStack(alignment: .leading, spacing: 0) {
-            photo
+            ShowroomPhoto(vehicle: vehicle, references: references, fadesIn: false)
                 .frame(height: 210)
                 .overlay(alignment: .bottom) {
                     LinearGradient(
@@ -194,23 +183,6 @@ private struct ShowroomBay: View {
                 .padding(.horizontal, 18)
                 .padding(.bottom, 20)
         }
-    }
-
-    /// The photo, darkened at the top where a stranger's background usually is, and eased in on
-    /// hover to say the bay can be opened.
-    private var photo: some View {
-        VehiclePhoto(vehicle: vehicle, references: references)
-            .scaleEffect(hovering ? 1.025 : 1)
-            .animation(.easeOut(duration: 0.3), value: hovering)
-            .overlay {
-                LinearGradient(
-                    stops: [
-                        .init(color: Palette.base.opacity(0.85), location: 0),
-                        .init(color: .clear, location: 0.4),
-                    ],
-                    startPoint: .top, endPoint: .bottom)
-            }
-            .clipped()
     }
 
     private var details: some View {

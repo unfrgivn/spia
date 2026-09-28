@@ -29,6 +29,48 @@ struct VehiclePhoto: View {
     private var paint: Color { vehicle.color?.swatch ?? .accentColor }
 }
 
+/// A vehicle's photo coming out of the dark, as in the garage: darkened at the top, where a
+/// stranger's background usually is, and eased in from the left edge so the fade has no seam.
+/// Meant as a background, so its size never decides its container's.
+struct ShowroomPhoto: View {
+    let vehicle: Vehicle
+    let references: VehicleReferences
+    /// Eased in a little, to say the photo's container can be opened.
+    var raised = false
+    /// Fade in from the left, for a photo behind text on the left.
+    var fadesIn = true
+
+    var body: some View {
+        VehiclePhoto(vehicle: vehicle, references: references)
+            .scaleEffect(raised ? 1.025 : 1)
+            .animation(.easeOut(duration: 0.3), value: raised)
+            .overlay {
+                LinearGradient(
+                    stops: [
+                        .init(color: Palette.base.opacity(0.85), location: 0),
+                        .init(color: .clear, location: 0.4),
+                    ],
+                    startPoint: .top, endPoint: .bottom)
+            }
+            .clipped()
+            .mask {
+                if fadesIn {
+                    LinearGradient(
+                        stops: [
+                            .init(color: .black.opacity(0), location: 0),
+                            .init(color: .black.opacity(0.08), location: 0.2),
+                            .init(color: .black.opacity(0.35), location: 0.38),
+                            .init(color: .black.opacity(0.75), location: 0.55),
+                            .init(color: .black, location: 0.7),
+                        ],
+                        startPoint: .leading, endPoint: .trailing)
+                } else {
+                    Rectangle()
+                }
+            }
+    }
+}
+
 /// Credit for a Commons photo, linking to its page with the full license.
 struct PhotoCredit: View {
     let photo: ReferencePhoto
