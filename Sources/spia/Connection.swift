@@ -2,6 +2,7 @@ import ArgumentParser
 import Foundation
 import OBDCore
 import OBDSerial
+import OBDBluetooth
 
 enum ConnectionError: Error, CustomStringConvertible {
     case noPort(available: [String])
@@ -22,10 +23,19 @@ struct Connection {
     let adapterIdentity: String
 
     static func open(_ options: GlobalOptions) async throws -> Connection {
-        guard let port = options.port ?? SerialTransport.defaultPort() else {
-            throw ConnectionError.noPort(available: SerialTransport.availablePorts())
+        var transport: Transport
+        var bleTransport: BLETransport?
+        if options.ble || options.bleID != nil {
+            let id = options.bleID.flatMap(UUID.init(uuidString:))
+            let ble = BLETransport(identifier: id)
+            bleTransport = ble
+            transport = ble
+        } else {
+            guard let port = options.port ?? SerialTransport.defaultPort() else {
+                throw ConnectionError.noPort(available: SerialTransport.availablePorts())
+            }
+            transport = SerialTransport(path: port, baud: options.baud)
         }
-        var transport: Transport = SerialTransport(path: port, baud: options.baud)
         if let record = options.record {
             transport = RecordingTransport(transport, writingTo: URL(fileURLWithPath: record))
         }
@@ -34,6 +44,11 @@ struct Connection {
         }
         let session = ELM327Session(transport: transport, baud: options.baud)
         let identity = try await session.connect(protocol: options.protocol)
+        if let ble = bleTransport {
+            stderr(
+                "Bluetooth adapter: \(await ble.connectedName ?? "unknown") (\(await ble.connectedIdentifier?.uuidString ?? "unknown"))"
+            )
+        }
         return Connection(session: session, adapterIdentity: identity)
     }
 

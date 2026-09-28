@@ -1,4 +1,4 @@
-/// A byte pipe to the adapter. Serial today, CoreBluetooth later.
+/// A byte pipe to the adapter. Serial and CoreBluetooth transports are provided by this package.
 ///
 /// `read` returns whatever has arrived, waiting at most `timeout` for the first byte.
 /// An empty array means nothing arrived in time; it is not an error.

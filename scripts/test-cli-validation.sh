@@ -48,6 +48,17 @@ expect_capture_failure() {
     printf '%s\n' "$output" | grep -F "$expected" >/dev/null
 }
 
+expect_ble_capture_failure() {
+    expected=$1
+    shift
+    set +e
+    output=$($SPiA capture --ble "$@" 2>&1)
+    status=$?
+    set -e
+    test "$status" -ne 0
+    printf '%s\n' "$output" | grep -F "$expected" >/dev/null
+}
+
 expect_discover_failure() {
     expected=$1
     shift
@@ -98,6 +109,9 @@ expect_capture_failure "29-bit" --id 1FFFFFFFF
 expect_capture_failure "53 or 54" --stp 52
 expect_capture_failure "only 125000" --stp 53 --stp-baud 500000
 expect_capture_failure "requires --stp" --stp-baud 125000
+expect_ble_capture_failure "cannot be used with --port" --port "$PORT"
+expect_ble_capture_failure "valid UUID" --ble-id nope
+expect_ble_capture_failure "no UART rate" --uart-baud 115200
 expect_capture_failure "different files" --out /tmp/spia-same --record /tmp/spia-same
 expect_discover_failure "restricted to 3E00" --request 1001 --skip-standard --skip-extended
 expect_discover_failure "multiple of 4" --wait 5 --skip-standard --skip-extended

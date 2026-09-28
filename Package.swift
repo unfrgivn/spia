@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "OBDCore", targets: ["OBDCore"]),
         .library(name: "OBDSerial", targets: ["OBDSerial"]),
+        .library(name: "OBDBluetooth", targets: ["OBDBluetooth"]),
         .library(name: "SpiaKit", targets: ["SpiaKit"]),
         .library(name: "SpiaStore", targets: ["SpiaStore"]),
         .library(name: "SpiaAssist", targets: ["SpiaAssist"]),
@@ -19,12 +20,21 @@ let package = Package(
     targets: [
         .target(name: "OBDCore"),
         .target(name: "OBDSerial", dependencies: ["OBDCore"]),
+        .target(name: "OBDBluetooth", dependencies: ["OBDCore"]),
         .executableTarget(
             name: "spia",
             dependencies: [
                 "OBDCore",
                 "OBDSerial",
+                "OBDBluetooth",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            exclude: ["Info.plist"],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist",
+                    "-Xlinker", "\(Context.packageDirectory)/Sources/spia/Info.plist",
+                ])
             ]),
         .target(
             name: "SpiaKit", dependencies: ["OBDCore"], resources: [.copy("Recordings")]),
@@ -33,6 +43,7 @@ let package = Package(
         .target(
             name: "SpiaStore", dependencies: ["SpiaKit", "SpiaAssist", "SpiaReference", "OBDCore"]),
         .testTarget(name: "OBDCoreTests", dependencies: ["OBDCore"]),
+        .testTarget(name: "OBDBluetoothTests", dependencies: ["OBDBluetooth"]),
         .testTarget(name: "SpiaKitTests", dependencies: ["SpiaKit", "OBDCore"]),
         .testTarget(
             name: "SpiaStoreTests",

@@ -44,11 +44,11 @@ struct Capture: AsyncParsableCommand {
     @Option(
         name: .long,
         help: ArgumentHelp(
-            "Switch the adapter UART to this rate before monitoring (STN firmware only).",
+            "Switch the adapter UART to this rate before monitoring (default 2000000 for serial; Bluetooth keeps its adapter rate, so only 0 is valid there).",
             discussion:
                 "A busy 500k bus overflows the adapter at 115200. 0 keeps the connection rate."
         ))
-    var uartBaud = 2_000_000
+    var uartBaud: Int?
 
     func run() async throws {
         try validateOptions()
@@ -73,9 +73,10 @@ struct Capture: AsyncParsableCommand {
         try await Connection.with(options) { connection in
             let recorder = CaptureRecorder(filter: filter, echo: !quiet, file: file)
             stderr("Connected to \(connection.adapterIdentity).")
-            if uartBaud > 0, uartBaud != options.baud {
-                try await connection.session.switchBaud(to: uartBaud)
-                stderr("UART switched to \(uartBaud) baud.")
+            let requestedBaud = uartBaud ?? (options.ble || options.bleID != nil ? 0 : 2_000_000)
+            if requestedBaud > 0, requestedBaud != options.baud {
+                try await connection.session.switchBaud(to: requestedBaud)
+                stderr("UART switched to \(requestedBaud) baud.")
             }
             if let stp {
                 var setup = ["STP \(stp)"]
@@ -123,8 +124,13 @@ struct Capture: AsyncParsableCommand {
         guard command == "ATMA" || command == "STMA" else {
             throw ValidationError("--command must be ATMA or STMA")
         }
-        guard uartBaud >= 0, uartBaud <= Self.maximumBaud else {
+        let requestedBaud = uartBaud ?? 0
+        guard requestedBaud >= 0, requestedBaud <= Self.maximumBaud else {
             throw ValidationError("--uart-baud must be zero or positive and at most 10000000")
+        }
+        if (global.ble || global.bleID != nil), requestedBaud != 0 {
+            throw ValidationError(
+                "--uart-baud must be 0 for Bluetooth; Bluetooth has no UART rate to switch")
         }
         if let stp, stp != 53 && stp != 54 {
             throw ValidationError("--stp must be 53 or 54")
