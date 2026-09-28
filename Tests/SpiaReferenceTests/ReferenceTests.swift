@@ -94,7 +94,22 @@ struct ReferenceParsingTests {
         #expect(newest.documentCount == 1)
         let tires = try #require(record.recalls.first { $0.id == "16V840000" })
         #expect(tires.components == ["TIRES"])
-        #expect(!tires.remedy.isEmpty)
+        #expect(
+            tires.remedy.hasPrefix(
+                "Maserati will notify owners, and dealers will replace the affected tires, free of charge. The recall began"
+            ))
+        #expect(!record.complaints.contains { $0.description.contains("  ") })
+    }
+
+    @Test("capitals read as sentences, with I still a capital; mixed case is left alone")
+    func sentenceCase() {
+        #expect(NHTSA.sentenceCase("SERVICE BRAKES") == "Service brakes")
+        #expect(
+            NHTSA.sentenceCase("ON JULY 2017 I WENT IN. I'M TOLD IT'S FINE, AND I, TOO, AGREE")
+                == "On july 2017 I went in. I'm told it's fine, and I, too, agree")
+        #expect(
+            NHTSA.sentenceCase("The contact owns a 2017 Maserati Ghibli.")
+                == "The contact owns a 2017 Maserati Ghibli.")
     }
 
     @Test("a bulletin's documents are the PDFs on static.nhtsa.gov")

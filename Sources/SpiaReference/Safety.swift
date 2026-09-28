@@ -174,6 +174,34 @@ public enum NHTSA {
         guard let raw else { return nil }
         return try? Date(raw, strategy: .iso8601)
     }
+
+    /// NHTSA writes components, and some complaints, in capitals, which read more easily in
+    /// sentence case. Names can't be told from other words, but "I" can. Text that isn't all
+    /// capitals is left as it is.
+    public static func sentenceCase(_ text: String) -> String {
+        guard text == text.uppercased() else { return text }
+        var result = ""
+        var startOfSentence = true
+        for character in text.lowercased() {
+            if startOfSentence, character.isLetter {
+                result.append(contentsOf: character.uppercased())
+                startOfSentence = false
+            } else {
+                result.append(character)
+            }
+            if ".!?".contains(character) { startOfSentence = true }
+        }
+        return result.split(separator: " ", omittingEmptySubsequences: false).map { word in
+            // "i", "i," and "i'm", but not "it".
+            word.first == "i" && !(word.dropFirst().first?.isLetter ?? false)
+                ? "I" + word.dropFirst() : String(word)
+        }.joined(separator: " ")
+    }
+
+    /// NHTSA's prose has two spaces after a full stop, and sometimes more; one reads better.
+    static func prose(_ raw: String?) -> String {
+        (raw ?? "").split(separator: " ").joined(separator: " ")
+    }
 }
 
 // MARK: - Reply shapes
@@ -205,7 +233,8 @@ private struct RawRecall: Decodable {
         Recall(
             id: nhtsaCampaignNumber, manufacturerCampaign: mfrCampaignNumber,
             reportDate: NHTSA.date(reportReceivedDate), components: components?.map(\.name) ?? [],
-            summary: summary ?? "", consequence: consequence ?? "", remedy: correctiveAction ?? "",
+            summary: NHTSA.prose(summary), consequence: NHTSA.prose(consequence),
+            remedy: NHTSA.prose(correctiveAction),
             parkIt: parkIt ?? false, parkOutside: parkOutSide ?? false)
     }
 }
@@ -224,7 +253,7 @@ private struct RawComplaint: Decodable {
         Complaint(
             id: nhtsaIdNumber, dateFiled: NHTSA.date(dateFiled),
             incidentDate: NHTSA.date(dateOfIncident), components: components?.map(\.name) ?? [],
-            description: description ?? "", crash: crash ?? false, fire: fire ?? false,
+            description: NHTSA.prose(description), crash: crash ?? false, fire: fire ?? false,
             injuries: numberOfInjuries ?? 0)
     }
 }
