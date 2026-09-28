@@ -26,12 +26,19 @@ struct ConnectionAssistant: View {
                 )
                 .fixedSize(horizontal: false, vertical: true)
             } else {
-                #if os(iOS)
-                    Text(AdapterSetupError.needsMac.description)
-                        .fixedSize(horizontal: false, vertical: true)
-                #else
-                    steps
-                #endif
+                if workbench.adapter.kind == .bluetooth {
+                    bluetoothSteps
+                } else {
+                    #if os(iOS)
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(AdapterSetupError.needsMac.description)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Button("Use Bluetooth instead") { chooseBluetooth() }
+                        }
+                    #else
+                        steps
+                    #endif
+                }
             }
 
             status
@@ -47,7 +54,7 @@ struct ConnectionAssistant: View {
                     .keyboardShortcut(.defaultAction)
                     .disabled(
                         workbench.isBusy
-                            || (workbench.adapter.kind != .demo && profile?.devicePath == nil))
+                            || (workbench.adapter.kind == .usbSerial && profile?.devicePath == nil))
             }
         }
         .padding(24)
@@ -98,6 +105,21 @@ struct ConnectionAssistant: View {
             Step(number: 3, title: "Turn the ignition on") {
                 Text(
                     "The dash should light up; the engine can stay off. The adapter check works without it, but reading the car doesn't. For long sessions, run the engine or use a charger so the battery doesn't drain."
+                )
+            }
+        }
+    }
+
+    private var bluetoothSteps: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Step(number: 1, title: "Plug in the adapter") {
+                Text(
+                    "Plug the vLinker FS into the OBD-II port. Switch it once from MFi to BLE+BT with Vgate's VgateFwUpdater iOS app, then unplug and replug it."
+                )
+            }
+            Step(number: 2, title: "Turn the ignition on") {
+                Text(
+                    "The dash should light up; the engine can stay off. Spia finds the adapter on its own; no pairing needed. Allow Bluetooth when asked."
                 )
             }
         }
@@ -165,6 +187,17 @@ struct ConnectionAssistant: View {
     private func choose(_ port: String?) {
         guard let profile, profile.devicePath != port else { return }
         profile.devicePath = port
+        Task {
+            await model.resetConnection(for: profile)
+            if let fresh = model.workbench(for: vehicle) { replaced(fresh) }
+        }
+    }
+
+    private func chooseBluetooth() {
+        guard let profile else { return }
+        profile.kindRaw = AdapterKind.bluetooth.rawValue
+        profile.name = "Bluetooth adapter"
+        profile.devicePath = nil
         Task {
             await model.resetConnection(for: profile)
             if let fresh = model.workbench(for: vehicle) { replaced(fresh) }

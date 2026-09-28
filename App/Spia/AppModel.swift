@@ -4,6 +4,7 @@ import SpiaAssist
 import SpiaKit
 import SpiaStore
 import SwiftData
+import OBDBluetooth
 
 #if os(macOS)
     import OBDSerial
@@ -82,7 +83,7 @@ final class AppModel {
         switch profile.kind {
         case .demo:
             return DemoBackend()
-        case .usbSerial, .bluetooth:
+        case .usbSerial:
             #if os(iOS)
                 return LiveBackend(adapter: profile.descriptor, baud: profile.baud) {
                     throw AdapterSetupError.needsMac
@@ -95,6 +96,11 @@ final class AppModel {
                     return SerialTransport(path: path, baud: baud)
                 }
             #endif
+        case .bluetooth:
+            let identifier = profile.devicePath.flatMap(UUID.init(uuidString:))
+            return LiveBackend(adapter: profile.descriptor, baud: profile.baud) {
+                BLETransport(identifier: identifier)
+            }
         }
     }
 
@@ -121,7 +127,7 @@ enum AdapterSetupError: Error, CustomStringConvertible {
         case .noPortChosen: return "Choose the adapter's USB port first."
         case .needsMac:
             return
-                "This adapter works with Spia on a Mac. iPhone support for Bluetooth adapters is planned."
+                "USB adapters work with Spia on a Mac. iPhone and iPad need a Bluetooth LE adapter such as the vLinker FS in BLE+BT mode."
         }
     }
 }

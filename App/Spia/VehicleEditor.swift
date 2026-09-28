@@ -1,8 +1,10 @@
 import SpiaReference
+import SpiaKit
 import SpiaStore
 import SwiftUI
 
-/// Adds a vehicle with a USB adapter profile and a first session. A VIN is decoded as it's typed.
+/// Adds a vehicle with a platform-appropriate adapter profile and a first session. A VIN is decoded
+/// as it's typed.
 struct VehicleEditor: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -61,7 +63,13 @@ struct VehicleEditor: View {
 
     private func create() {
         do {
-            let vehicle = try model.garage.addVehicle(name: resolvedName, vin: lookup.normalized)
+            #if os(iOS)
+                let kind: AdapterKind = .bluetooth
+            #else
+                let kind: AdapterKind = .usbSerial
+            #endif
+            let vehicle = try model.garage.addVehicle(
+                name: resolvedName, vin: lookup.normalized, adapterKind: kind)
             vehicle.trim = trim.trimmed
             vehicle.color = color
             vehicle.colorName = colorName.trimmed

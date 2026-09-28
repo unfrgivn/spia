@@ -11,6 +11,7 @@
 		A10000000000000000000051 /* SpiaKit */ = {isa = PBXBuildFile; productRef = A10000000000000000000041 /* SpiaKit */; };
 		A10000000000000000000052 /* OBDCore */ = {isa = PBXBuildFile; productRef = A10000000000000000000042 /* OBDCore */; };
 		A10000000000000000000053 /* OBDSerial */ = {isa = PBXBuildFile; platformFilters = (macos,); productRef = A10000000000000000000043 /* OBDSerial */; };
+		A10000000000000000000056 /* OBDBluetooth */ = {isa = PBXBuildFile; productRef = A10000000000000000000046 /* OBDBluetooth */; };
 		A10000000000000000000054 /* SpiaAssist */ = {isa = PBXBuildFile; productRef = A10000000000000000000044 /* SpiaAssist */; };
 		A10000000000000000000055 /* SpiaReference */ = {isa = PBXBuildFile; productRef = A10000000000000000000045 /* SpiaReference */; };
 /* End PBXBuildFile section */
@@ -49,6 +50,7 @@
 				A10000000000000000000051 /* SpiaKit */,
 				A10000000000000000000052 /* OBDCore */,
 				A10000000000000000000053 /* OBDSerial */,
+				A10000000000000000000056 /* OBDBluetooth */,
 				A10000000000000000000054 /* SpiaAssist */,
 				A10000000000000000000055 /* SpiaReference */,
 			);
@@ -97,6 +99,7 @@
 				A10000000000000000000041 /* SpiaKit */,
 				A10000000000000000000042 /* OBDCore */,
 				A10000000000000000000043 /* OBDSerial */,
+				A10000000000000000000046 /* OBDBluetooth */,
 				A10000000000000000000044 /* SpiaAssist */,
 				A10000000000000000000045 /* SpiaReference */,
 			);
@@ -217,6 +220,7 @@
 				"ENABLE_HARDENED_RUNTIME[sdk=macosx*]" = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Spia;
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Spia talks to your OBD-II adapter over Bluetooth to read your car's diagnostics.";
 				"INFOPLIST_KEY_LSApplicationCategoryType[sdk=macosx*]" = "public.app-category.utilities";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -253,6 +257,7 @@
 				"ENABLE_HARDENED_RUNTIME[sdk=macosx*]" = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Spia;
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Spia talks to your OBD-II adapter over Bluetooth to read your car's diagnostics.";
 				"INFOPLIST_KEY_LSApplicationCategoryType[sdk=macosx*]" = "public.app-category.utilities";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -326,6 +331,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A10000000000000000000020 /* XCLocalSwiftPackageReference ".." */;
 			productName = OBDSerial;
+		};
+		A10000000000000000000046 /* OBDBluetooth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000020 /* XCLocalSwiftPackageReference ".." */;
+			productName = OBDBluetooth;
 		};
 		A10000000000000000000044 /* SpiaAssist */ = {
 			isa = XCSwiftPackageProductDependency;

@@ -81,10 +81,15 @@ public final class Garage {
     }
 
     @discardableResult
-    public func addVehicle(name: String, vin: String? = nil) throws -> Vehicle {
+    public func addVehicle(name: String, vin: String? = nil, adapterKind: AdapterKind = .usbSerial)
+        throws -> Vehicle
+    {
         let vehicle = Vehicle(name: name, vin: vin)
         context.insert(vehicle)
-        vehicle.adapters.append(AdapterProfile(kind: .usbSerial, name: "USB adapter"))
+        vehicle.adapters.append(
+            AdapterProfile(
+                kind: adapterKind,
+                name: adapterKind == .bluetooth ? "Bluetooth adapter" : "USB adapter"))
         try context.save()
         return vehicle
     }

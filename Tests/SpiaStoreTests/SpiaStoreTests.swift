@@ -39,6 +39,15 @@ struct SpiaStoreTests {
         #expect(vehicle.sessions.map(\.title) == ["Dead steering-wheel controls"])
     }
 
+    @Test("a vehicle can start with a Bluetooth adapter profile")
+    func bluetoothAdapterProfile() throws {
+        let vehicle = try garage.addVehicle(name: "Bluetooth car", adapterKind: .bluetooth)
+        let adapter = try #require(vehicle.adapters.first)
+        #expect(adapter.kind == .bluetooth)
+        #expect(adapter.name == "Bluetooth adapter")
+        #expect(adapter.devicePath == nil)
+    }
+
     @Test("a check's result is saved to the session with its transcript")
     func recordsResult() async throws {
         let (workbench, session) = try await demoWorkbench()

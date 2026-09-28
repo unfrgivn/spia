@@ -4,7 +4,8 @@ import Foundation
 public enum AdapterKind: String, Codable, Sendable, CaseIterable {
     /// A USB adapter such as the vLinker FS, seen by macOS as `/dev/cu.usbserial-*`.
     case usbSerial
-    /// A Bluetooth adapter. Planned for the iPhone app; not implemented yet.
+    /// A Bluetooth LE adapter. `devicePath` stores its peripheral identifier, or nil to discover
+    /// the first adapter.
     case bluetooth
     /// Real recordings from the 2017 Ghibli, replayed through the same code as a live adapter.
     case demo
