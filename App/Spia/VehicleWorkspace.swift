@@ -21,13 +21,14 @@ struct VehicleWorkspace: View {
     @State var selection: WorkspaceSection?
     /// The References shelf, kept while the owner looks elsewhere.
     @State private var shelf: ReferencesView.Shelf = .recalls
+    @State private var problem: String?
 
     var body: some View {
         let references = model.references(for: vehicle)
         NavigationSplitView {
             WorkspaceSidebar(
                 vehicle: vehicle, references: references, selection: $selection,
-                switchTo: switchTo, showGarage: leave
+                switchTo: switchTo, showGarage: leave, newSession: newSession
             )
             .navigationSplitViewColumnWidth(min: 230, ideal: 270)
             .toolbar {
@@ -36,14 +37,12 @@ struct VehicleWorkspace: View {
                         Label("Garage", systemImage: "square.grid.2x2")
                     }
                     .help("Back to all vehicles (⇧⌘G)")
-                    .keyboardShortcut("g", modifiers: [.command, .shift])
                 }
             }
         } detail: {
             switch selection ?? .overview {
             case .overview:
-                VehicleOverview(
-                    vehicle: vehicle, references: references, show: show, browse: browse)
+                overview(references)
             case .references:
                 ReferencesView(vehicle: vehicle, references: references, shelf: $shelf)
             case .photos:
@@ -53,17 +52,36 @@ struct VehicleWorkspace: View {
                     SessionView(session: session)
                         .id(session.id)
                 } else {
-                    VehicleOverview(
-                        vehicle: vehicle, references: references, show: show, browse: browse)
+                    overview(references)
                 }
             }
         }
         .task(id: vehicle.referenceInput) {
             await references.refreshIfNeeded(vehicle.referenceInput)
         }
+        .focusedSceneValue(
+            \.workspace,
+            WorkspaceActions(show: show, newSession: newSession, showGarage: leave)
+        )
+        .errorAlert($problem)
+    }
+
+    private func overview(_ references: VehicleReferences) -> some View {
+        VehicleOverview(
+            vehicle: vehicle, references: references, show: show, browse: browse,
+            newSession: newSession)
     }
 
     private func show(_ section: WorkspaceSection) { selection = section }
+
+    private func newSession() {
+        do {
+            let session = try model.garage.addSession(to: vehicle, title: "New session")
+            selection = .session(session.id)
+        } catch {
+            problem = error.readable
+        }
+    }
 
     private func browse(_ shelf: ReferencesView.Shelf) {
         self.shelf = shelf
@@ -78,6 +96,7 @@ private struct WorkspaceSidebar: View {
     @Binding var selection: WorkspaceSection?
     let switchTo: (Vehicle) -> Void
     let showGarage: () -> Void
+    let newSession: () -> Void
     @State private var deleting: DiagnosticSession?
     @State private var problem: String?
 
@@ -131,15 +150,6 @@ private struct WorkspaceSidebar: View {
             )
         }
         .errorAlert($problem)
-    }
-
-    private func newSession() {
-        do {
-            let session = try model.garage.addSession(to: vehicle, title: "New session")
-            selection = .session(session.id)
-        } catch {
-            problem = error.readable
-        }
     }
 
     private func delete(_ session: DiagnosticSession) {

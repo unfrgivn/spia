@@ -111,6 +111,7 @@ struct SessionView: View {
         }
         .errorAlert($error)
         .modifier(BulbCheck(link: link, subjects: board.rows.map(\.subject), checking: $checking))
+        .focusedSceneValue(\.session, actions)
     }
 
     private static let timelineID = "timeline"
@@ -224,6 +225,24 @@ struct SessionView: View {
     private var link: AdapterLink {
         guard let workbench else { return .unknown }
         return workbench.connection.status == nil ? .disconnected : .connected
+    }
+
+    /// The menu bar's session commands, from the state the toolbar shows. Checks run when no
+    /// other is running, as the board's Read does, and ask to connect first when there's no
+    /// connection.
+    private var actions: SessionActions {
+        let idle = workbench.map { $0.activity == nil } ?? false
+        func check(_ job: DiagnosticJob, _ title: String) -> SessionActions.Check {
+            let runs = idle && workbench?.canRun(job) == true
+            return .init(job: job, title: title, perform: runs ? { run(job) } : nil)
+        }
+        return SessionActions(
+            connected: workbench?.connection.status != nil, assistantShown: showAssistant,
+            toggleAssistant: { showAssistant.toggle() }, connect: { showConnection = true },
+            checks: RunMenu.jobs.map { check($0, $0.menuTitle) },
+            moduleChecks: (session.vehicle?.orderedModules ?? []).compactMap { module in
+                module.target.map { check(.moduleDTCs($0), module.label) }
+            })
     }
 
     private func run(_ job: DiagnosticJob) {

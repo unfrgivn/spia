@@ -12,6 +12,7 @@ struct VehicleOverview: View {
     let references: VehicleReferences
     let show: (WorkspaceSection) -> Void
     let browse: (ReferencesView.Shelf) -> Void
+    let newSession: () -> Void
 
     @State private var workbench: Workbench?
     @State private var editing = false
@@ -287,14 +288,6 @@ struct VehicleOverview: View {
         .foregroundStyle(Palette.tertiary)
     }
 
-    private func newSession() {
-        do {
-            let session = try model.garage.addSession(to: vehicle, title: "New session")
-            show(.session(session.id))
-        } catch {
-            problem = error.readable
-        }
-    }
 }
 
 /// One line of the vehicle's board: a reading in the board's condensed type, what it's about,

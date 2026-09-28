@@ -8,8 +8,10 @@ struct SpiaApp: App {
     @State private var model: AppModel?
     @State private var startupError: String?
 
+    static let mainWindow = "main"
+
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: Self.mainWindow) {
             Group {
                 if let model {
                     ContentView()
@@ -38,6 +40,7 @@ struct SpiaApp: App {
                 }
             }
         }
+        .commands { SpiaCommands() }
         #if os(macOS)
             .windowToolbarStyle(.unified)
         #endif

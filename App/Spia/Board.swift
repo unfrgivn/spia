@@ -485,7 +485,7 @@ struct RunMenu: View {
                     Section(requirement.label) {
                         ForEach(Self.jobs.filter { $0.requirement == requirement }, id: \.title) {
                             job in
-                            Button(job.title) { run(job) }
+                            Button(job.menuTitle) { run(job) }
                         }
                         // Module reads always need the ignition on.
                         if requirement == .ignitionOn { modules }
@@ -505,10 +505,10 @@ struct RunMenu: View {
 }
 
 extension RunMenu {
-    private static let jobs: [DiagnosticJob] = [.genericScan, .vehicleInfo, .adapterCheck]
+    static let jobs: [DiagnosticJob] = [.genericScan, .vehicleInfo, .adapterCheck]
 
     private var modules: some View {
-        Menu("Read module trouble codes") {
+        Menu("Read Module Trouble Codes") {
             ForEach(vehicle?.orderedModules ?? []) { module in
                 if let target = module.target {
                     let job = DiagnosticJob.moduleDTCs(target)

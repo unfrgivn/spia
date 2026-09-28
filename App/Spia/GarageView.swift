@@ -56,6 +56,7 @@ struct GarageView: View {
         }
         .readingWidth($width)
         .background(Palette.base)
+        .focusedSceneValue(\.garage, GarageActions(addVehicle: { addingVehicle = true }))
         .navigationTitle("Garage")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
