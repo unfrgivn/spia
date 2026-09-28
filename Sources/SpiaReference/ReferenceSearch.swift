@@ -3,9 +3,10 @@ import Foundation
 /// Keyword search over the public records, for the References screen and the assistant.
 ///
 /// A record matches any word of the query, and a word matches the words that start with it, so
-/// `steer` finds "steering". Each kind of record has tiers of fields, best first; a word found
-/// in a better tier counts more, records matching more words rank higher, and newer ones break
-/// ties. A query with no words to look for matches everything, in the order given.
+/// `steer` finds "steering". Neighbouring words count joined up too, so `airbag` finds "air
+/// bags". Each kind of record has tiers of fields, best first; a word found in a better tier
+/// counts more, records matching more words rank higher, and newer ones break ties. A query
+/// with no words to look for matches everything, in the order given.
 public enum ReferenceSearch {
     /// Title and number, then components, then the rest of the summary.
     public static func bulletins(_ query: String, in bulletins: [Bulletin], limit: Int = .max)
@@ -48,7 +49,7 @@ public enum ReferenceSearch {
         let terms = words(in: query).filter { !stopWords.contains($0) }
         guard !terms.isEmpty else { return Array(records.prefix(limit)) }
         let scored = records.compactMap { record -> (Record, Int)? in
-            let fields = tiers(record).map { Set(words(in: $0)) }
+            let fields = tiers(record).map(vocabulary)
             let score = terms.reduce(0) { score, term in
                 // The best tier the word is in: the first of three counts 3, the last 1.
                 score + (fields.firstIndex { matches(term, $0) }.map { fields.count - $0 } ?? 0)
@@ -63,6 +64,16 @@ public enum ReferenceSearch {
 
     static func words(in text: String) -> [String] {
         text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
+    }
+
+    /// A field's words, and each pair of neighbours joined ("seat belt" as "seatbelt"), leaving
+    /// out pairs with a stop word, which would make "the rear" into "therear".
+    private static func vocabulary(_ text: String) -> Set<String> {
+        let all = words(in: text)
+        let pairs = zip(all, all.dropFirst()).compactMap { first, second in
+            stopWords.contains(first) || stopWords.contains(second) ? nil : first + second
+        }
+        return Set(all).union(pairs)
     }
 
     private static func matches(_ term: String, _ words: Set<String>) -> Bool {

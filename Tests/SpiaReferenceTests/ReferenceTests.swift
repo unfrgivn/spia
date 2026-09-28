@@ -175,6 +175,17 @@ struct ReferenceSearchTests {
         #expect(ReferenceSearch.recalls("camera", in: safety.recalls).first?.id == "16V839000")
     }
 
+    @Test("a word written as one finds it written as two, but not across a stop word")
+    func compounds() {
+        let recall = Recall(
+            id: "20V000000", manufacturerCampaign: nil, reportDate: nil, components: ["AIR BAGS"],
+            summary: "Near the rear axle, the seat belt may not latch.", consequence: "",
+            remedy: "", parkIt: false, parkOutside: false)
+        #expect(ReferenceSearch.recalls("airbag", in: [recall]).count == 1)
+        #expect(ReferenceSearch.recalls("seatbelt", in: [recall]).count == 1)
+        #expect(ReferenceSearch.recalls("there", in: [recall]).isEmpty)
+    }
+
     @Test("a complaint filed under a component outranks one that only mentions it")
     func complaints() {
         // Three are filed under brakes; three more only mention them, two of those newer.
