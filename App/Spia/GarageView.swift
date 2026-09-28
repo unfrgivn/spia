@@ -11,6 +11,9 @@ struct GarageView: View {
     @Query(sort: \Vehicle.createdAt) private var vehicles: [Vehicle]
     let open: (Vehicle, DiagnosticSession?) -> Void
     @State private var addingVehicle = false
+    #if os(iOS)
+        @State private var showingSettings = false
+    #endif
     @State private var deleting: Vehicle?
     @State private var problem: String?
     @State private var width: CGFloat = 1_000
@@ -59,6 +62,16 @@ struct GarageView: View {
         .focusedSceneValue(\.garage, GarageActions(addVehicle: { addingVehicle = true }))
         .navigationTitle("Garage")
         .toolbar {
+            // A Mac has its Settings window (⌘,); an iPhone or iPad opens it from here.
+            #if os(iOS)
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Label("Settings", systemImage: "gearshape")
+                    }
+                }
+            #endif
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     addingVehicle = true
@@ -68,6 +81,18 @@ struct GarageView: View {
                 .help("Add a vehicle")
             }
         }
+        #if os(iOS)
+            .sheet(isPresented: $showingSettings) {
+                NavigationStack {
+                    SettingsView()
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showingSettings = false }
+                        }
+                    }
+                }
+            }
+        #endif
         .sheet(isPresented: $addingVehicle) {
             VehicleEditor { vehicle in open(vehicle, vehicle.orderedSessions.first) }
         }

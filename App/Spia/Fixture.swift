@@ -37,12 +37,9 @@
         static var query: String? { UserDefaults.standard.string(forKey: "SpiaQuery") }
         static var component: String? { UserDefaults.standard.string(forKey: "SpiaComponent") }
 
-        static var colorScheme: ColorScheme? {
-            switch UserDefaults.standard.string(forKey: "SpiaAppearance") {
-            case "dark": .dark
-            case "light": .light
-            default: nil
-            }
+        static var appearance: Appearance? {
+            UserDefaults.standard.string(forKey: "SpiaAppearance").flatMap(
+                Appearance.init(rawValue:))
         }
 
         /// An in-memory library with the demo car, whose checks then run against the recordings;
