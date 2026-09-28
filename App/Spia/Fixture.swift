@@ -16,7 +16,9 @@
     @MainActor
     enum Fixture {
         enum Screen: String {
-            case garage, overview, references, photos, session, settings
+            case garage, overview, references, photos, session, settings, replay
+            case replayTimeline = "replay-timeline"
+            case recordings
             /// References, on the bulletins or the complaints.
             case bulletins, complaints
             /// The garage before any vehicle is added.
@@ -49,14 +51,52 @@
             let root = FileManager.default.temporaryDirectory
                 .appendingPathComponent("SpiaFixture-\(UUID().uuidString)", isDirectory: true)
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            let checks =
+                try screen == .replay || screen == .replayTimeline || screen == .recordings
+                ? savedChecks() : nil
             let model = AppModel(
                 container: try Garage.inMemoryContainer(), files: SpiaFiles(root: root),
-                assistant: assistant(), replayTiming: .immediate)
+                assistant: assistant(), replayTiming: .immediate,
+                savedChecksProvider: checks.map { saved in { saved } })
             if screen != .welcome {
-                let vehicle = try model.garage.addDemoVehicle()
-                Task { await runChecks(model: model, vehicle: vehicle) }
+                if screen == .replay || screen == .replayTimeline || screen == .recordings {
+                    let vehicle = try model.garage.addVehicle(
+                        name: DemoGarage.vehicleName, vin: DemoGarage.vin)
+                    for (position, module) in DemoGarage.modules.enumerated() {
+                        vehicle.modules.append(
+                            ModulePreset(
+                                label: module.label, target: module.target, position: position))
+                    }
+                    let session = try model.garage.addSession(to: vehicle, title: "Saved checks")
+                    _ = model.prepareRecordings(for: vehicle)
+                    if screen == .replay || screen == .replayTimeline {
+                        Task {
+                            await runReplayChecks(model: model, vehicle: vehicle, session: session)
+                        }
+                    }
+                } else {
+                    let vehicle = try model.garage.addDemoVehicle()
+                    Task { await runChecks(model: model, vehicle: vehicle) }
+                }
             }
             return model
+        }
+
+        private static func savedChecks() throws -> [SavedCheck] {
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+            guard
+                let date = calendar.date(
+                    from: DateComponents(year: 2026, month: 9, day: 26, hour: 12))
+            else { throw CocoaError(.coderInvalidValue) }
+            return [
+                SavedCheck(
+                    job: .adapterCheck, recorded: date,
+                    transcript: try DemoRecording.adapterProbe.url()),
+                SavedCheck(
+                    job: .moduleDTCs(DemoGarage.airbag.target), recorded: date,
+                    transcript: try DemoRecording.airbagCodes.url()),
+            ]
         }
 
         /// Where the vehicle's workspace opens for `screen`, or nil to stay in the garage.
@@ -65,7 +105,7 @@
             case .overview: .overview
             case .references, .bulletins, .complaints: .references
             case .photos: .photos
-            case .session, .timeline, .explain:
+            case .session, .timeline, .explain, .replay, .replayTimeline, .recordings:
                 vehicle.orderedSessions.first.map { .session($0.id) }
             case .garage, .settings, .welcome, nil: nil
             }
@@ -95,6 +135,7 @@
             // Connect once the screen is up, so shots can show what a new connection looks like.
             try? await Task.sleep(for: .seconds(2))
             await workbench.connect()
+            _ = await workbench.run(.adapterCheck, in: session)
             // Checks after the bulb check, the way someone connects and then runs one.
             try? await Task.sleep(for: .seconds(1.5))
             _ = await workbench.run(.genericScan, in: session)
@@ -103,6 +144,17 @@
             _ = await workbench.run(.moduleDTCs(DemoGarage.bodyComputer.target), in: session)
             if let error = workbench.lastError { print("Spia fixture check failed: \(error)") }
             answerAirbagQuestion(in: session, garage: model.garage)
+        }
+
+        private static func runReplayChecks(
+            model: AppModel, vehicle: Vehicle, session: DiagnosticSession
+        ) async {
+            try? await Task.sleep(for: .seconds(2))
+            guard let workbench = model.workbench(for: vehicle) else { return }
+            await Task.yield()
+            await workbench.connect()
+            _ = await workbench.run(.adapterCheck, in: session)
+            _ = await workbench.run(.moduleDTCs(DemoGarage.airbag.target), in: session)
         }
 
         /// A question about the airbag row and an answer, as if the owner had tapped Explain,

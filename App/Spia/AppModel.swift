@@ -22,17 +22,22 @@ final class AppModel {
     let assistant: AssistantConfiguration
     let replayTiming: ReplayTiming
     private var workbenches: [UUID: Workbench] = [:]
+    private var recordingWorkbenches: [UUID: Workbench] = [:]
+    private var recordingsActive: Set<UUID> = []
     private var conversations: [UUID: AssistantConversation] = [:]
     private var referenceSets: [UUID: VehicleReferences] = [:]
+    private let savedChecksProvider: (() -> [SavedCheck])?
 
     init(
         container: ModelContainer, files: SpiaFiles,
         assistant: AssistantConfiguration = AssistantConfiguration(),
-        replayTiming: ReplayTiming = .recorded
+        replayTiming: ReplayTiming = .recorded,
+        savedChecksProvider: (() -> [SavedCheck])? = nil
     ) {
         self.container = container
         self.assistant = assistant
         self.replayTiming = replayTiming
+        self.savedChecksProvider = savedChecksProvider
         garage = Garage(context: container.mainContext, files: files)
     }
 
@@ -44,11 +49,61 @@ final class AppModel {
     /// The workbench for the vehicle's primary adapter, created on first use.
     func workbench(for vehicle: Vehicle) -> Workbench? {
         guard let profile = vehicle.adapters.first else { return nil }
+        if recordingsActive.contains(vehicle.id) {
+            return recordingWorkbenches[vehicle.id]
+        }
         if let existing = workbenches[profile.id] { return existing }
         let workbench = Workbench(
             backend: Self.backend(for: profile, replayTiming: replayTiming), garage: garage)
         workbenches[profile.id] = workbench
         return workbench
+    }
+
+    func savedChecks(for vehicle: Vehicle) -> [SavedCheck] {
+        #if DEBUG
+            savedChecksProvider?() ?? garage.savedChecks(for: vehicle)
+        #else
+            garage.savedChecks(for: vehicle)
+        #endif
+    }
+
+    func useRecordings(for vehicle: Vehicle) async -> Workbench? {
+        guard let profile = vehicle.adapters.first else { return nil }
+        let checks = savedChecks(for: vehicle)
+        guard !checks.isEmpty else { return nil }
+        if let existing = recordingWorkbenches[vehicle.id] {
+            recordingsActive.insert(vehicle.id)
+            return existing
+        }
+        if let existing = workbenches.removeValue(forKey: profile.id) {
+            await existing.disconnect()
+        }
+        return prepareRecordings(for: vehicle, checks: checks)
+    }
+
+    func prepareRecordings(for vehicle: Vehicle) -> Workbench? {
+        let checks = savedChecks(for: vehicle)
+        guard !checks.isEmpty else { return nil }
+        return prepareRecordings(for: vehicle, checks: checks)
+    }
+
+    private func prepareRecordings(for vehicle: Vehicle, checks: [SavedCheck]) -> Workbench {
+        let workbench = Workbench(
+            backend: ReplayBackend(
+                displayName: "Saved recordings", checks: checks, timing: replayTiming),
+            garage: garage)
+        recordingWorkbenches[vehicle.id] = workbench
+        recordingsActive.insert(vehicle.id)
+        return workbench
+    }
+
+    func useProfile(for vehicle: Vehicle) async -> Workbench? {
+        guard vehicle.adapters.first != nil else { return nil }
+        recordingsActive.remove(vehicle.id)
+        if let existing = recordingWorkbenches.removeValue(forKey: vehicle.id) {
+            await existing.disconnect()
+        }
+        return workbench(for: vehicle)
     }
 
     func conversation(for session: DiagnosticSession) -> AssistantConversation {
@@ -73,6 +128,8 @@ final class AppModel {
 
     func delete(_ vehicle: Vehicle) throws {
         for session in vehicle.sessions { conversations.removeValue(forKey: session.id)?.stop() }
+        recordingsActive.remove(vehicle.id)
+        recordingWorkbenches.removeValue(forKey: vehicle.id)
         referenceSets.removeValue(forKey: vehicle.id)
         try garage.delete(vehicle)
     }

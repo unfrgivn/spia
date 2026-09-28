@@ -28,7 +28,9 @@ struct SessionView: View {
         ScrollViewReader { scroller in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    BoardHeader(session: session, board: board, layout: layout)
+                    BoardHeader(
+                        session: session, board: board, layout: layout,
+                        connectionKind: workbench?.adapter.kind)
                     // A check waiting for the owner, or one with no row, gets the panel; the rest
                     // show on their row.
                     if let workbench, let activity = workbench.activity,
@@ -59,7 +61,7 @@ struct SessionView: View {
             #if DEBUG
                 .task {
                     switch Fixture.screen {
-                    case .timeline:
+                    case .timeline, .replayTimeline:
                         // After the fixture's checks have added their results.
                         try? await Task.sleep(for: .seconds(3))
                         scroller.scrollTo(Self.timelineID, anchor: .top)
@@ -105,6 +107,12 @@ struct SessionView: View {
         }
         .task(id: session.vehicle?.id) {
             if let vehicle = session.vehicle { workbench = model.workbench(for: vehicle) }
+            #if DEBUG
+                if Fixture.screen == .recordings {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    showConnection = true
+                }
+            #endif
         }
         .onChange(of: workbench.map(ObjectIdentifier.init), initial: true) {
             model.conversation(for: session).workbench = workbench
@@ -161,11 +169,13 @@ struct SessionView: View {
     }
 
     /// With the connected adapter's battery reading, which is newer than any saved one.
-    private var board: SessionBoard { session.board(live: workbench?.connection.status) }
+    private var board: SessionBoard { session.board(live: workbench?.liveStatus) }
 
     private var subtitle: String {
         guard let vehicle = session.vehicle else { return "" }
-        return vehicle.isDemo ? "\(vehicle.name) · Demo" : vehicle.name
+        if vehicle.isDemo { return "\(vehicle.name) · Demo" }
+        if workbench?.adapter.kind == .replay { return "\(vehicle.name) · Recordings" }
+        return vehicle.name
     }
 
     /// Reads a board row's missing reading; nil while a check runs.
@@ -181,7 +191,11 @@ struct SessionView: View {
         var reasons: [SessionBoard.Subject: String] = [:]
         for row in board.rows where row.status == .notRead && !workbench.canRun(row.subject.job) {
             reasons[row.subject] =
-                workbench.adapter.kind == .demo ? "Not in the demo" : "Can't be read here"
+                switch workbench.adapter.kind {
+                case .demo: "Not in the demo"
+                case .replay: "Not recorded yet"
+                default: "Can't be read here"
+                }
         }
         return reasons
     }
@@ -237,7 +251,8 @@ struct SessionView: View {
             return .init(job: job, title: title, perform: runs ? { run(job) } : nil)
         }
         return SessionActions(
-            connected: workbench?.connection.status != nil, assistantShown: showAssistant,
+            connected: workbench?.connection.status != nil,
+            assistantShown: showAssistant,
             toggleAssistant: { showAssistant.toggle() }, connect: { showConnection = true },
             checks: RunMenu.jobs.map { check($0, $0.menuTitle) },
             moduleChecks: (session.vehicle?.orderedModules ?? []).compactMap { module in

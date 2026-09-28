@@ -79,22 +79,41 @@ public struct ConnectionSummary: Sendable, Equatable {
             }
         switch state {
         case .disconnected:
-            title = "Not connected"
             detail =
                 switch adapter.kind {
                 case .demo: "Demo recordings ready"
                 case .replay: "Saved recordings ready"
                 default: "Plug in the adapter, then connect"
                 }
-            tone = .neutral
+            if adapter.kind == .demo {
+                title = "Demo recordings"
+                tone = .neutral
+            } else if adapter.kind == .replay {
+                title = "Saved recordings"
+                tone = .neutral
+            } else {
+                title = "Not connected"
+                tone = .neutral
+            }
         case .connecting:
             title = "Connecting"
             detail = "Resetting the adapter"
             tone = .working
         case .ready(let status):
-            title = status.hardware ?? adapter.displayName
-            detail = "Ready · \(Self.voltageText(status.voltage))"
-            tone = status.voltage == nil ? .attention : .good
+            switch adapter.kind {
+            case .demo:
+                title = "Demo recordings"
+                detail = "Ready · not a live car reading"
+                tone = .neutral
+            case .replay:
+                title = "Saved recordings"
+                detail = "Ready · not a live car reading"
+                tone = .neutral
+            case .usbSerial, .bluetooth:
+                title = status.hardware ?? adapter.displayName
+                detail = "Ready · \(Self.voltageText(status.voltage))"
+                tone = status.voltage == nil ? .attention : .good
+            }
         case .reconnectRequired(let reason):
             title = "Reconnect needed"
             detail = reason

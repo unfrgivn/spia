@@ -74,7 +74,13 @@ private struct LedgerRow: View {
             case .wide:
                 HStack(alignment: .firstTextBaseline, spacing: 0) {
                     time.frame(width: 84, alignment: .leading)
-                    title.frame(width: 250, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 3) {
+                        title
+                        if let recorded = entry.result?.source.replayDate {
+                            ReplayChip(recorded: recorded)
+                        }
+                    }
+                    .frame(width: 250, alignment: .leading)
                     text.lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
                     chevron
                 }
@@ -84,6 +90,9 @@ private struct LedgerRow: View {
                     time
                     VStack(alignment: .leading, spacing: 3) {
                         title.font(.system(size: 15))
+                        if let recorded = entry.result?.source.replayDate {
+                            ReplayChip(recorded: recorded)
+                        }
                         text.font(.system(size: 13.5)).lineLimit(3)
                     }
                     Spacer(minLength: 0)
@@ -181,10 +190,25 @@ private struct EntryStamp: View {
                 Chip(text: "From recording")
                     .help("Produced from a real recording of the car, not a live connection")
             }
+            if let recorded = entry.result?.source.replayDate {
+                ReplayChip(recorded: recorded)
+            }
             Text(entry.date, format: .dateTime.hour().minute())
                 .font(.caption)
                 .foregroundStyle(Palette.tertiary)
         }
+    }
+}
+
+/// Marks a result replayed from a saved recording, with when the car said it, so it can't pass
+/// for a new reading.
+private struct ReplayChip: View {
+    let recorded: Date
+
+    var body: some View {
+        let stamp = recorded.formatted(date: .abbreviated, time: .shortened)
+        Chip(text: "Replay of \(stamp)")
+            .help("Replayed from a recording of this car made on \(stamp), not a new reading")
     }
 }
 

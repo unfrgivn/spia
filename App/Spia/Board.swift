@@ -66,6 +66,7 @@ struct BoardHeader: View {
     @Bindable var session: DiagnosticSession
     let board: SessionBoard
     let layout: BoardLayout
+    let connectionKind: ConnectionKind?
 
     var body: some View {
         let wide = layout == .wide
@@ -122,7 +123,16 @@ struct BoardHeader: View {
         var parts = ["Opened \(Self.opened(session.startedAt))"]
         #if os(iOS)
             if let vehicle = session.vehicle {
-                parts.insert(vehicle.isDemo ? "\(vehicle.name) · Demo" : vehicle.name, at: 0)
+                let suffix: String?
+                if vehicle.isDemo {
+                    suffix = "Demo"
+                } else if connectionKind == .replay {
+                    suffix = "Recordings"
+                } else {
+                    suffix = nil
+                }
+                parts.insert(
+                    suffix.map { "\(vehicle.name) · \($0)" } ?? vehicle.name, at: 0)
             }
         #endif
         return parts.joined(separator: " · ")
@@ -574,10 +584,14 @@ struct AdapterIndicator: View {
         Button(action: open) {
             HStack(spacing: 7) {
                 Lamp(tone: tone)
-                Text(workbench.activity == nil ? summary.title : "Reading")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Palette.secondary)
-                    .lineLimit(1)
+                Text(
+                    workbench.activity == nil
+                        ? (workbench.adapter.kind == .replay ? "Saved recordings" : summary.title)
+                        : "Reading"
+                )
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Palette.secondary)
+                .lineLimit(1)
             }
             .fixedSize()
             .contentShape(Rectangle())

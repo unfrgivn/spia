@@ -121,6 +121,13 @@ valid live recording for an exact check can be replayed through the production c
 runner. Its result is marked with the date the car was recorded, and replay results are never valid
 inputs for another replay.
 
+The connection sheet can choose Recordings when a vehicle has saved checks. The demo adapter still
+uses bundled recordings, but its battery row is now produced by running the adapter check rather
+than treating connection status as a current reading. The DEBUG fixture adds `replay`,
+`replay-timeline`, and `recordings` (the connect sheet on Recordings) screens for a non-demo Ghibli
+with the real adapter and airbag recordings, so the board, case file, and connect sheet show a
+saved-check session without contacting a car.
+
 The in-place reset is not verified against a real adapter yet. A bench capture still needs the USB
 vLinker FS on USB power with no car: connect, read the airbag module, then run the scan. The scan
 transcript should start with `ATZ` through `ATSP0` and end with `UNABLE TO CONNECT`. USB and BLE

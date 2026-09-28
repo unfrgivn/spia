@@ -352,6 +352,21 @@ struct SpiaKitTests {
         #expect(ConnectionSummary.voltageText(14.3).contains("charging"))
         #expect(ConnectionSummary.voltageText(12.6) == "12.6 V")
     }
+
+    @Test("demo and replay connection summaries do not present saved voltage as current")
+    func recordedConnectionWording() {
+        let status = AdapterStatus(
+            identity: "ELM327 v2.3", firmware: "STN1170 v4.3.2", hardware: "vLinker FS r2",
+            voltage: 14.3)
+        for kind in [ConnectionKind.demo, .replay] {
+            let summary = ConnectionSummary(
+                adapter: AdapterDescriptor(kind: kind, displayName: "recording"),
+                state: .ready(status))
+            #expect(summary.detail.contains("not a live car reading"))
+            #expect(!summary.detail.contains("14.3 V"))
+            #expect(!summary.detail.contains("No power from the car"))
+        }
+    }
 }
 
 @Suite("Demo car")

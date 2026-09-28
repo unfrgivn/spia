@@ -41,6 +41,8 @@ public final class Workbench {
 
     private let backend: any DiagnosticsBackend
     private let garage: Garage
+    private var observerReady = false
+    private var observerWaiters: [CheckedContinuation<Void, Never>] = []
 
     public init(backend: any DiagnosticsBackend, garage: Garage) {
         self.backend = backend
@@ -51,6 +53,12 @@ public final class Workbench {
                 guard let self else { return }
                 self.connection = state
                 self.liveStatus = self.isPhysical ? state.status : nil
+                if !self.observerReady {
+                    self.observerReady = true
+                    let waiters = self.observerWaiters
+                    self.observerWaiters.removeAll()
+                    for waiter in waiters { waiter.resume() }
+                }
             }
         }
     }
@@ -62,6 +70,7 @@ public final class Workbench {
 
     public func connect() async {
         lastError = nil
+        await waitForObserver()
         do {
             try await backend.connect()
         } catch {
@@ -138,6 +147,13 @@ public final class Workbench {
             try write()
         } catch {
             lastError = "Couldn't save the result: \(error.readable)"
+        }
+    }
+
+    private func waitForObserver() async {
+        guard !observerReady else { return }
+        await withCheckedContinuation { continuation in
+            observerWaiters.append(continuation)
         }
     }
 
