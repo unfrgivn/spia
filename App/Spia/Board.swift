@@ -586,7 +586,7 @@ struct AdapterIndicator: View {
 }
 
 /// A section's heading, the way the case file has it: its name, a count or a note in grey, and
-/// its actions on the right in the accent colour.
+/// its actions on the right in the accent colour, or under the name when they don't fit.
 struct SectionHeading<Actions: View>: View {
     let title: String
     let note: String?
@@ -599,6 +599,20 @@ struct SectionHeading<Actions: View>: View {
     }
 
     var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                name
+                Spacer(minLength: 16)
+                buttons
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                name
+                buttons
+            }
+        }
+    }
+
+    private var name: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(title)
                 .font(.system(size: 17, weight: .semibold))
@@ -608,12 +622,14 @@ struct SectionHeading<Actions: View>: View {
                     .font(.system(size: 13))
                     .foregroundStyle(Palette.tertiary)
             }
-            Spacer(minLength: 0)
-            HStack(spacing: 16) { actions }
-                .buttonStyle(.plain)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Palette.accent)
         }
+    }
+
+    private var buttons: some View {
+        HStack(spacing: 16) { actions }
+            .buttonStyle(.plain)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Palette.accent)
     }
 }
 

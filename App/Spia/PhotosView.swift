@@ -13,21 +13,26 @@ struct PhotosView: View {
     @State private var editing = false
     @State private var removing: VehicleImage?
     @State private var problem: String?
-
-    private let columns = [GridItem(.adaptive(minimum: 220), spacing: 16)]
+    @State private var width: CGFloat = 1_000
 
     var body: some View {
+        let compact = BoardLayout(width: width) == .compact
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                ownPhotos
-                referencePhotos
+            VStack(alignment: .leading, spacing: 0) {
+                ownPhotos(compact: compact)
+                referencePhotos(compact: compact)
+                    .padding(.top, compact ? 32 : 48)
             }
-            .padding(24)
-            .frame(maxWidth: 1100, alignment: .leading)
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, compact ? 16 : 40)
+            .padding(.vertical, compact ? 16 : 32)
+            .frame(maxWidth: 1_120, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .readingWidth($width)
+        .background(Palette.base)
         .navigationTitle(vehicle.name)
         .platformSubtitle("Photos")
+        .platformInlineTitle()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -67,15 +72,27 @@ struct PhotosView: View {
 
     // MARK: - Sections
 
-    private var ownPhotos: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Your photos").font(.title2.weight(.semibold))
+    /// Two photos across an iPhone, three on an iPad held upright, and four or more on a Mac.
+    private func grid(compact: Bool) -> [GridItem] {
+        let minimum: CGFloat = width < 600 ? 150 : width < 980 ? 190 : 230
+        return [GridItem(.adaptive(minimum: minimum), spacing: compact ? 12 : 18)]
+    }
+
+    private func ownPhotos(compact: Bool) -> some View {
+        let count = vehicle.orderedImages.count
+        return VStack(alignment: .leading, spacing: 0) {
+            SectionHeading(
+                "Your photos", note: count == 0 ? nil : count == 1 ? "1 photo" : "\(count) photos")
             Text(
-                "Photos of your car. Once you add one, it's the cover instead of the reference photo. Drop images here or add them; they're resized and stripped of location data."
+                "Photos of your car. Once you add one, it's the cover instead of the reference photo. They're resized, and their location is removed."
             )
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
+            .font(.system(size: 14))
+            .foregroundStyle(Palette.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 6)
+            LazyVGrid(
+                columns: grid(compact: compact), alignment: .leading, spacing: compact ? 14 : 20
+            ) {
                 ForEach(vehicle.orderedImages) { image in
                     let file = model.garage.files.url(for: image.path)
                     let isCover = file == coverFile
@@ -86,77 +103,70 @@ struct PhotosView: View {
                         }
                         Button("Remove…", role: .destructive) { removing = image }
                     } footer: {
-                        HStack {
+                        HStack(alignment: .firstTextBaseline) {
                             Text(image.addedAt, format: .dateTime.year().month().day())
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
+                                .font(.system(size: 12.5, weight: .medium, design: .monospaced))
+                                .foregroundStyle(Palette.tertiary)
+                            Spacer(minLength: 8)
                             if !isCover {
                                 Button("Use as Cover") { setCover(image) }
-                                    .controlSize(.small)
+                                    .buttonStyle(.plain)
+                                    .font(.system(size: 12.5, weight: .semibold))
+                                    .foregroundStyle(Palette.accent)
                             }
                         }
                     }
                 }
-                Button {
-                    importing = true
-                } label: {
-                    VStack(spacing: 8) {
-                        Image(systemName: "photo.badge.plus")
-                            .font(.system(size: 28))
-                            .foregroundStyle(.tint)
-                        Text("Add Photos…").font(.headline)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 150)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(
-                                Color.primary.opacity(0.18),
-                                style: StrokeStyle(lineWidth: 1.5, dash: [6]))
-                    )
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+                AddPhotoTile { importing = true }
             }
+            .padding(.top, 16)
         }
     }
 
-    private var referencePhotos: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Reference photos").font(.title2.weight(.semibold))
-                Spacer()
-                if references.isRefreshing {
-                    ProgressView().controlSize(.small)
-                }
-                Button("Change Trim or Color…") { editing = true }
+    private func referencePhotos(compact: Bool) -> some View {
+        let count = references.photos.count
+        return VStack(alignment: .leading, spacing: 0) {
+            SectionHeading(
+                "Reference photos",
+                note: count == 0 ? nil : count == 1 ? "1 photo" : "\(count) photos"
+            ) {
+                if references.isRefreshing { ProgressView().controlSize(.small) }
+                Button("Change Trim or Colour…") { editing = true }
                 Button("Search Again") {
                     Task { await references.refresh(vehicle.referenceInput) }
                 }
                 .disabled(references.isRefreshing)
             }
             Text(searchDescription)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 14))
+                .foregroundStyle(Palette.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 6)
             if references.photos.isEmpty, !references.isRefreshing {
                 Text("None found yet.")
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Palette.tertiary)
                     .padding(.vertical, 20)
             }
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
+            LazyVGrid(
+                columns: grid(compact: compact), alignment: .leading, spacing: compact ? 14 : 20
+            ) {
                 ForEach(references.photos, id: \.photo.id) { entry in
                     PhotoTile(file: entry.file, isCover: entry.file == coverFile) {
                         Link("Open on Wikimedia Commons", destination: entry.photo.pageURL)
                     } footer: {
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 3) {
                             Text(entry.photo.caption)
-                                .font(.caption)
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(Palette.secondary)
                                 .lineLimit(2)
                             PhotoCredit(photo: entry.photo)
+                                .foregroundStyle(Palette.tertiary)
                         }
                     }
                 }
             }
+            .padding(.top, 16)
         }
     }
 
@@ -193,7 +203,8 @@ struct PhotosView: View {
     }
 }
 
-/// A photo with its actions in a menu (also on right-click) and a cover badge.
+/// A photo with its actions in a menu (also on a right-click or a long press), and a mark on
+/// the cover.
 private struct PhotoTile<Actions: View, Footer: View>: View {
     let file: URL
     let isCover: Bool
@@ -201,29 +212,39 @@ private struct PhotoTile<Actions: View, Footer: View>: View {
     @ViewBuilder let footer: Footer
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        VStack(alignment: .leading, spacing: 8) {
             LocalImage(url: file)
                 .aspectRatio(3 / 2, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .clipShape(shape)
+                .overlay(shape.strokeBorder(Palette.hairline))
                 .overlay(alignment: .topLeading) {
                     if isCover {
-                        Label("Cover", systemImage: "star.fill")
-                            .font(.caption.weight(.semibold))
+                        Text("Cover")
+                            .font(.system(size: 12, weight: .heavy).width(.compressed))
+                            .textCase(.uppercase)
+                            .tracking(0.6)
+                            .foregroundStyle(Palette.primary)
                             .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(.thinMaterial, in: Capsule())
+                            .padding(.vertical, 3)
+                            .background(Palette.scrim, in: Capsule())
                             .padding(8)
+                            .environment(\.colorScheme, .dark)
                     }
                 }
                 .overlay(alignment: .topTrailing) {
                     Menu {
                         actions
                     } label: {
-                        Image(systemName: "ellipsis.circle.fill")
-                            .font(.title3)
-                            .symbolRenderingMode(.hierarchical)
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Palette.primary)
+                            .frame(width: 28, height: 28)
+                            .background(Palette.scrim, in: Circle())
+                            .environment(\.colorScheme, .dark)
                     }
-                    .platformBorderlessMenu()
+                    .menuStyle(.button)
+                    .buttonStyle(.plain)
                     .menuIndicator(.hidden)
                     .fixedSize()
                     .padding(8)
@@ -232,5 +253,37 @@ private struct PhotoTile<Actions: View, Footer: View>: View {
                 .contextMenu { actions }
             footer
         }
+    }
+}
+
+/// Where the owner's next photo goes: a dashed bay, like the garage's add rows.
+private struct AddPhotoTile: View {
+    let action: () -> Void
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Image(systemName: "photo.badge.plus")
+                    .font(.system(size: 24))
+                    .foregroundStyle(Palette.accent)
+                Text("Add Photos…")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Palette.primary)
+                #if os(macOS)
+                    Text("or drop them here")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Palette.tertiary)
+                #endif
+            }
+            // About a photo's height: an aspect ratio would size to the text, not the column.
+            .frame(maxWidth: .infinity, minHeight: 120)
+            .background(
+                shape.strokeBorder(
+                    Palette.tertiary.opacity(0.45), style: StrokeStyle(lineWidth: 1.2, dash: [5]))
+            )
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
     }
 }
