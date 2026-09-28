@@ -58,7 +58,9 @@ struct PhotosView: View {
         ) { image in
             Button("Remove", role: .destructive) { remove(image) }
         } message: { _ in
-            Text("It's deleted from Spia's library on this Mac. The original file isn't touched.")
+            Text(
+                "It's deleted from Spia's library on \(PlatformText.thisDevice). The original file isn't touched."
+            )
         }
         .errorAlert($problem)
     }

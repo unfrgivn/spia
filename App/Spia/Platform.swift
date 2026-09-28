@@ -19,10 +19,12 @@ enum PlatformColor {
 
 enum PlatformText {
     #if os(macOS)
+        static let thisDevice = "this Mac"
         static let onDeviceSection = "On this Mac"
         static let nothingLeaves = "Nothing leaves this Mac."
         static let staysOnDevice = "Stays on this Mac"
     #else
+        static let thisDevice = "this device"
         static let onDeviceSection = "On this device"
         static let nothingLeaves = "Nothing leaves this device."
         static let staysOnDevice = "Stays on this device"

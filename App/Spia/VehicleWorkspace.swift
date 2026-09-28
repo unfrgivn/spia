@@ -127,7 +127,7 @@ private struct WorkspaceSidebar: View {
             Button("Delete", role: .destructive) { delete(session) }
         } message: { _ in
             Text(
-                "Its notes, check results, transcripts, photos, and assistant conversation are removed from this Mac. This can't be undone."
+                "Its notes, check results, transcripts, photos, and assistant conversation are removed from \(PlatformText.thisDevice). This can't be undone."
             )
         }
         .errorAlert($problem)
