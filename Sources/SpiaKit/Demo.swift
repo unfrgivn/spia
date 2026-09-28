@@ -48,7 +48,8 @@ public enum DemoError: Error, Equatable, Sendable, CustomStringConvertible {
     }
 }
 
-/// The demo car, with the modules found on it during the car session.
+/// The demo car, with the modules found on it during the car session, and the steering column,
+/// which FCA's references list but nobody has read on the car yet.
 public enum DemoGarage {
     public static let vehicleName = "2017 Maserati Ghibli S Q4"
     public static let vin = "ZAM57RTS4H1249941"
@@ -73,6 +74,8 @@ public enum DemoGarage {
         target: ModuleTarget(known: .highSpeed, request: 0x763, response: 0x4E3))
 
     public static let modules = [airbag, abs, bodyComputer, steeringColumn]
+    /// The modules there are recordings of.
+    public static let recorded = [airbag, abs, bodyComputer]
 }
 
 /// Demo mode. Checks whose recorded command order matches the app's are replayed through the
@@ -171,6 +174,15 @@ public actor DemoBackend: DiagnosticsBackend {
             continuation.finish()
         }
         return stream
+    }
+
+    /// Every check but a read of a module nobody recorded, which fails with
+    /// `DemoError.noRecording`.
+    public nonisolated func canRun(_ job: DiagnosticJob) -> Bool {
+        switch job {
+        case .adapterCheck, .vehicleInfo, .genericScan: true
+        case .moduleDTCs(let target): DemoGarage.recorded.contains { $0.target == target }
+        }
     }
 
     public func confirm(_ id: UUID) async { await runner?.confirm(id) }

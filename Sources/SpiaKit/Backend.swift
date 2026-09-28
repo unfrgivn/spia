@@ -13,6 +13,13 @@ public protocol DiagnosticsBackend: Sendable {
     func run(_ job: DiagnosticJob, transcript: URL?) async -> AsyncStream<JobEvent>
     func confirm(_ id: UUID) async
     func cancel() async
+    /// Whether `job` can get an answer here at all, so screens don't offer checks that can only
+    /// fail. An adapter can try anything; the demo car has recordings of some modules only.
+    func canRun(_ job: DiagnosticJob) -> Bool
+}
+
+extension DiagnosticsBackend {
+    public func canRun(_ job: DiagnosticJob) -> Bool { true }
 }
 
 /// A physical adapter.

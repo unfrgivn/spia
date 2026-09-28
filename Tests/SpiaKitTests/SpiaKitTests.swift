@@ -326,6 +326,20 @@ struct DemoBackendTests {
                 == DemoError.noRecording(.moduleDTCs(DemoGarage.steeringColumn.target)).description)
     }
 
+    @Test("the demo knows which checks its recordings answer: exactly the ones that run")
+    func coverage() async throws {
+        let demo = DemoBackend()
+        try await demo.connect()
+        let jobs: [DiagnosticJob] =
+            [.adapterCheck, .vehicleInfo, .genericScan]
+            + DemoGarage.modules.map { .moduleDTCs($0.target) }
+        for job in jobs {
+            let answered = await run(job, on: demo).contains { $0.result != nil }
+            #expect(demo.canRun(job) == answered, "\(job.title)")
+        }
+        #expect(!demo.canRun(.moduleDTCs(DemoGarage.steeringColumn.target)))
+    }
+
     @Test("checks refuse to run before connecting")
     func requiresConnection() async {
         let events = await run(.genericScan, on: DemoBackend())
