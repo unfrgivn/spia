@@ -112,6 +112,10 @@ include the latest adapter initialization exchange followed by the check, with t
 from initialization and the real gap preserved. A fresh connection can therefore replay any saved
 check in any order.
 
+Demo mode can replay forward checks and decoded check steps at the timestamps in the car recording.
+The app uses that recorded speed so the reading rows, progress text, cancellation, and prompts can
+be exercised. Tests and screenshot fixtures use immediate replay and remain instant.
+
 The in-place reset is not verified against a real adapter yet. A bench capture still needs the USB
 vLinker FS on USB power with no car: connect, read the airbag module, then run the scan. The scan
 transcript should start with `ATZ` through `ATSP0` and end with `UNABLE TO CONNECT`. USB and BLE

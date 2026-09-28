@@ -1,4 +1,5 @@
 import Foundation
+import OBDCore
 import Observation
 import SpiaAssist
 import SpiaKit
@@ -19,16 +20,19 @@ final class AppModel {
     let container: ModelContainer
     let garage: Garage
     let assistant: AssistantConfiguration
+    let replayTiming: ReplayTiming
     private var workbenches: [UUID: Workbench] = [:]
     private var conversations: [UUID: AssistantConversation] = [:]
     private var referenceSets: [UUID: VehicleReferences] = [:]
 
     init(
         container: ModelContainer, files: SpiaFiles,
-        assistant: AssistantConfiguration = AssistantConfiguration()
+        assistant: AssistantConfiguration = AssistantConfiguration(),
+        replayTiming: ReplayTiming = .recorded
     ) {
         self.container = container
         self.assistant = assistant
+        self.replayTiming = replayTiming
         garage = Garage(context: container.mainContext, files: files)
     }
 
@@ -41,7 +45,8 @@ final class AppModel {
     func workbench(for vehicle: Vehicle) -> Workbench? {
         guard let profile = vehicle.adapters.first else { return nil }
         if let existing = workbenches[profile.id] { return existing }
-        let workbench = Workbench(backend: Self.backend(for: profile), garage: garage)
+        let workbench = Workbench(
+            backend: Self.backend(for: profile, replayTiming: replayTiming), garage: garage)
         workbenches[profile.id] = workbench
         return workbench
     }
@@ -79,10 +84,12 @@ final class AppModel {
         }
     }
 
-    private static func backend(for profile: AdapterProfile) -> any DiagnosticsBackend {
+    private static func backend(
+        for profile: AdapterProfile, replayTiming: ReplayTiming
+    ) -> any DiagnosticsBackend {
         switch profile.kind {
         case .demo:
-            return DemoBackend()
+            return DemoBackend(timing: replayTiming)
         case .usbSerial:
             #if os(iOS)
                 return LiveBackend(adapter: profile.descriptor, baud: profile.baud) {

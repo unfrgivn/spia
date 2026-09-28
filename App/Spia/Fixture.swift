@@ -1,5 +1,6 @@
 #if DEBUG
     import Foundation
+    import OBDCore
     import SpiaAssist
     import SpiaKit
     import SpiaStore
@@ -50,7 +51,7 @@
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             let model = AppModel(
                 container: try Garage.inMemoryContainer(), files: SpiaFiles(root: root),
-                assistant: assistant())
+                assistant: assistant(), replayTiming: .immediate)
             if screen != .welcome {
                 let vehicle = try model.garage.addDemoVehicle()
                 Task { await runChecks(model: model, vehicle: vehicle) }

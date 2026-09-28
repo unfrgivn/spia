@@ -360,6 +360,58 @@ struct DemoBackendTests {
         #expect(state?.status?.voltage == 11.7)
     }
 
+    @Test("recorded connection waits for the adapter's real response latency")
+    func recordedConnectionTiming() async throws {
+        let events = try DemoRecording.adapterProbe.events()
+        let immediateTransport = ReplayTransport(events: events)
+        let immediate = ConnectionManager(adapter: DemoGarage.adapter) { immediateTransport }
+        try await immediate.connect()
+
+        let recordedTransport = ReplayTransport(events: events, timing: .recorded)
+        let recorded = ConnectionManager(adapter: DemoGarage.adapter) { recordedTransport }
+        let clock = ContinuousClock()
+        let start = clock.now
+        try await recorded.connect()
+        #expect(start.duration(to: clock.now) >= .milliseconds(1_000))
+        let recordedStatus = await recorded.state.status
+        let immediateStatus = await immediate.state.status
+        #expect(recordedStatus == immediateStatus)
+    }
+
+    @Test("a paced decoded check can be cancelled")
+    func cancelPacedDecodedCheck() async throws {
+        let demo = DemoBackend(timing: .recorded)
+        try await demo.connect()
+        let stream = await demo.run(.genericScan, transcript: nil)
+        let collecting = Task { await collect(stream) }
+        try await Task.sleep(for: .milliseconds(20))
+        await demo.cancel()
+        let events = await collecting.value
+        #expect(events.compactMap(\.failure).first?.cancelled == true)
+    }
+
+    @Test("a paced module check does not replay connection initialization")
+    func pacedModuleCheckUsesCheckDuration() async throws {
+        let demo = DemoBackend(timing: .recorded)
+        try await demo.connect()
+        let events = try DemoRecording.airbagCodes.events()
+        let checkStart = try #require(
+            events.firstIndex {
+                $0.direction == .tx && $0.bytes == Array("ATRV\r".utf8)
+            })
+        let lastTimestamp = try #require(events.last?.milliseconds)
+        let recordedDuration = lastTimestamp - events[checkStart].milliseconds
+        let clock = ContinuousClock()
+        let start = clock.now
+        _ = await run(.moduleDTCs(DemoGarage.airbag.target), on: demo)
+        let elapsed = start.duration(to: clock.now)
+        let lowerBound: Duration = .milliseconds(Int64(recordedDuration / 2))
+        let upperBound: Duration = .milliseconds(
+            Int64(min(recordedDuration + 1_000, UInt64(Int64.max))))
+        #expect(elapsed >= lowerBound)
+        #expect(elapsed < upperBound)
+    }
+
     @Test("vehicle information and generic scan come from the ignition-on recording")
     func genericReads() async throws {
         let demo = DemoBackend()
