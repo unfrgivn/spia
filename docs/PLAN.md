@@ -1,7 +1,7 @@
 # spia: Plan
 
 spia (Italian for a dashboard warning light, as in "spia motore"). Mac-first OBD-II scan tool for a Vgate vLinker FS (USB), tested against a 2017 Maserati Ghibli S Q4 (M157).
-The app also runs on iPhone and iPad; there it's Demo only until `BLETransport` lands.
+The app also runs on iPhone and iPad, where it reaches Bluetooth LE adapters (the vLinker FS in BLE+BT mode) through `BLETransport`.
 
 ## Decisions (locked)
 
@@ -35,7 +35,7 @@ Functional core, imperative shell.
 │  PID decoders (J1979)     │  │  SerialTransport (OBDSerial) │
 │  DTC parsing (03/07/0A)   │  │  RecordingTransport          │
 │  freeze frame, readiness, │  │  ReplayTransport (tests)     │
-│  VIN/CALID, ISO-TP        │  │  BLETransport   (later, iOS) │
+│  VIN/CALID, ISO-TP        │  │  BLETransport (OBDBluetooth) │
 │  multi-frame reassembly   │  │                              │
 └───────────────────────────┘  └─────────────────────────────┘
 ```
@@ -43,6 +43,8 @@ Functional core, imperative shell.
 Targets:
 
 - `OBDCore`: pure protocol logic + `Transport` protocol + `ELM327Session`. Must compile for iOS. No Darwin serial code.
+- `OBDBluetooth`: CoreBluetooth `BLETransport`, compiling for iOS.
+- `OBDBluetoothTests`: pure Bluetooth transport logic tests without CoreBluetooth fakes.
 - `OBDSerial`: macOS-only `SerialTransport` over POSIX termios.
 - `spia`: CLI executable.
 - `OBDCoreTests`: Swift Testing. Fixtures under `Tests/Fixtures/` are verbatim recorded transcripts.
@@ -53,10 +55,11 @@ The CLI and the app share one engine. Layers, bottom up:
 
 - `OBDCore`: protocol, decoders, `GenericOBDWorkflow` (the one generic scan/info sequence).
 - `SpiaKit`: `ConnectionManager` (sole owner of an adapter session), `JobRunner` (one read-only check at a time, progress, "needs you" prompts), typed `JobResult` snapshots, per-check transcripts, and `DemoBackend`. iOS-compatible.
+- `OBDBluetooth`: CoreBluetooth transport for the vLinker FS 18F0 service, plus adapter discovery and pure chunking/sighting logic.
 - `SpiaAssist`: the assistant's provider layer. Claude (Messages API) and OpenAI (Responses API, `store: false`) over URLSession with a byte-level SSE parser; Apple's on-device model (FoundationModels, macOS 26 + Apple Intelligence, availability-gated); API keys in the Keychain; the session briefing and safety rules. iOS-compatible.
 - `SpiaReference`: public references for a vehicle, Foundation only. VIN validation (49 CFR 565 check digit, required only for North American VINs), NHTSA vPIC decoding, recalls, owner complaints, and manufacturer service bulletins from NHTSA's `vehicles/byYmmt` in one request (bulletin PDFs fetched on demand), photos from Wikimedia Commons with author and license, and keyword search over bulletins. No keys. iOS-compatible. Photo search runs from trim and colour down to the model year and ranks the merged results on title, description, and categories: a photo must mention the model, files filed only under another generation's category (the model's categories on photos that clearly fit are trusted) are dropped, and a category's model year beats a title's photo date.
 - `SpiaStore`: SwiftData schema v1 (vehicles, adapter profiles, modules, sessions, timeline, chat messages) at `Application Support/Spia/Library.store`, transcript and photo files, the `Workbench` model the screens bind to, `AssistantConversation`, and `VehicleReferences`, a per-vehicle cache under `References/<vehicle>` (refreshed weekly or when the VIN changes, deleted with the vehicle). iOS-compatible.
-- `App/SpiaApp.xcodeproj`: SwiftUI screens only, one target for macOS, iPhone, and iPad. `OBDSerial` is linked on macOS only; there, the sandbox allows serial, Bluetooth, network client, and user-selected files.
+- `App/SpiaApp.xcodeproj`: SwiftUI screens only, one target for macOS, iPhone, and iPad. `OBDBluetooth` is linked on all platforms; `OBDSerial` is linked on macOS only; there, the sandbox allows serial, Bluetooth, network client, and user-selected files.
 - App icon: `design/icon/app-icon.svg` (the gauge: a dial reading into the warning zone, with a pulse line) is the source; `scripts/render-app-icon.sh` renders macOS sizes and the iOS icon into `AppIcon.appiconset` (needs `rsvg-convert`). The other `option-*.svg` files are the alternatives considered.
 
 Run it: open `App/SpiaApp.xcodeproj` and run the `Spia` scheme, or `xcodebuild -project App/SpiaApp.xcodeproj -scheme Spia build`. Choose "Explore the demo" to use the Ghibli recordings without a car. `scripts/screenshots.sh` captures `-SpiaFixture demo -SpiaScreen <screen> -SpiaAppearance <light|dark>` fixture screens.
@@ -65,7 +68,7 @@ The app opens on the garage: every vehicle as a card with its photo, decoded mod
 
 Demo mode replays recordings through the same code as a live adapter where the recorded command order matches (adapter check, airbag module), and decodes the rest from their recordings with the production decoders (generic scan, vehicle info, ABS, body computer). Results are labelled "From recording". The steering-column module has no recording and says so.
 
-Verified: engine and store behaviour by `swift test` against the real recordings; app builds universal with warnings as errors; app launches. Not verified: the app against the live car, sandboxed serial access to the vLinker FS, and the screens by eye.
+Verified: engine and store behaviour by `swift test` against the real recordings; app builds universal with warnings as errors; app launches. Not verified: the app against the live car, sandboxed serial access to the vLinker FS, the iOS app over Bluetooth on a device, and the screens by eye.
 
 App phases: 1 foundation (done), 2 assistant (built, see below), 3 media (camera, video, audio capture), 4 guided workflow from symptoms to tests to a solution.
 
@@ -91,7 +94,7 @@ App phases: 1 foundation (done), 2 assistant (built, see below), 3 media (camera
 | 6 (#1) | `spia scan` (stored/pending/permanent DTCs, freeze frame, readiness) + `spia info` (VIN, CAL IDs) | Pure report/decoder tests, original `ghibli-ignition-on-term.txt` replay through production request/decode paths, CLI help/validation; live execution remains unverified | offline milestone implemented; live unverified |
 | 7 (#2) | `spia clear` | Codes clear, CEL off, re-scan clean | pending |
 | 8 (#3) | `spia live` with CSV logging | RPM/coolant/etc. track reality at idle | pending |
-| iOS (#6) | `BLETransport` (CoreBluetooth), SwiftUI shell | Bluetooth FS on iPhone | Demo app shell shipped; BLETransport future |
+| iOS (#6) | `BLETransport` (CoreBluetooth), SwiftUI shell | Bluetooth FS on iPhone | `BLETransport` and `spia --ble` verified on the Ghibli; iOS app wiring builds, not yet run on an iPhone |
 
 Reordered 2026-09-26: the fault that started this project is not an emissions code (Mode 03/07/0A are clean), so UDS access to body modules moves ahead of the generic-OBD polish.
 
@@ -135,6 +138,7 @@ vLinker FS Bluetooth on the car (2017 Ghibli, 2026-09-27; macOS 15.7, Classic Bl
 - VgateFwUpdater (iOS) switched it to BLE+BT in its lower extension section: the bar fills and shows a check, and nothing changes until the adapter is unplugged and plugged back in. It then advertises over BLE as `vLinker FS-IOS` with service `18F0`.
 - GATT: service `18F0` has `2AF0` (notify, indicate) and `2AF1` (write, write without response). Service `E7810A71-73AE-499D-8C15-FAA9AEF0C3F2` has one characteristic, `BEF8D6C9-9C21-4C9E-B632-BD58C1009F9F` (read, write, write without response, notify, indicate). Device Information is present. macOS reported 20-byte writes without response at connect and 182 once the MTU was negotiated.
 - Over `18F0` from macOS CoreBluetooth: `ATZ` echoed, then `ELM327 v2.3` after 1.28 s. `ATE0`, `ATI`, `STI` (`STN2120 v5.8.1`), `STDI`, `ATRV` (14.4 V, engine running) each answered in about 30 ms, each reply in one notification. Classic Bluetooth in this mode is untested.
+- Through `spia --ble` on macOS (ignition on; fixtures `ghibli-ble-ignition-on-*.txt`): `ports --ble` found it at -39 dBm. `probe` matched the USB unit (`STN2120 v5.8.1`, 12.0 V, `A6`, ECM `7E8` with 22 PIDs, TCM `7E9` with 6). The scripted session decodes identically to `ghibli-ignition-on-term.txt`. Simple commands took about 30 ms (USB: 16 ms); bus-bound requests were 15–45 ms slower; the scripted session took 4.2 s (USB: 3.3 s). Four connections in a row all worked. `capture` overflowed the adapter's buffer after 136 frames (about 0.25 s), so bus sniffing stays on USB.
 
 ### Bus observations, ignition on, engine off (2026-09-26, `spia capture`)
 
