@@ -1,3 +1,4 @@
+import SpiaAssist
 import SpiaKit
 import SpiaStore
 import SwiftUI
@@ -422,7 +423,7 @@ private struct BoardNoteView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Palette.accent)
                 if !note.text.isEmpty {
-                    Text(Self.inline(note.text))
+                    Text(ReplyBlock.preview(note.text))
                         .font(.system(size: 14))
                         .lineSpacing(2)
                         .foregroundStyle(Palette.secondary)
@@ -445,13 +446,6 @@ private struct BoardNoteView: View {
     private var heading: String {
         let name = note.by ?? "The assistant"
         return note.pending ? "\(name) is answering…" : name
-    }
-
-    /// Bold, italics, and links, as the assistant writes them.
-    private static func inline(_ text: String) -> AttributedString {
-        let options = AttributedString.MarkdownParsingOptions(
-            interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
     }
 }
 

@@ -128,8 +128,12 @@
             Those are the airbag controller's own codes, so their exact meanings are in Maserati's \
             service data rather than the public OBD list. With a dead horn and dead wheel buttons \
             as well, the usual cause is a failing **clock spring**: the coiled cable behind the \
-            steering wheel that carries the horn, the wheel buttons, and the driver's airbag. \
-            Check first: does the horn work with the wheel turned fully left or right?
+            steering wheel that carries the horn, the wheel buttons, and the driver's airbag.
+
+            Check first:
+
+            1. Does the horn work with the wheel turned fully left or right?
+            2. Is the airbag lamp on all the time, or only at some wheel angles?
             """
     }
 #endif

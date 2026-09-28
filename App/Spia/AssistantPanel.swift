@@ -28,9 +28,9 @@ struct AssistantPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
+            Hairline()
             messages
-            Divider()
+            Hairline()
             composer
         }
         // Asked like anything typed: at once when it can be, else it waits in the composer for
@@ -86,8 +86,12 @@ struct AssistantPanel: View {
 
     private var header: some View {
         HStack {
-            Label("Assistant", systemImage: "sparkles")
-                .font(.headline)
+            Label {
+                Text("Assistant").foregroundStyle(Palette.primary)
+            } icon: {
+                Image(systemName: "sparkles").foregroundStyle(Palette.accent)
+            }
+            .font(.system(size: 15, weight: .semibold))
             Spacer()
             Menu {
                 ForEach(ProviderID.allCases) { option in
@@ -102,6 +106,7 @@ struct AssistantPanel: View {
                 Button("Assistant Settings…", action: showSettings)
             } label: {
                 ProviderLabel(provider: chosenProvider)
+                    .foregroundStyle(Palette.accent)
             }
             .platformBorderlessMenu()
             .fixedSize()
@@ -116,7 +121,7 @@ struct AssistantPanel: View {
     private var messages: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 14) {
+                LazyVStack(alignment: .leading, spacing: 18) {
                     if conversation.visibleMessages.isEmpty && !conversation.isResponding {
                         AssistantIntro(ask: { draft = $0 })
                     }
@@ -131,12 +136,16 @@ struct AssistantPanel: View {
                         .id("streaming")
                     }
                     if let error = conversation.error {
-                        Label(error, systemImage: "exclamationmark.triangle.fill")
-                            .font(.callout)
-                            .foregroundStyle(.orange)
-                            .textSelection(.enabled)
-                            .card(tint: .orange)
-                            .id("error")
+                        Label {
+                            Text(error).foregroundStyle(Palette.primary)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundStyle(Palette.caution)
+                        }
+                        .font(.system(size: 13.5))
+                        .textSelection(.enabled)
+                        .card()
+                        .id("error")
                     }
                 }
                 .padding(14)
@@ -182,8 +191,8 @@ struct AssistantPanel: View {
                     Text(
                         "The on-device model can't see photos. Choose Claude or OpenAI to include them."
                     )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.tertiary)
                 }
             }
             HStack(alignment: .bottom, spacing: 8) {
@@ -191,56 +200,63 @@ struct AssistantPanel: View {
                     importingPhotos = true
                 } label: {
                     Image(systemName: "photo.badge.plus")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Palette.accent)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
                 .help("Attach photos (or drop them here)")
 
                 TextField("Describe what you see, or ask…", text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Palette.primary)
                     .lineLimit(1...6)
                     .onSubmit(send)
 
                 if conversation.isResponding {
                     Button("Stop", systemImage: "stop.circle.fill") { conversation.stop() }
                         .labelStyle(.iconOnly)
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.plain)
+                        .font(.title2)
+                        .foregroundStyle(Palette.accent)
                         .help("Stop the reply")
                 } else {
                     Button("Send", systemImage: "arrow.up.circle.fill", action: send)
                         .labelStyle(.iconOnly)
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.plain)
                         .font(.title2)
+                        .foregroundStyle(canSend ? Palette.accent : Palette.tertiary)
                         .disabled(!canSend)
                         .keyboardShortcut(.return, modifiers: .command)
                         .help(sendHelp)
                 }
             }
-            .padding(8)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous).fill(
-                    PlatformColor.textBackground)
-            )
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Palette.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.quaternary))
+                RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(
+                    Palette.hairline))
 
-            if let reason = model.assistant.unavailableReason(chosenProvider) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(reason)
-                    if chosenProvider.isCloud {
-                        Button("Open Settings", action: showSettings).platformLinkButton()
+            Group {
+                if let reason = model.assistant.unavailableReason(chosenProvider) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(reason)
+                        if chosenProvider.isCloud {
+                            Button("Open Settings", action: showSettings)
+                                .buttonStyle(.plain)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(Palette.accent)
+                        }
                     }
+                } else if chosenProvider.isCloud {
+                    Label("Sent to \(chosenProvider.displayName)", systemImage: "icloud")
+                } else {
+                    Label(PlatformText.staysOnDevice, systemImage: "lock.laptopcomputer")
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            } else if chosenProvider.isCloud {
-                Label("Sent to \(chosenProvider.displayName)", systemImage: "icloud")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Label(PlatformText.staysOnDevice, systemImage: "lock.laptopcomputer")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
+            .font(.system(size: 12))
+            .foregroundStyle(Palette.tertiary)
         }
         .padding(12)
     }
@@ -319,19 +335,38 @@ private struct AssistantIntro: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Work through the problem together.")
-                .font(.headline)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Palette.primary)
             Text(
                 "The assistant reads this session's problem, notes, and results. It asks what you're seeing and suggests read-only checks, which run only when you approve them."
             )
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            ForEach(starters, id: \.self) { starter in
-                Button(starter) { ask(starter) }
-                    .platformLinkButton()
-                    .font(.callout)
+            .font(.system(size: 14))
+            .foregroundStyle(Palette.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(starters, id: \.self) { starter in
+                    Hairline()
+                    Button {
+                        ask(starter)
+                    } label: {
+                        HStack {
+                            Text(starter)
+                            Spacer(minLength: 8)
+                            Image(systemName: "arrow.up.left")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .padding(.vertical, 10)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Palette.accent)
+                    .help("Put this in the message box")
+                }
+                Hairline()
             }
+            .padding(.top, 6)
         }
-        .card()
     }
 }
 
@@ -349,10 +384,13 @@ private struct StreamingReply: View {
                         ? "\(provider.displayName) is thinking…"
                         : "\(provider.displayName) is replying…")
                 Spacer()
-                Button("Stop", action: stop).platformLinkButton()
+                Button("Stop", action: stop)
+                    .buttonStyle(.plain)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Palette.accent)
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.system(size: 12))
+            .foregroundStyle(Palette.tertiary)
             if !text.isEmpty { MarkdownText(text: text) }
         }
     }
@@ -382,11 +420,17 @@ private struct MessageView: View {
             }
             if !message.text.isEmpty {
                 Text(message.text)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Palette.primary)
                     .textSelection(.enabled)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(
-                        Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
+                        Palette.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Palette.hairline))
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -405,8 +449,8 @@ private struct MessageView: View {
                 Text(
                     [provider.displayName, message.model].compactMap { $0 }.joined(separator: " · ")
                 )
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .font(.system(size: 11.5))
+                .foregroundStyle(Palette.tertiary)
             }
         }
     }
@@ -440,8 +484,8 @@ private struct ToolCallCard: View {
         } icon: {
             Image(systemName: "doc.text.magnifyingglass")
         }
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.system(size: 12.5))
+        .foregroundStyle(Palette.tertiary)
     }
 
     private func proposalCard(_ proposal: CheckProposal) -> some View {
@@ -449,54 +493,70 @@ private struct ToolCallCard: View {
         let connected = conversation.workbench?.connection.status != nil
         return VStack(alignment: .leading, spacing: 8) {
             Label("Suggested check", systemImage: "stethoscope")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Text(title(proposal, job: job)).font(.headline)
-            Text(proposal.reason).font(.callout)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Palette.tertiary)
+            Text(title(proposal, job: job))
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Palette.primary)
+            Text(proposal.reason)
+                .font(.system(size: 14))
+                .foregroundStyle(Palette.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             if resolution == .pending {
-                HStack {
+                HStack(spacing: 10) {
                     if connected {
-                        Button("Run Check") { Task { await conversation.approve(call.id) } }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(job == nil || conversation.isResponding)
+                        Button {
+                            Task { await conversation.approve(call.id) }
+                        } label: {
+                            PrimaryPill(title: "Run Check")
+                        }
+                        .disabled(job == nil || conversation.isResponding)
                     } else {
-                        Button("Connect to Run…", action: connect)
-                            .buttonStyle(.borderedProminent)
+                        Button(action: connect) { PrimaryPill(title: "Connect to Run…") }
                     }
                     Button("Not Now") { conversation.decline(call.id) }
+                        .buttonStyle(OutlineButtonStyle())
                         .disabled(conversation.isResponding)
                 }
-                .controlSize(.small)
-                if let job { Text(job.summary).font(.caption).foregroundStyle(.secondary) }
+                .buttonStyle(.plain)
+                .padding(.top, 2)
+                if let job {
+                    Text(job.summary)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Palette.tertiary)
+                }
             } else {
                 status
             }
         }
-        .card(tint: resolution == .pending ? .accentColor : nil)
+        .card(tint: resolution == .pending ? Palette.accent : nil)
     }
 
     private func questionCard(_ question: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label("Question for you", systemImage: "questionmark.bubble")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Text(question).font(.headline)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Palette.tertiary)
+            Text(question)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Palette.primary)
+                .fixedSize(horizontal: false, vertical: true)
             if resolution == .pending {
                 HStack {
                     TextField("Your answer", text: $answer, axis: .vertical)
                         .lineLimit(1...4)
                         .onSubmit(submitAnswer)
                     Button("Answer", action: submitAnswer)
+                        .buttonStyle(OutlineButtonStyle())
                         .disabled(
                             answer.trimmingCharacters(in: .whitespaces).isEmpty
                                 || conversation.isResponding)
                 }
-                .controlSize(.small)
             } else {
                 status
             }
         }
-        .card(tint: resolution == .pending ? .accentColor : nil)
+        .card(tint: resolution == .pending ? Palette.accent : nil)
     }
 
     private func submitAnswer() {
@@ -511,54 +571,99 @@ private struct ToolCallCard: View {
         }
     }
 
+    /// How the proposal or question ended. These describe Spia's work, not the car, so they stay
+    /// out of the car's colours: a check that completed may well have found faults.
     @ViewBuilder private var status: some View {
-        switch resolution {
-        case .pending:
-            EmptyView()
-        case .running:
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.small)
-                Text("Running. Follow any prompts in the session.")
+        Group {
+            switch resolution {
+            case .pending:
+                EmptyView()
+            case .running:
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Running. Follow any prompts in the session.")
+                }
+            case .completed(let summary):
+                outcome(summary, symbol: "checkmark", tint: Palette.tertiary)
+            case .failed(let message):
+                outcome(message, symbol: "exclamationmark.triangle", tint: Palette.caution)
+            case .declined:
+                outcome("Not run", symbol: "minus", tint: Palette.tertiary)
+            case .answered(let text):
+                outcome(text, symbol: "arrowshape.turn.up.left", tint: Palette.tertiary)
+            case .skipped:
+                outcome("Skipped", symbol: "arrow.uturn.forward", tint: Palette.tertiary)
+            case .invalid(let reason):
+                outcome(
+                    "The assistant's suggestion couldn't be used: \(reason)",
+                    symbol: "exclamationmark.triangle", tint: Palette.caution)
             }
-            .font(.callout)
-        case .completed(let summary):
-            Label(summary, systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(
-                .callout)
-        case .failed(let message):
-            Label(message, systemImage: "xmark.circle.fill").foregroundStyle(.red).font(.callout)
-        case .declined:
-            Label("Not run", systemImage: "minus.circle").foregroundStyle(.secondary).font(.callout)
-        case .answered(let text):
-            Label(text, systemImage: "arrowshape.turn.up.left").font(.callout)
-        case .skipped:
-            Label("Skipped", systemImage: "arrow.uturn.forward").foregroundStyle(.secondary).font(
-                .callout)
-        case .invalid(let reason):
-            Label(
-                "The assistant's suggestion couldn't be used: \(reason)",
-                systemImage: "exclamationmark.triangle"
-            )
-            .foregroundStyle(.orange).font(.callout)
+        }
+        .font(.system(size: 13.5))
+        .foregroundStyle(Palette.secondary)
+    }
+
+    private func outcome(_ text: String, symbol: String, tint: Color) -> some View {
+        Label {
+            Text(text).fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: symbol).foregroundStyle(tint)
         }
     }
 }
 
-/// Inline Markdown (bold, italics, code, links), keeping the reply's line breaks.
+/// A reply's Markdown, block by block: paragraphs, headings, numbered and bulleted lists, quotes,
+/// and code, each with its inline bold, italics, code, and links.
 private struct MarkdownText: View {
     let text: String
 
     var body: some View {
-        Group {
-            if let attributed = try? AttributedString(
-                markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))
-            {
-                Text(attributed)
-            } else {
-                Text(text)
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(ReplyBlock.parse(text).enumerated()), id: \.offset) { _, block in
+                view(block)
             }
         }
+        .font(.system(size: 14.5))
+        .lineSpacing(2)
+        .foregroundStyle(Palette.primary)
         .textSelection(.enabled)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder private func view(_ block: ReplyBlock) -> some View {
+        switch block {
+        case .paragraph(let text):
+            Text(text).fixedSize(horizontal: false, vertical: true)
+        case .heading(let level, let text):
+            Text(text)
+                .font(.system(size: level <= 2 ? 15.5 : 14.5, weight: .semibold))
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 4)
+        case .item(let marker, let depth, let text):
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(marker)
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.tertiary)
+                    .frame(minWidth: 16, alignment: .trailing)
+                Text(text).fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.leading, CGFloat(max(depth - 1, 0)) * 18)
+        case .code(let code):
+            Text(code)
+                .font(.system(size: 12.5, design: .monospaced))
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Palette.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        case .quote(let text):
+            HStack(spacing: 10) {
+                Rectangle().fill(Palette.tertiary).frame(width: 2)
+                Text(text)
+                    .foregroundStyle(Palette.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        case .rule:
+            Hairline()
+        }
     }
 }
 
@@ -572,7 +677,7 @@ private struct PhotoThumbnail: View {
             if case .image(let path, _) = part {
                 LocalImage(url: model.garage.files.url(for: path))
             } else {
-                Image(systemName: "photo").foregroundStyle(.secondary)
+                Image(systemName: "photo").foregroundStyle(Palette.tertiary)
             }
         }
         .frame(width: size, height: size)
