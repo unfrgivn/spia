@@ -585,6 +585,44 @@ struct AdapterIndicator: View {
     }
 }
 
+/// A section's heading, the way the case file has it: its name, a count or a note in grey, and
+/// its actions on the right in the accent colour.
+struct SectionHeading<Actions: View>: View {
+    let title: String
+    let note: String?
+    let actions: Actions
+
+    init(_ title: String, note: String? = nil, @ViewBuilder actions: () -> Actions) {
+        self.title = title
+        self.note = note
+        self.actions = actions()
+    }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(title)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Palette.primary)
+            if let note {
+                Text(note)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Palette.tertiary)
+            }
+            Spacer(minLength: 0)
+            HStack(spacing: 16) { actions }
+                .buttonStyle(.plain)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Palette.accent)
+        }
+    }
+}
+
+extension SectionHeading where Actions == EmptyView {
+    init(_ title: String, note: String? = nil) {
+        self.init(title, note: note) { EmptyView() }
+    }
+}
+
 /// A small lamp, lit in its tone's colour and glowing a little, or a faint disc when it's off.
 /// A neutral tone lights grey, without the glow.
 struct Lamp: View {

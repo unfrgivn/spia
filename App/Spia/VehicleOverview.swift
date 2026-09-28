@@ -413,23 +413,8 @@ private struct SessionLedger: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("Sessions")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Palette.primary)
-                if !vehicle.sessions.isEmpty {
-                    Text(
-                        vehicle.sessions.count == 1
-                            ? "1 session" : "\(vehicle.sessions.count) sessions"
-                    )
-                    .font(.system(size: 13))
-                    .foregroundStyle(Palette.tertiary)
-                }
-                Spacer()
+            SectionHeading("Sessions", note: count) {
                 Button("New Session", action: newSession)
-                    .buttonStyle(.plain)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Palette.accent)
             }
             .padding(.bottom, 10)
             Hairline()
@@ -448,6 +433,14 @@ private struct SessionLedger: View {
                 .buttonStyle(.plain)
                 Hairline()
             }
+        }
+    }
+
+    private var count: String? {
+        switch vehicle.sessions.count {
+        case 0: nil
+        case 1: "1 session"
+        case let count: "\(count) sessions"
         }
     }
 
@@ -495,9 +488,7 @@ private struct Particulars: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Particulars")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Palette.primary)
+            SectionHeading("Particulars")
             if compact {
                 VStack(alignment: .leading, spacing: 22) { groups }
             } else {

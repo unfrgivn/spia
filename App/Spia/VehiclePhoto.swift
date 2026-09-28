@@ -124,7 +124,7 @@ struct PaintPicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            LabeledContent("Color") {
+            LabeledContent("Colour") {
                 HStack(spacing: 6) {
                     ForEach(PaintColor.allCases) { paint in
                         Button {

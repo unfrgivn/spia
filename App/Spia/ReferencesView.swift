@@ -491,15 +491,8 @@ private struct ComplaintShelf: View {
                         ? "No complaints match."
                         : "No owner complaints are on file for this model and year.")
             } else {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text("By component")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(Palette.primary)
-                    Text("Pick one to see just its reports")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Palette.tertiary)
-                }
-                .padding(.top, compact ? 18 : 24)
+                SectionHeading("By component", note: "Pick one to see just its reports")
+                    .padding(.top, compact ? 18 : 24)
                 ComponentChart(components: Array(components), chosen: chosen, compact: compact) {
                     name in
                     component = name == chosen ? nil : name
@@ -520,22 +513,13 @@ private struct ComplaintShelf: View {
     }
 
     private func header(count: Int, chosen: String?) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text("Reports")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Palette.primary)
-            Text(
-                chosen.map { "\(count) about \(NHTSA.sentenceCase($0).lowercased())" }
-                    ?? "\(count), newest first"
-            )
-            .font(.system(size: 13))
-            .foregroundStyle(Palette.tertiary)
-            Spacer()
+        SectionHeading(
+            "Reports",
+            note: chosen.map { "\(count) about \(NHTSA.sentenceCase($0).lowercased())" }
+                ?? "\(count), newest first"
+        ) {
             if chosen != nil {
                 Button("Show All") { component = nil }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Palette.accent)
             }
         }
     }

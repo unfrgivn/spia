@@ -11,17 +11,8 @@ struct CaseFile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("Case file")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Palette.primary)
-                if !session.entries.isEmpty {
-                    Text(count)
-                        .font(.system(size: 13))
-                        .foregroundStyle(Palette.tertiary)
-                }
-            }
-            .padding(.bottom, 10)
+            SectionHeading("Case file", note: session.entries.isEmpty ? nil : count)
+                .padding(.bottom, 10)
             if session.entries.isEmpty {
                 Hairline()
                 Text("Results and notes will appear here, oldest first.")
