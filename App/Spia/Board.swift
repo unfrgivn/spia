@@ -167,6 +167,8 @@ struct SessionBoardView: View {
     var reading: (subject: SessionBoard.Subject, step: String?, cancel: () -> Void)?
     /// Rows lit for the bulb check that plays when the adapter connects.
     var checking: Set<SessionBoard.Subject> = []
+    /// Unread rows that can't be read with this adapter, and why, shown instead of Read.
+    var unreadable: [SessionBoard.Subject: String] = [:]
     /// The assistant's answers, under the rows they're about.
     var notes: [SessionBoard.Subject: BoardNote] = [:]
     /// Asks the assistant about a row.
@@ -317,7 +319,11 @@ struct SessionBoardView: View {
     }
 
     @ViewBuilder private func action(_ row: SessionBoard.Row) -> some View {
-        if row.status == .notRead, let read {
+        if row.status == .notRead, let reason = unreadable[row.subject] {
+            Text(reason)
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundStyle(Palette.tertiary)
+        } else if row.status == .notRead, let read {
             Button("Read") { read(row.subject) }
                 .buttonStyle(OutlineButtonStyle())
                 .accessibilityLabel("Read \(row.name)")
@@ -511,9 +517,12 @@ extension RunMenu {
         Menu("Read module trouble codes") {
             ForEach(vehicle?.orderedModules ?? []) { module in
                 if let target = module.target {
+                    let job = DiagnosticJob.moduleDTCs(target)
                     Button(module.confirmed ? module.label : "\(module.label) (unconfirmed)") {
-                        run(.moduleDTCs(target))
+                        run(job)
                     }
+                    // Only the demo can't: nobody recorded some of its modules.
+                    .disabled(!workbench.canRun(job))
                 }
             }
             Divider()

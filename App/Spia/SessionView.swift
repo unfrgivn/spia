@@ -40,8 +40,8 @@ struct SessionView: View {
                     }
                     SessionBoardView(
                         board: board, layout: layout, read: reader, reading: reading,
-                        checking: checking, notes: notes, explain: { explain($0) },
-                        openAssistant: { showAssistant = true }
+                        checking: checking, unreadable: unreadable(board), notes: notes,
+                        explain: { explain($0) }, openAssistant: { showAssistant = true }
                     )
                     .padding(.top, wide ? 32 : 22)
                     CaseFile(session: session, layout: layout) { transcript = $0 }
@@ -171,6 +171,18 @@ struct SessionView: View {
     private var reader: ((SessionBoard.Subject) -> Void)? {
         guard workbench?.activity == nil else { return nil }
         return { read($0) }
+    }
+
+    /// Unread rows this adapter can't read, and why. Only the demo car says no, for the modules
+    /// nobody recorded.
+    private func unreadable(_ board: SessionBoard) -> [SessionBoard.Subject: String] {
+        guard let workbench else { return [:] }
+        var reasons: [SessionBoard.Subject: String] = [:]
+        for row in board.rows where row.status == .notRead && !workbench.canRun(row.subject.job) {
+            reasons[row.subject] =
+                workbench.adapter.kind == .demo ? "Not in the demo" : "Can't be read here"
+        }
+        return reasons
     }
 
     /// A board row's missing reading. Without an adapter, the connection assistant comes first.
