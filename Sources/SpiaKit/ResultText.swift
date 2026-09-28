@@ -6,11 +6,7 @@ public enum ResultText {
         switch result.payload {
         case .adapter(let status):
             let parts = [status.hardware ?? status.identity, status.firmware].compactMap { $0 }
-            return
-                (parts + [
-                    ConnectionSummary.voltageText(status.voltage).replacingOccurrences(
-                        of: "Ready · ", with: "")
-                ])
+            return (parts + [ConnectionSummary.voltageText(status.voltage)])
                 .joined(separator: " · ")
 
         case .vehicleInfo(let ecus):

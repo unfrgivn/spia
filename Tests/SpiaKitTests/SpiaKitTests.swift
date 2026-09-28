@@ -236,9 +236,10 @@ struct SpiaKitTests {
 
     @Test("voltage explains whether the adapter is really in a car")
     func voltageWording() {
-        #expect(ConnectionSummary.voltageText(nil).contains("no power from the car"))
-        #expect(ConnectionSummary.voltageText(11.7).contains("battery low"))
+        #expect(ConnectionSummary.voltageText(nil).hasPrefix("No power from the car"))
+        #expect(ConnectionSummary.voltageText(11.7) == "11.7 V, battery low")
         #expect(ConnectionSummary.voltageText(14.3).contains("charging"))
+        #expect(ConnectionSummary.voltageText(12.6) == "12.6 V")
     }
 }
 

@@ -89,7 +89,7 @@ public struct ConnectionSummary: Sendable, Equatable {
             tone = .working
         case .ready(let status):
             title = status.hardware ?? adapter.displayName
-            detail = Self.voltageText(status.voltage)
+            detail = "Ready · \(Self.voltageText(status.voltage))"
             tone = status.voltage == nil ? .attention : .good
         case .reconnectRequired(let reason):
             title = "Reconnect needed"
@@ -105,13 +105,13 @@ public struct ConnectionSummary: Sendable, Equatable {
     /// Voltage tells the user whether the adapter is actually in a powered car.
     public static func voltageText(_ volts: Double?) -> String {
         guard let volts else {
-            return "Ready · no power from the car (is it plugged into the OBD port?)"
+            return "No power from the car (is it plugged into the OBD port?)"
         }
         let reading = String(format: "%.1f V", locale: Locale(identifier: "en_US_POSIX"), volts)
         switch volts {
-        case ..<12.0: return "Ready · \(reading), battery low"
-        case 13.2...: return "Ready · \(reading), charging (engine likely running)"
-        default: return "Ready · \(reading)"
+        case ..<12.0: return "\(reading), battery low"
+        case 13.2...: return "\(reading), charging (engine likely running)"
+        default: return reading
         }
     }
 }
