@@ -204,8 +204,8 @@ public final class AssistantConversation {
             job = try Self.job(for: call, modules: session.vehicle?.assistantModules ?? [])
         } catch {
             resolve(
-                callID, in: message, .invalid(String(describing: error)),
-                error: String(describing: error))
+                callID, in: message, .invalid(error.readable),
+                error: error.readable)
             continueConversation()
             return
         }
@@ -263,7 +263,7 @@ public final class AssistantConversation {
         do {
             provider = try configuration.settings.provider(id, keys: configuration.keys)
         } catch {
-            self.error = String(describing: error)
+            self.error = error.readable
             return
         }
         let modules = session.vehicle?.assistantModules ?? []
@@ -298,7 +298,7 @@ public final class AssistantConversation {
                 }
             }
         } catch {
-            if !Task.isCancelled { failure = String(describing: error) }
+            if !Task.isCancelled { failure = error.readable }
         }
         // A stopped reply keeps its text, but half-considered proposals are dropped.
         if Task.isCancelled { calls = [] }
@@ -343,11 +343,11 @@ public final class AssistantConversation {
                 }
                 resolutions[call.id] = .pending
             } catch {
-                resolutions[call.id] = .invalid(String(describing: error))
+                resolutions[call.id] = .invalid(error.readable)
                 rejected.append(
                     .toolResult(
                         ToolResult(
-                            callID: call.id, content: String(describing: error), isError: true)))
+                            callID: call.id, content: error.readable, isError: true)))
             }
         }
         message.resolutions = resolutions
@@ -446,7 +446,7 @@ public final class AssistantConversation {
         do {
             try garage.context.save()
         } catch {
-            self.error = "Couldn't save the conversation: \(error)"
+            self.error = "Couldn't save the conversation: \(error.readable)"
         }
     }
 

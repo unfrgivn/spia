@@ -63,7 +63,7 @@ public final class Workbench {
         do {
             try await backend.connect()
         } catch {
-            lastError = String(describing: error)
+            lastError = error.readable
         }
         connection = await backend.currentState()
     }
@@ -133,7 +133,7 @@ public final class Workbench {
         do {
             try write()
         } catch {
-            lastError = "Couldn't save the result: \(error)"
+            lastError = "Couldn't save the result: \(error.readable)"
         }
     }
 }

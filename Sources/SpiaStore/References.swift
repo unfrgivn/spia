@@ -200,7 +200,7 @@ public final class VehicleReferences {
             do {
                 identity = try await client.identity(for: try VIN(raw))
             } catch {
-                problems.append("VIN: \(error)")
+                problems.append("VIN: \(error.readable)")
                 identity = sameVIN ? previous?.identity : nil
             }
         }
@@ -212,7 +212,7 @@ public final class VehicleReferences {
             switch await attempt({ try await client.safety(for: identity) }) {
             case .success(let record): safety = record
             case .failure(let error):
-                problems.append("Recalls and bulletins: \(error)")
+                problems.append("Recalls and bulletins: \(error.readable)")
                 safety = sameVIN ? previous?.safety : nil
             }
         }
@@ -220,7 +220,7 @@ public final class VehicleReferences {
             switch await photoLookup {
             case .success(let found): photos = found
             case .failure(let error):
-                problems.append("Photos: \(error)")
+                problems.append("Photos: \(error.readable)")
                 photos = previous?.photos ?? []
             }
         }
