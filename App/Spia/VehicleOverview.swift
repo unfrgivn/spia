@@ -42,14 +42,7 @@ struct VehicleOverview: View {
             .frame(maxWidth: 1_120, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        // The scroll view's width, not the content's, which depends on the layout this picks.
-        .background {
-            GeometryReader { proxy in
-                Color.clear
-                    .onAppear { width = proxy.size.width }
-                    .onChange(of: proxy.size.width) { _, newWidth in width = newWidth }
-            }
-        }
+        .readingWidth($width)
         .background(Palette.base)
         .navigationTitle(vehicle.name)
         .platformSubtitle("Overview")

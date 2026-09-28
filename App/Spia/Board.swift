@@ -45,6 +45,20 @@ enum BoardLayout {
     init(width: CGFloat) { self = width < 980 ? .compact : .wide }
 }
 
+extension View {
+    /// Keeps `width` at this view's width. On a scroll view that's the room its content has,
+    /// rather than the content's own width, which depends on the layout the width picks.
+    func readingWidth(_ width: Binding<CGFloat>) -> some View {
+        background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { width.wrappedValue = proxy.size.width }
+                    .onChange(of: proxy.size.width) { _, newWidth in width.wrappedValue = newWidth }
+            }
+        }
+    }
+}
+
 /// The top of a session: when it was opened and where it stands, what the car said, in one
 /// sentence and then in brief, and what the owner noticed.
 struct BoardHeader: View {
