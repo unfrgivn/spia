@@ -35,6 +35,29 @@ struct ELM327SessionReplayTests {
         #expect(await transport.isFinished)
     }
 
+    @Test("vLinker FS over Bluetooth LE, ignition on: identity, voltage, and both ECUs")
+    func bluetoothProbe() async throws {
+        let transport = try fixture("ghibli-ble-ignition-on-probe.txt")
+        let session = ELM327Session(transport: transport)
+
+        #expect(try await session.connect() == "ELM327 v2.3")
+        #expect(try await session.identifySTN() == "STN2120 v5.8.1")
+        #expect(try await session.send("STDI") == "vLinker FS r2")
+        #expect(try await session.voltage() == 12.0)
+        let responses = try await session.request(OBDRequest(service: .currentData, pid: 0x00))
+        var supported: [UInt32: Int] = [:]
+        for response in responses {
+            if case .currentData(_, .supported(let pids)) = ServiceResponse.decode(response.payload)
+            {
+                supported[response.ecu] = pids.count
+            }
+        }
+        #expect(supported == [0x7E8: 22, 0x7E9: 6])
+        #expect(try await session.describeProtocol() == "AUTO, ISO 15765-4 (CAN 11/500)")
+        #expect(try await session.protocolNumber() == "A6")
+        #expect(await transport.isFinished)
+    }
+
     @Test("2017 Ghibli, ignition on: STBR to 2 Mbps, 2 s of ATMA, stop, switch back")
     func ghibliCapture() async throws {
         let url = fixtureURL("ghibli-ignition-on-capture-2s.txt")
@@ -118,9 +141,11 @@ struct ELM327SessionReplayTests {
         }
     }
 
-    @Test("replays the original generic OBD command sequence into production reports")
-    func ghibliGenericReports() async throws {
-        let url = fixtureURL("ghibli-ignition-on-term.txt")
+    @Test(
+        "replays the generic OBD sequence into production reports, over USB and BLE",
+        arguments: ["ghibli-ignition-on-term.txt", "ghibli-ble-ignition-on-term.txt"])
+    func ghibliGenericReports(recording: String) async throws {
+        let url = fixtureURL(recording)
         let events = try Transcript.decodeFile(String(contentsOf: url, encoding: .utf8))
         let transport = try ReplayTransport(contentsOf: url)
         let session = ELM327Session(transport: transport)
