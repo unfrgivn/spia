@@ -69,7 +69,7 @@ public enum SpiaSchemaV1: VersionedSchema {
         }
     }
 
-    /// How this vehicle's adapter is reached. A vehicle may have several (USB now, Bluetooth later).
+    /// How this vehicle's adapter is reached.
     @Model public final class AdapterProfile {
         @Attribute(.unique) public var id: UUID
         public var kindRaw: String
@@ -91,6 +91,20 @@ public enum SpiaSchemaV1: VersionedSchema {
         }
 
         public var kind: AdapterKind { AdapterKind(rawValue: kindRaw) ?? .usbSerial }
+
+        public static func defaultName(for kind: AdapterKind) -> String {
+            switch kind {
+            case .usbSerial: return "USB adapter"
+            case .bluetooth: return "Bluetooth adapter"
+            case .demo: return DemoGarage.adapter.displayName
+            }
+        }
+
+        public func use(_ kind: AdapterKind) {
+            kindRaw = kind.rawValue
+            name = Self.defaultName(for: kind)
+            devicePath = nil
+        }
 
         public var descriptor: AdapterDescriptor {
             AdapterDescriptor(kind: kind, displayName: name, devicePath: devicePath)

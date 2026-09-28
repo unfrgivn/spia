@@ -48,6 +48,21 @@ struct SpiaStoreTests {
         #expect(adapter.devicePath == nil)
     }
 
+    @Test("an adapter profile switches between USB and Bluetooth")
+    func switchesAdapterKind() throws {
+        let vehicle = try garage.addVehicle(name: "Switchable car")
+        let adapter = try #require(vehicle.adapters.first)
+        adapter.use(.bluetooth)
+        #expect(adapter.kind == .bluetooth)
+        #expect(adapter.name == "Bluetooth adapter")
+        #expect(adapter.devicePath == nil)
+        adapter.devicePath = "peripheral-id"
+        adapter.use(.usbSerial)
+        #expect(adapter.kind == .usbSerial)
+        #expect(adapter.name == "USB adapter")
+        #expect(adapter.devicePath == nil)
+    }
+
     @Test("a check's result is saved to the session with its transcript")
     func recordsResult() async throws {
         let (workbench, session) = try await demoWorkbench()

@@ -89,7 +89,7 @@ public final class Garage {
         vehicle.adapters.append(
             AdapterProfile(
                 kind: adapterKind,
-                name: adapterKind == .bluetooth ? "Bluetooth adapter" : "USB adapter"))
+                name: AdapterProfile.defaultName(for: adapterKind)))
         try context.save()
         return vehicle
     }

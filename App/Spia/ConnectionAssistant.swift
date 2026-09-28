@@ -26,19 +26,35 @@ struct ConnectionAssistant: View {
                 )
                 .fixedSize(horizontal: false, vertical: true)
             } else {
-                if workbench.adapter.kind == .bluetooth {
-                    bluetoothSteps
-                } else {
-                    #if os(iOS)
+                #if os(macOS)
+                    Picker(
+                        "Adapter",
+                        selection: Binding(
+                            get: { profile?.kind ?? .usbSerial },
+                            set: { switchAdapter(to: $0) })
+                    ) {
+                        Text("USB cable").tag(AdapterKind.usbSerial)
+                        Text("Bluetooth").tag(AdapterKind.bluetooth)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .disabled(workbench.isBusy)
+                    if workbench.adapter.kind == .bluetooth {
+                        bluetoothSteps
+                    } else {
+                        steps
+                    }
+                #else
+                    if workbench.adapter.kind == .bluetooth {
+                        bluetoothSteps
+                    } else {
                         VStack(alignment: .leading, spacing: 12) {
                             Text(AdapterSetupError.needsMac.description)
                                 .fixedSize(horizontal: false, vertical: true)
-                            Button("Use Bluetooth instead") { chooseBluetooth() }
+                            Button("Use Bluetooth instead") { switchAdapter(to: .bluetooth) }
                         }
-                    #else
-                        steps
-                    #endif
-                }
+                    }
+                #endif
             }
 
             status
@@ -122,6 +138,11 @@ struct ConnectionAssistant: View {
                     "The dash should light up; the engine can stay off. Spia finds the adapter on its own; no pairing needed. Allow Bluetooth when asked."
                 )
             }
+            Step(number: 3, title: "When you're done") {
+                Text(
+                    "Unplug the adapter. In BLE+BT mode anyone nearby can connect to it while it's awake."
+                )
+            }
         }
     }
 
@@ -177,9 +198,11 @@ struct ConnectionAssistant: View {
         return name.contains("usbserial") ? "\(name) (USB adapter)" : name
     }
 
-    private func refreshPorts() {
+    private func refreshPorts(selectFirst: Bool = true) {
         ports = AppModel.serialPorts()
-        if chosenPort == nil, let first = ports.first(where: { $0.contains("usbserial") }) {
+        if selectFirst, chosenPort == nil,
+            let first = ports.first(where: { $0.contains("usbserial") })
+        {
             chosenPort = first
         }
     }
@@ -193,11 +216,16 @@ struct ConnectionAssistant: View {
         }
     }
 
-    private func chooseBluetooth() {
+    private func switchAdapter(to kind: AdapterKind) {
         guard let profile else { return }
-        profile.kindRaw = AdapterKind.bluetooth.rawValue
-        profile.name = "Bluetooth adapter"
-        profile.devicePath = nil
+        guard profile.kind != kind else { return }
+        profile.use(kind)
+        #if os(macOS)
+            if kind == .usbSerial {
+                chosenPort = nil
+                refreshPorts(selectFirst: false)
+            }
+        #endif
         Task {
             await model.resetConnection(for: profile)
             if let fresh = model.workbench(for: vehicle) { replaced(fresh) }

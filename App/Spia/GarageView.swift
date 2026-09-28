@@ -460,11 +460,11 @@ private struct Welcome: View {
         Group {
             #if os(macOS)
                 Text(
-                    "An OBD‑II adapter with USB, such as the **Vgate vLinker FS (USB)**. It plugs into the diagnostic port under the dashboard, usually left of the steering column, and into this Mac with its cable."
+                    "An OBD‑II adapter, such as the **Vgate vLinker FS**. The USB one plugs into the diagnostic port under the dashboard, usually left of the steering column, and into this Mac with its cable. The Bluetooth one works too, once it's switched to BLE+BT mode."
                 )
             #else
                 Text(
-                    "An OBD‑II adapter. Bluetooth ones, such as the **Vgate vLinker FS**, are coming to Spia on iPhone and iPad. Until then, set up your car to look up its recalls and bulletins, or explore the demo."
+                    "A Bluetooth OBD‑II adapter, such as the **Vgate vLinker FS** switched to BLE+BT mode. It plugs into the diagnostic port under the dashboard, usually left of the steering column, and Spia finds it on its own. You can also set up your car to look up its recalls and bulletins, or explore the demo."
                 )
             #endif
         }
