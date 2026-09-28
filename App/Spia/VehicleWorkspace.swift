@@ -207,14 +207,9 @@ private struct SessionRow: View {
     let session: DiagnosticSession
 
     var body: some View {
-        let lamp = session.lamp
         HStack(alignment: .top, spacing: 8) {
-            Circle()
-                .fill(lamp?.color ?? .clear)
-                .frame(width: 7, height: 7)
-                .shadow(color: lamp?.color ?? .clear, radius: 3)
+            Lamp(tone: session.lamp)
                 .padding(.top, 5)
-                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
                     Text(session.title)

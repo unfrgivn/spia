@@ -451,14 +451,9 @@ private struct SessionLedger: View {
     }
 
     private func line(_ session: DiagnosticSession) -> some View {
-        let lamp = session.lamp
         let summary = session.entries.isEmpty ? session.problem : session.board().headline
         return HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Circle()
-                .fill(lamp?.color ?? Palette.hairline)
-                .frame(width: 8, height: 8)
-                .shadow(color: lamp?.color ?? .clear, radius: 3)
-                .accessibilityHidden(true)
+            Lamp(tone: session.lamp, size: 8)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
                     Text(session.title)

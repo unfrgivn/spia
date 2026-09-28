@@ -570,10 +570,7 @@ struct AdapterIndicator: View {
         let tone = workbench.activity == nil ? summary.tone : .working
         Button(action: open) {
             HStack(spacing: 7) {
-                Circle()
-                    .fill(tone.color)
-                    .frame(width: 7, height: 7)
-                    .shadow(color: tone == .neutral ? .clear : tone.color, radius: 4)
+                Lamp(tone: tone)
                 Text(workbench.activity == nil ? summary.title : "Reading")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Palette.secondary)
@@ -585,6 +582,23 @@ struct AdapterIndicator: View {
         .buttonStyle(.plain)
         .help(summary.detail)
         .accessibilityLabel("Adapter: \(summary.title)")
+    }
+}
+
+/// A small lamp, lit in its tone's colour and glowing a little, or a faint disc when it's off.
+/// A neutral tone lights grey, without the glow.
+struct Lamp: View {
+    let tone: Tone?
+    var size: CGFloat = 7
+
+    var body: some View {
+        Circle()
+            .fill(tone?.color ?? Palette.hairline)
+            .frame(width: size, height: size)
+            .shadow(
+                color: tone.flatMap { $0 == .neutral ? nil : $0.color } ?? .clear, radius: size / 2
+            )
+            .accessibilityHidden(true)
     }
 }
 
