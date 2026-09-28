@@ -117,7 +117,7 @@ public actor JobRunner {
             emit(
                 .failed(
                     JobFailure(
-                        message: Self.describe(error), reconnectRequired: reconnect,
+                        message: error.readable, reconnectRequired: reconnect,
                         cancelled: error is CancellationError, transcript: reference)))
         }
     }
@@ -126,7 +126,7 @@ public actor JobRunner {
         do {
             return try await connection.endRecording()
         } catch {
-            emit(.warning("The transcript for this check could not be saved: \(error)"))
+            emit(.warning("The transcript for this check could not be saved: \(error.readable)"))
             return nil
         }
     }
@@ -225,10 +225,5 @@ public actor JobRunner {
         case .requesting(let request): return .step("Requesting \(request.hex)")
         case .noResponse(let request): return .warning("No answer to \(request.hex)")
         }
-    }
-
-    private static func describe(_ error: any Error) -> String {
-        if error is CancellationError { return "Cancelled" }
-        return String(describing: error)
     }
 }

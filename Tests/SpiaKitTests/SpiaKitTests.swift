@@ -234,6 +234,23 @@ struct SpiaKitTests {
             ])
     }
 
+    @Test("errors read plainly: Spia's by their description, the system's by their localized one")
+    func readableErrors() {
+        #expect(
+            DemoError.missingRecording("x").readable
+                == "the demo recording x is missing from the app")
+        let missing = CocoaError(.fileReadNoSuchFile)
+        #expect(missing.readable == missing.localizedDescription)
+        #expect(!missing.readable.contains("Domain="))
+        struct Shape: Decodable { let volts: Double }
+        let decoding = #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(Shape.self, from: Data(#"{"volts":"high"}"#.utf8))
+        }
+        #expect(decoding?.readable == decoding?.localizedDescription)
+        #expect(decoding?.readable.contains("typeMismatch") == false)
+        #expect(CancellationError().readable == "Cancelled")
+    }
+
     @Test("voltage explains whether the adapter is really in a car")
     func voltageWording() {
         #expect(ConnectionSummary.voltageText(nil).hasPrefix("No power from the car"))

@@ -115,3 +115,16 @@ public struct ConnectionSummary: Sendable, Equatable {
         }
     }
 }
+
+extension Error {
+    /// What went wrong, in words for the person using Spia. Spia's own errors say it in their
+    /// description; the system's (the network, files, decoding) in their localized description,
+    /// where `String(describing:)` would give a domain and a code.
+    public var readable: String {
+        if let text = (self as? any LocalizedError)?.errorDescription { return text }
+        if self is CancellationError { return "Cancelled" }
+        // Swift's error types bridge with a module-qualified domain, like "SpiaKit.DemoError".
+        return (self as NSError).domain.contains(".")
+            ? String(describing: self) : localizedDescription
+    }
+}

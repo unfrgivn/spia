@@ -64,7 +64,7 @@ public actor ConnectionManager {
             self.session = session
             state = .ready(AdapterStatus(identity: identity))
         } catch {
-            state = .failed(message: String(describing: error))
+            state = .failed(message: error.readable)
             throw error
         }
     }
@@ -93,7 +93,7 @@ public actor ConnectionManager {
             return try await body(session)
         } catch {
             if Self.desynchronizes(error) {
-                state = .reconnectRequired(reason: String(describing: error))
+                state = .reconnectRequired(reason: error.readable)
             }
             throw error
         }
@@ -199,7 +199,7 @@ actor TranscriptRecorder: Transport {
         do {
             try file.handle.write(contentsOf: Data((Transcript.encode(event) + "\n").utf8))
         } catch {
-            failure = String(describing: error)
+            failure = error.readable
         }
     }
 }

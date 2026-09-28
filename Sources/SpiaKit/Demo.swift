@@ -117,7 +117,7 @@ public actor DemoBackend: DiagnosticsBackend {
             }
             state = .ready(status)
         } catch {
-            state = .failed(message: String(describing: error))
+            state = .failed(message: error.readable)
             throw error
         }
     }
@@ -258,7 +258,7 @@ public actor DemoBackend: DiagnosticsBackend {
 
     private static func failure(_ error: any Error) -> JobFailure {
         JobFailure(
-            message: String(describing: error), reconnectRequired: false, cancelled: false,
+            message: error.readable, reconnectRequired: false, cancelled: false,
             transcript: nil)
     }
 }
