@@ -20,7 +20,8 @@ struct GarageView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: compact ? 16 : 24) {
                 if vehicles.isEmpty {
-                    Welcome(addVehicle: { addingVehicle = true }, addDemo: addDemo)
+                    Welcome(
+                        compact: compact, addVehicle: { addingVehicle = true }, addDemo: addDemo)
                 } else {
                     ForEach(vehicles) { vehicle in
                         ShowroomBay(
@@ -86,7 +87,8 @@ struct GarageView: View {
             count == 1
             ? "Its session, with its results, transcripts, photos, and conversation, is"
             : "All \(count) sessions, with their results, transcripts, photos, and conversations, are"
-        return "\(sessions) removed from this Mac, along with its references. This can't be undone."
+        return
+            "\(sessions) removed from \(PlatformText.thisDevice), along with its references. This can't be undone."
     }
 
     private func addDemo() {
@@ -341,79 +343,179 @@ private struct AddRow: View {
     }
 }
 
-/// Shown until the first vehicle is added.
+/// Shown until the first vehicle is added: an empty bay whose board runs its bulb check, the way
+/// a cluster tests its lamps when the ignition comes on, beside the two ways in.
 private struct Welcome: View {
+    let compact: Bool
     let addVehicle: () -> Void
     let addDemo: () -> Void
 
     var body: some View {
-        VStack(spacing: 28) {
-            VStack(spacing: 12) {
-                PlatformIcon(size: 112)
-                    .accessibilityHidden(true)
-                Text("Spia")
-                    .font(.largeTitle.weight(.semibold))
-                Text(
-                    "Work out what's wrong with your car from two sides: what you notice, and what the car reports."
-                )
-                .font(.title3)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 480)
-            }
-            HStack(spacing: 16) {
-                StartOption(
-                    symbol: "plus.circle", title: "Set up my vehicle",
-                    detail:
-                        "Enter the VIN: Spia looks up the model, its recalls and service bulletins, and photos.",
-                    action: addVehicle)
-                StartOption(
-                    symbol: "car.side", title: "Explore the demo",
-                    detail:
-                        "A 2017 Maserati Ghibli with dead wheel controls, from real recordings.",
-                    action: addDemo)
-            }
-            .frame(maxWidth: 620)
-            VStack(alignment: .leading, spacing: 10) {
-                Label("What you need", systemImage: "cable.connector")
-                    .font(.headline)
-                Text(
-                    "An OBD-II adapter with USB, such as the **Vgate vLinker FS (USB)**. It plugs into the diagnostic port under the dashboard, usually left of the steering column, and into your Mac with its USB cable."
-                )
-                Text("Bluetooth adapters will come with the iPhone app.")
-                    .foregroundStyle(.secondary)
-            }
-            .font(.callout)
-            .card()
-            .frame(maxWidth: 620)
+        VStack(alignment: .leading, spacing: compact ? 20 : 28) {
+            bay
+            needs
         }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 20)
+    }
+
+    private var bay: some View {
+        let shape = RoundedRectangle(cornerRadius: compact ? 18 : 24, style: .continuous)
+        return Group {
+            if compact {
+                VStack(alignment: .leading, spacing: 28) {
+                    WelcomeBoard(size: 22)
+                    pitch
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
+            } else {
+                HStack(alignment: .center, spacing: 40) {
+                    pitch
+                        .frame(maxWidth: 540, alignment: .leading)
+                    Spacer(minLength: 0)
+                    WelcomeBoard(size: 34)
+                }
+                .padding(48)
+                // A featured bay's height, so the first car arrives in the same space.
+                .frame(minHeight: 540)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            // The board's backlight, faint on the bay behind it.
+            RadialGradient(
+                colors: [Palette.working.opacity(0.09), .clear],
+                center: compact ? .top : .trailing, startRadius: 0, endRadius: compact ? 320 : 520)
+        }
+        .background(Palette.base)
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(Palette.hairline))
+        .environment(\.colorScheme, .dark)
+    }
+
+    private var pitch: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                PlatformIcon(size: compact ? 26 : 30)
+                Text("Spia")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Palette.primary)
+            }
+            .accessibilityElement(children: .combine)
+            Text("What you notice, and what the car reports.")
+                .font(.system(size: compact ? 30 : 44, weight: .bold))
+                .tracking(compact ? -0.6 : -1)
+                .foregroundStyle(Palette.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, compact ? 16 : 22)
+            Text(
+                "Spia reads your car's modules through an OBD‑II adapter, looks up its recalls and service bulletins, and keeps it all beside what you've noticed, one session per problem."
+            )
+            .font(.system(size: compact ? 15 : 17))
+            .lineSpacing(3)
+            .foregroundStyle(Palette.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 12)
+            HStack(spacing: 18) {
+                Button(action: addVehicle) {
+                    PrimaryPill(title: "Set Up My Car")
+                }
+                .buttonStyle(.plain)
+                .help("Enter the VIN, and Spia looks up the model, its recalls, and photos")
+                Button("Explore the Demo", action: addDemo)
+                    .buttonStyle(.plain)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Palette.accent)
+                    .help("A 2017 Maserati Ghibli with dead wheel controls, from real recordings")
+            }
+            .padding(.top, compact ? 22 : 30)
+        }
+    }
+
+    private var needs: some View {
+        let label = Text("What you need")
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(Palette.primary)
+        return VStack(spacing: 0) {
+            Hairline()
+            Group {
+                if compact {
+                    VStack(alignment: .leading, spacing: 6) {
+                        label
+                        advice
+                    }
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 0) {
+                        label.frame(width: 180, alignment: .leading)
+                        advice
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 16)
+            Hairline()
+        }
+    }
+
+    private var advice: some View {
+        Group {
+            #if os(macOS)
+                Text(
+                    "An OBD‑II adapter with USB, such as the **Vgate vLinker FS (USB)**. It plugs into the diagnostic port under the dashboard, usually left of the steering column, and into this Mac with its cable."
+                )
+            #else
+                Text(
+                    "An OBD‑II adapter. Bluetooth ones, such as the **Vgate vLinker FS**, are coming to Spia on iPhone and iPad. Until then, set up your car to look up its recalls and bulletins, or explore the demo."
+                )
+            #endif
+        }
+        .font(.system(size: 14))
+        .foregroundStyle(Palette.secondary)
+        .frame(maxWidth: 680, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
-private struct StartOption: View {
-    let symbol: String
-    let title: String
-    let detail: String
-    let action: () -> Void
+/// Every row lit CHECK, then each flipping, one after another, to what a reading might say.
+/// It plays when the garage first appears; with Reduce Motion the readings simply show.
+private struct WelcomeBoard: View {
+    let size: CGFloat
+    @State private var settled = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let rows: [(name: String, word: String, tone: Tone)] = [
+        ("Engine", "Clear", .good), ("Airbag", "Fault", .bad), ("ABS", "Clear", .good),
+        ("Body computer", "Codes", .attention), ("Battery", "Low", .attention),
+    ]
 
     var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
-                Image(systemName: symbol)
-                    .font(.title)
-                    .foregroundStyle(.tint)
-                Text(title)
-                    .font(.headline)
-                Text(detail)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: size * 0.3) {
+            ForEach(Self.rows.indices, id: \.self) { index in
+                let row = Self.rows[index]
+                let shows = reduceMotion || index < settled
+                HStack(alignment: .firstTextBaseline, spacing: size * 0.5) {
+                    StatusWord(
+                        word: shows ? row.word : "Check", tone: shows ? row.tone : .working,
+                        size: size
+                    )
+                    .frame(width: size * 3.3, alignment: .leading)
+                    Text(row.name)
+                        .font(.system(size: size * 0.6, weight: .medium))
+                        .foregroundStyle(Palette.secondary)
+                }
             }
-            .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
-            .card()
         }
-        .buttonStyle(.plain)
+        .accessibilityHidden(true)
+        .task {
+            guard !reduceMotion else { return }
+            do {
+                try await Task.sleep(for: .seconds(1.2))
+                for index in Self.rows.indices {
+                    settled = index + 1
+                    try await Task.sleep(for: .seconds(0.18))
+                }
+            } catch {
+                // Gone before it finished.
+            }
+        }
     }
 }

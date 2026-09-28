@@ -18,6 +18,8 @@
             case garage, overview, references, photos, session, settings
             /// References, on the bulletins or the complaints.
             case bulletins, complaints
+            /// The garage before any vehicle is added.
+            case welcome
             /// The session, scrolled down to its timeline.
             case timeline
             /// The session, with Explain pressed on the first row that has no answer yet.
@@ -43,7 +45,8 @@
             }
         }
 
-        /// An in-memory library with the demo car, whose checks then run against the recordings.
+        /// An in-memory library with the demo car, whose checks then run against the recordings;
+        /// empty for the welcome.
         static func makeModel() throws -> AppModel {
             let root = FileManager.default.temporaryDirectory
                 .appendingPathComponent("SpiaFixture-\(UUID().uuidString)", isDirectory: true)
@@ -51,8 +54,10 @@
             let model = AppModel(
                 container: try Garage.inMemoryContainer(), files: SpiaFiles(root: root),
                 assistant: assistant())
-            let vehicle = try model.garage.addDemoVehicle()
-            Task { await runChecks(model: model, vehicle: vehicle) }
+            if screen != .welcome {
+                let vehicle = try model.garage.addDemoVehicle()
+                Task { await runChecks(model: model, vehicle: vehicle) }
+            }
             return model
         }
 
@@ -64,7 +69,7 @@
             case .photos: .photos
             case .session, .timeline, .explain:
                 vehicle.orderedSessions.first.map { .session($0.id) }
-            case .garage, .settings, nil: nil
+            case .garage, .settings, .welcome, nil: nil
             }
         }
 
