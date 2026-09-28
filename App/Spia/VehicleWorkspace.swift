@@ -19,6 +19,8 @@ struct VehicleWorkspace: View {
     /// Opens another vehicle in this window.
     let switchTo: (Vehicle) -> Void
     @State var selection: WorkspaceSection?
+    /// The References shelf, kept while the owner looks elsewhere.
+    @State private var shelf: ReferencesView.Shelf = .recalls
 
     var body: some View {
         let references = model.references(for: vehicle)
@@ -40,9 +42,10 @@ struct VehicleWorkspace: View {
         } detail: {
             switch selection ?? .overview {
             case .overview:
-                VehicleOverview(vehicle: vehicle, references: references, show: show)
+                VehicleOverview(
+                    vehicle: vehicle, references: references, show: show, browse: browse)
             case .references:
-                ReferencesView(vehicle: vehicle, references: references)
+                ReferencesView(vehicle: vehicle, references: references, shelf: $shelf)
             case .photos:
                 PhotosView(vehicle: vehicle, references: references)
             case .session(let id):
@@ -50,7 +53,8 @@ struct VehicleWorkspace: View {
                     SessionView(session: session)
                         .id(session.id)
                 } else {
-                    VehicleOverview(vehicle: vehicle, references: references, show: show)
+                    VehicleOverview(
+                        vehicle: vehicle, references: references, show: show, browse: browse)
                 }
             }
         }
@@ -60,6 +64,11 @@ struct VehicleWorkspace: View {
     }
 
     private func show(_ section: WorkspaceSection) { selection = section }
+
+    private func browse(_ shelf: ReferencesView.Shelf) {
+        self.shelf = shelf
+        selection = .references
+    }
 }
 
 private struct WorkspaceSidebar: View {

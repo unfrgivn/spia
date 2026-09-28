@@ -11,6 +11,7 @@ struct VehicleOverview: View {
     let vehicle: Vehicle
     let references: VehicleReferences
     let show: (WorkspaceSection) -> Void
+    let browse: (ReferencesView.Shelf) -> Void
 
     @State private var workbench: Workbench?
     @State private var editing = false
@@ -190,7 +191,7 @@ struct VehicleOverview: View {
                 id: "recalls", word: "None", tone: .good, name: "Recalls",
                 detail: "No safety recalls filed for the \(title).", actions: [])
         }
-        var actions: [Readout.Action] = [.init("See Recalls") { show(.references) }]
+        var actions: [Readout.Action] = [.init("See Recalls") { browse(.recalls) }]
         if let vin = vehicle.vin, let url = NHTSA.recallLookupURL(vin: vin) {
             actions.append(.init("Check This VIN", url: url))
         }
@@ -208,7 +209,7 @@ struct VehicleOverview: View {
         return Readout(
             id: "bulletins", word: "\(count)", tone: .neutral, name: "Service bulletins",
             detail: "Filed with NHTSA for this model, not for this car in particular.",
-            actions: count > 0 ? [.init("Browse") { show(.references) }] : [])
+            actions: count > 0 ? [.init("Browse") { browse(.bulletins) }] : [])
     }
 
     private var complaints: Readout? {
@@ -216,7 +217,7 @@ struct VehicleOverview: View {
         return Readout(
             id: "complaints", word: "\(count)", tone: .neutral, name: "Owner complaints",
             detail: "Reported to NHTSA by other owners of this model.",
-            actions: count > 0 ? [.init("Browse") { show(.references) }] : [])
+            actions: count > 0 ? [.init("Browse") { browse(.complaints) }] : [])
     }
 
     private var adapter: Readout? {

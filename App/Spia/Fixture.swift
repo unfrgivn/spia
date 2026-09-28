@@ -16,6 +16,8 @@
     enum Fixture {
         enum Screen: String {
             case garage, overview, references, photos, session, settings
+            /// References, on the bulletins or the complaints.
+            case bulletins, complaints
             /// The session, scrolled down to its timeline.
             case timeline
             /// The session, with Explain pressed on the first row that has no answer yet.
@@ -27,6 +29,11 @@
         static var screen: Screen? {
             UserDefaults.standard.string(forKey: "SpiaScreen").flatMap(Screen.init(rawValue:))
         }
+
+        /// A References search and a complaints component to start with: `-SpiaQuery brake
+        /// -SpiaComponent STEERING`.
+        static var query: String? { UserDefaults.standard.string(forKey: "SpiaQuery") }
+        static var component: String? { UserDefaults.standard.string(forKey: "SpiaComponent") }
 
         static var colorScheme: ColorScheme? {
             switch UserDefaults.standard.string(forKey: "SpiaAppearance") {
@@ -53,7 +60,7 @@
         static func section(for vehicle: Vehicle) -> WorkspaceSection? {
             switch screen {
             case .overview: .overview
-            case .references: .references
+            case .references, .bulletins, .complaints: .references
             case .photos: .photos
             case .session, .timeline, .explain:
                 vehicle.orderedSessions.first.map { .session($0.id) }
