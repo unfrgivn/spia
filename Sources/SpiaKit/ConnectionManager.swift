@@ -61,10 +61,18 @@ public actor ConnectionManager {
         do {
             let recorder = TranscriptRecorder(try makeTransport())
             let session = ELM327Session(transport: recorder, baud: baud)
-            let identity = try await session.connect(protocol: selected)
+            await recorder.beginInitialization()
+            let identity: String
+            do {
+                identity = try await session.connect(protocol: selected)
+            } catch {
+                await recorder.endInitialization()
+                throw error
+            }
+            await recorder.endInitialization()
+            self.recorder = recorder
             selectedProtocol = selected
             addressing = .postConnect
-            self.recorder = recorder
             self.session = session
             state = .ready(AdapterStatus(identity: identity))
         } catch {
@@ -83,7 +91,7 @@ public actor ConnectionManager {
 
     /// Makes the adapter state safe for `job`, reinitialising in place when a previous module
     /// read left it addressed to that module. Module reads claim that state before any command.
-    public func prepare(for job: DiagnosticJob) async throws {
+    func prepare(for job: DiagnosticJob) async throws {
         switch state {
         case .ready: break
         case .reconnectRequired(let reason): throw ConnectionError.reconnectRequired(reason)
@@ -94,9 +102,11 @@ public actor ConnectionManager {
         defer { inUse = false }
         if addressing.needsReinitialization(for: job) {
             do {
+                await recorder?.beginInitialization()
                 try await session.reinitialize(protocol: selectedProtocol)
+                await recorder?.endInitialization()
             } catch {
-                addressing = .reconnectRequired(reason: error.readable)
+                await recorder?.endInitialization()
                 state = .reconnectRequired(reason: error.readable)
                 throw error
             }
@@ -178,18 +188,40 @@ public enum TranscriptError: Error, Equatable, Sendable {
 actor TranscriptRecorder: Transport {
     private let base: any Transport
     private let clock = ContinuousClock()
-    private var file: (url: URL, handle: FileHandle, started: ContinuousClock.Instant)?
+    private var file: (url: URL, handle: FileHandle)?
+    private var initializationEvents: [TranscriptEvent] = []
+    private var initializationStarted: ContinuousClock.Instant?
+    private var recordingInitialization = false
     private var failure: String?
 
     init(_ base: any Transport) { self.base = base }
+
+    func beginInitialization() {
+        initializationStarted = clock.now
+        initializationEvents = []
+        recordingInitialization = true
+    }
+
+    func endInitialization() {
+        recordingInitialization = false
+    }
 
     func start(_ url: URL) throws {
         try? file?.handle.close()
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data().write(to: url)
-        file = (url, try FileHandle(forWritingTo: url), clock.now)
+        let handle = try FileHandle(forWritingTo: url)
+        file = (url, handle)
         failure = nil
+        for event in initializationEvents {
+            do {
+                try handle.write(contentsOf: Data((Transcript.encode(event) + "\n").utf8))
+            } catch {
+                failure = error.readable
+                break
+            }
+        }
     }
 
     func stop() throws -> TranscriptReference? {
@@ -218,12 +250,18 @@ actor TranscriptRecorder: Transport {
         return bytes
     }
 
-    /// A failed write must not break the diagnosis in progress; it is reported by `stop()`.
+    /// Initialization is kept in memory for the next check's transcript, even after a failed file
+    /// write. A failed write must not break the diagnosis in progress; `stop()` reports it.
     private func record(_ direction: TranscriptEvent.Direction, _ bytes: [UInt8]) {
-        guard let file, failure == nil else { return }
-        let elapsed = file.started.duration(to: clock.now) / .milliseconds(1)
+        let started = initializationStarted ?? clock.now
+        let elapsed = started.duration(to: clock.now) / .milliseconds(1)
         let event = TranscriptEvent(
             milliseconds: UInt64(max(0, elapsed)), direction: direction, bytes: bytes)
+        if recordingInitialization {
+            initializationEvents.append(event)
+            return
+        }
+        guard let file, failure == nil else { return }
         do {
             try file.handle.write(contentsOf: Data((Transcript.encode(event) + "\n").utf8))
         } catch {

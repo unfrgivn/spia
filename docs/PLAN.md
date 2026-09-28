@@ -100,6 +100,23 @@ App phases: 1 foundation (done), 2 assistant (built, see below), 3 media (camera
 
 Reordered 2026-09-26: the fault that started this project is not an emissions code (Mode 03/07/0A are clean), so UDS access to body modules moves ahead of the generic-OBD polish.
 
+### Adapter state and check recordings
+
+A module read leaves the adapter addressed to that module. The invariant is that every check starts
+from the state established by `connect`: generic scan and vehicle information reinitialize the
+adapter first when a module read ran earlier on the same connection. Adapter checks do not need
+that reset, and a module read claims the module-addressed state before it sends its first command.
+
+Saved check transcripts are standalone files in the unchanged `<ms> TX|RX <hex>` format. They
+include the latest adapter initialization exchange followed by the check, with timestamps measured
+from initialization and the real gap preserved. A fresh connection can therefore replay any saved
+check in any order.
+
+The in-place reset is not verified against a real adapter yet. A bench capture still needs the USB
+vLinker FS on USB power with no car: connect, read the airbag module, then run the scan. The scan
+transcript should start with `ATZ` through `ATSP0` and end with `UNABLE TO CONNECT`. USB and BLE
+reset behaviour remain unverified.
+
 ## The Ghibli's actual fault (why UDS comes first)
 
 Reported symptoms: every steering-wheel control dead (volume, cluster menu, cruise), horn dead, airbag lamp on, ABS lamp reported on. Column-mounted paddles and wiper stalk work. Washer pump silent despite a full reservoir; whether this is related is unknown.

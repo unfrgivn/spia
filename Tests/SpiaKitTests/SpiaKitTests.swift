@@ -24,6 +24,33 @@ struct SpiaKitTests {
             .appendingPathComponent("transcript.txt")
     }
 
+    private func sameWireEvents(_ first: [TranscriptEvent], _ second: [TranscriptEvent]) -> Bool {
+        first.count == second.count
+            && zip(first, second).allSatisfy {
+                $0.0.direction == $0.1.direction && $0.0.bytes == $0.1.bytes
+            }
+    }
+
+    @Test("adapter addressing decisions cover every job from both states")
+    func adapterAddressing() {
+        let jobs: [DiagnosticJob] = [
+            .adapterCheck, .vehicleInfo, .genericScan, .moduleDTCs(Self.airbag),
+        ]
+        for job in jobs {
+            #expect(!AdapterAddressing.postConnect.needsReinitialization(for: job))
+            #expect(
+                AdapterAddressing.postConnect.state(after: job)
+                    == (job == .moduleDTCs(Self.airbag) ? .moduleAddressed : .postConnect))
+            #expect(
+                AdapterAddressing.moduleAddressed.needsReinitialization(for: job)
+                    == (job == .vehicleInfo || job == .genericScan))
+            #expect(
+                AdapterAddressing.moduleAddressed.state(after: job)
+                    == (job == .moduleDTCs(Self.airbag) || job == .adapterCheck
+                        ? .moduleAddressed : .postConnect))
+        }
+    }
+
     @Test("bundled demo recordings are byte-identical to the test fixtures")
     func recordingsMatchFixtures() throws {
         let fixtures = URL(fileURLWithPath: #filePath)
@@ -62,15 +89,16 @@ struct SpiaKitTests {
         #expect(await transport.isFinished)
         #expect(await connection.state.status?.voltage == 14.3)
 
-        // The transcript holds exactly what the check sent, which is exactly what was sent on the car.
+        // The transcript holds initialization followed by the check, exactly as sent on the car.
         let recorded = try Transcript.decodeFile(String(contentsOf: url, encoding: .utf8))
         let sent = recorded.filter { $0.direction == .tx }.map {
             String(decoding: $0.bytes.dropLast(), as: UTF8.self)
         }
-        #expect(sent == DiagnosticJob.moduleDTCs(Self.airbag).plannedCommands)
+        let planned = DiagnosticJob.moduleDTCs(Self.airbag).plannedCommands
+        #expect(Array(sent.suffix(planned.count)) == planned)
         let onCar = try DemoRecording.airbagCodes.events().filter { $0.direction == .tx }
             .map { String(decoding: $0.bytes.dropLast(), as: UTF8.self) }
-        #expect(Array(onCar.suffix(sent.count)) == sent)
+        #expect(sent == onCar)
 
         let data = try Data(contentsOf: url)
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
@@ -78,6 +106,63 @@ struct SpiaKitTests {
             result.transcript
                 == TranscriptReference(
                     fileName: "transcript.txt", byteCount: data.count, sha256: digest))
+    }
+
+    @Test("airbag transcript includes initialization and replays standalone")
+    func airbagTranscriptRoundTrip() async throws {
+        let (_, connection) = try await connected(.airbagCodes)
+        let url = temporaryFile()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let events = await collect(
+            JobRunner(connection: connection).run(.moduleDTCs(Self.airbag), transcript: url))
+        #expect(events.compactMap(\.result).first?.payload != nil)
+        let saved = try Transcript.decodeFile(String(contentsOf: url, encoding: .utf8))
+        let original = try DemoRecording.airbagCodes.events()
+        #expect(sameWireEvents(saved, original))
+        #expect(saved.first?.direction == .tx)
+        #expect(saved.first?.bytes == Array("ATZ\r".utf8))
+        #expect(
+            zip(saved, saved.dropFirst()).allSatisfy {
+                $0.0.milliseconds <= $0.1.milliseconds
+            })
+
+        let replay = try ReplayTransport(contentsOf: url)
+        let fresh = ConnectionManager(adapter: DemoGarage.adapter) { replay }
+        try await fresh.connect()
+        let replayEvents = await collect(
+            JobRunner(connection: fresh).run(.moduleDTCs(Self.airbag)))
+        #expect(
+            replayEvents.compactMap(\.result).first?.payload
+                == events.compactMap(\.result).first?.payload)
+        #expect(await replay.isFinished)
+    }
+
+    @Test("adapter check transcript stops before the trailing generic probe")
+    func adapterCheckTranscriptRoundTrip() async throws {
+        let (_, connection) = try await connected(.adapterProbe)
+        let url = temporaryFile()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        _ = await collect(JobRunner(connection: connection).run(.adapterCheck, transcript: url))
+        let saved = try Transcript.decodeFile(String(contentsOf: url, encoding: .utf8))
+        let original = try DemoRecording.adapterProbe.events()
+        let trailing = try #require(
+            original.firstIndex {
+                $0.direction == .tx && String(decoding: $0.bytes, as: UTF8.self) == "0100\r"
+            })
+        #expect(sameWireEvents(saved, Array(original[..<trailing])))
+        #expect(saved.first?.direction == .tx)
+        #expect(saved.first?.bytes == Array("ATZ\r".utf8))
+        #expect(
+            zip(saved, saved.dropFirst()).allSatisfy {
+                $0.0.milliseconds <= $0.1.milliseconds
+            })
+
+        let replay = try ReplayTransport(contentsOf: url)
+        let fresh = ConnectionManager(adapter: DemoGarage.adapter) { replay }
+        try await fresh.connect()
+        let replayEvents = await collect(JobRunner(connection: fresh).run(.adapterCheck))
+        #expect(replayEvents.compactMap(\.result).first?.payload != nil)
+        #expect(await replay.isFinished)
     }
 
     @Test("adapter check reads firmware, hardware, and the car's voltage into the connection state")
