@@ -34,7 +34,7 @@ struct SpiaApp: App {
                 do {
                     model = try makeModel()
                 } catch {
-                    startupError = String(describing: error)
+                    startupError = error.readable
                 }
             }
         }

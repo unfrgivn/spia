@@ -240,7 +240,7 @@ struct SessionView: View {
             try model.garage.addNote(note, to: session)
             note = ""
         } catch {
-            self.error = String(describing: error)
+            self.error = error.readable
         }
     }
 }

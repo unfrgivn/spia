@@ -96,7 +96,7 @@ struct GarageView: View {
             let vehicle = try model.garage.addDemoVehicle()
             open(vehicle, vehicle.orderedSessions.first)
         } catch {
-            problem = String(describing: error)
+            problem = error.readable
         }
     }
 
@@ -104,12 +104,12 @@ struct GarageView: View {
         do {
             open(vehicle, try model.garage.addSession(to: vehicle, title: "New session"))
         } catch {
-            problem = String(describing: error)
+            problem = error.readable
         }
     }
 
     private func delete(_ vehicle: Vehicle) {
-        do { try model.delete(vehicle) } catch { problem = String(describing: error) }
+        do { try model.delete(vehicle) } catch { problem = error.readable }
     }
 }
 

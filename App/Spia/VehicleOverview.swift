@@ -292,7 +292,7 @@ struct VehicleOverview: View {
             let session = try model.garage.addSession(to: vehicle, title: "New session")
             show(.session(session.id))
         } catch {
-            problem = String(describing: error)
+            problem = error.readable
         }
     }
 }

@@ -178,7 +178,7 @@ extension Garage {
             do {
                 try addImage(Data(contentsOf: url), to: vehicle, asCover: asCover && index == 0)
             } catch {
-                problems.append("\(url.lastPathComponent): \(error)")
+                problems.append("\(url.lastPathComponent): \(error.readable)")
             }
         }
         return problems

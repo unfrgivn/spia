@@ -195,11 +195,11 @@ struct PhotosView: View {
     }
 
     private func remove(_ image: VehicleImage) {
-        do { try model.garage.delete(image) } catch { problem = String(describing: error) }
+        do { try model.garage.delete(image) } catch { problem = error.readable }
     }
 
     private func setCover(_ image: VehicleImage) {
-        do { try model.garage.setCover(image) } catch { problem = String(describing: error) }
+        do { try model.garage.setCover(image) } catch { problem = error.readable }
     }
 }
 

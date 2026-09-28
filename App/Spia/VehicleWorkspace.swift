@@ -138,13 +138,13 @@ private struct WorkspaceSidebar: View {
             let session = try model.garage.addSession(to: vehicle, title: "New session")
             selection = .session(session.id)
         } catch {
-            problem = String(describing: error)
+            problem = error.readable
         }
     }
 
     private func delete(_ session: DiagnosticSession) {
         if selection == .session(session.id) { selection = .overview }
-        do { try model.delete(session) } catch { problem = String(describing: error) }
+        do { try model.delete(session) } catch { problem = error.readable }
     }
 }
 

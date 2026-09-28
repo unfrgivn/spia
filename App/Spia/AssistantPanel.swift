@@ -288,7 +288,7 @@ struct AssistantPanel: View {
                 photos.append(
                     try model.garage.storePhoto(Data(contentsOf: url), in: conversation.session))
             } catch {
-                problem = "\(url.lastPathComponent): \(error)"
+                problem = "\(url.lastPathComponent): \(error.readable)"
             }
         }
     }

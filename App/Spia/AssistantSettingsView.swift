@@ -131,7 +131,7 @@ private struct ProviderKeySection: View {
             key = ""
             problem = nil
         } catch {
-            problem = String(describing: error)
+            problem = error.readable
         }
     }
 }

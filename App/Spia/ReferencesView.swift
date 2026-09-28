@@ -164,7 +164,7 @@ struct ReferencesView: View {
                 openDocument = OpenDocument(
                     bulletin: bulletin, file: try await references.document(for: bulletin))
             } catch {
-                problem = "Couldn't open \(bulletin.number): \(error)"
+                problem = "Couldn't open \(bulletin.number): \(error.readable)"
             }
         }
     }

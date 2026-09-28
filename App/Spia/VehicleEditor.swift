@@ -71,7 +71,7 @@ struct VehicleEditor: View {
             onCreate(vehicle)
             dismiss()
         } catch {
-            self.error = String(describing: error)
+            self.error = error.readable
         }
     }
 }
@@ -174,7 +174,7 @@ struct VehicleSettings: View {
             try model.garage.context.save()
             dismiss()
         } catch {
-            self.error = String(describing: error)
+            self.error = error.readable
         }
     }
 }
@@ -205,7 +205,7 @@ final class VINLookup {
             // Complain only once the length is right; while typing, just wait.
             let length = raw.filter { !$0.isWhitespace && $0 != "-" }.count
             isInvalid = true
-            if length >= 17 { problem = String(describing: error) }
+            if length >= 17 { problem = error.readable }
             return
         }
         normalized = vin.value
@@ -226,7 +226,7 @@ final class VINLookup {
             identity = found
         } catch {
             guard !Task.isCancelled else { return }
-            problem = String(describing: error)
+            problem = error.readable
         }
     }
 }

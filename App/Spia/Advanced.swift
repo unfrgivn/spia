@@ -60,7 +60,7 @@ struct ModulesEditor: View {
     }
 
     private func save() {
-        do { try model.garage.context.save() } catch { self.error = String(describing: error) }
+        do { try model.garage.context.save() } catch { self.error = error.readable }
     }
 }
 
@@ -173,7 +173,7 @@ struct TranscriptView: View {
                         .trimmingCharacters(in: .whitespaces))
             }
         } catch {
-            self.error = "Couldn't read the transcript: \(error)"
+            self.error = "Couldn't read the transcript: \(error.readable)"
         }
     }
 }
