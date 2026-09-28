@@ -55,6 +55,9 @@ public final class Workbench {
 
     public var isBusy: Bool { activity != nil || connection == .connecting }
 
+    /// Whether `job` can get an answer from this adapter, or from the demo car's recordings.
+    public func canRun(_ job: DiagnosticJob) -> Bool { backend.canRun(job) }
+
     public func connect() async {
         lastError = nil
         do {

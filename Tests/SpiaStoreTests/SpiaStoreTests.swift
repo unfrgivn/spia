@@ -65,6 +65,14 @@ struct SpiaStoreTests {
             })
     }
 
+    @Test("the demo workbench offers only the checks the recordings answer")
+    func demoChecks() async throws {
+        let (workbench, _) = try await demoWorkbench()
+        #expect(workbench.canRun(.moduleDTCs(DemoGarage.airbag.target)))
+        #expect(workbench.canRun(.genericScan))
+        #expect(!workbench.canRun(.moduleDTCs(DemoGarage.steeringColumn.target)))
+    }
+
     @Test("a check that can't run is saved as a failure, not as an empty result")
     func recordsFailure() async throws {
         let (workbench, session) = try await demoWorkbench()
