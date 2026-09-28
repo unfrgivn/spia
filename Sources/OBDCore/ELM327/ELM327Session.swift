@@ -27,18 +27,7 @@ public actor ELM327Session {
         transportUnsynchronized = false
         do {
             try await transport.open()
-            let identity: String
-            do {
-                identity = try await sendUnlocked("ATZ", timeout: .seconds(3))
-            } catch ELM327Error.timeout {
-                identity = try await recoverForeignBaud()
-            }
-            for command in ["ATE0", "ATL0", "ATS0", "ATH1", "ATSP\(selected.commandDigit)"] {
-                let response = try await sendUnlocked(command)
-                guard response.contains("OK") else {
-                    throw ELM327Error.unexpectedResponse(command: command, response: response)
-                }
-            }
+            let identity = try await initializeUnlocked(protocol: selected)
             transportUnsynchronized = false
             operationInFlight = false
             return identity
@@ -47,6 +36,31 @@ public actor ELM327Session {
             operationInFlight = false
             throw error
         }
+    }
+
+    /// Resets and reapplies the connection's framing and protocol settings without closing the
+    /// transport. The caller decides whether a failed reinitialisation requires reconnection.
+    public func reinitialize(protocol selected: ELM327Protocol = .automatic) async throws {
+        try beginOperation()
+        defer { endOperation() }
+        _ = try await initializeUnlocked(protocol: selected)
+    }
+
+    private func initializeUnlocked(protocol selected: ELM327Protocol) async throws -> String {
+        let identity: String
+        do {
+            identity = try await sendUnlocked("ATZ", timeout: .seconds(3))
+        } catch ELM327Error.timeout {
+            identity = try await recoverForeignBaud()
+        }
+        for command in ["ATE0", "ATL0", "ATS0", "ATH1", "ATSP\(selected.commandDigit)"] {
+            let response = try await sendUnlocked(command)
+            guard response.contains("OK") else {
+                throw ELM327Error.unexpectedResponse(command: command, response: response)
+            }
+        }
+        transportUnsynchronized = false
+        return identity
     }
 
     /// Puts the UART back to its opening rate if `switchBaud` changed it, so the next program

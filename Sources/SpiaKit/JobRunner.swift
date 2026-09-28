@@ -103,6 +103,7 @@ public actor JobRunner {
     ) async {
         emit(.started(job))
         do {
+            try await connection.prepare(for: job)
             if let transcript { try await connection.beginRecording(to: transcript) }
             let payload = try await perform(job, emit: emit)
             let reference = await finishRecording(emit: emit)

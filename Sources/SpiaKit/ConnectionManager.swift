@@ -25,6 +25,8 @@ public actor ConnectionManager {
     private let baud: Int
     private let makeTransport: TransportFactory
     private var session: ELM327Session?
+    private var selectedProtocol = ELM327Protocol.automatic
+    private var addressing = AdapterAddressing.postConnect
     private var recorder: TranscriptRecorder?
     private var inUse = false
     public private(set) var state: ConnectionState = .disconnected {
@@ -60,6 +62,8 @@ public actor ConnectionManager {
             let recorder = TranscriptRecorder(try makeTransport())
             let session = ELM327Session(transport: recorder, baud: baud)
             let identity = try await session.connect(protocol: selected)
+            selectedProtocol = selected
+            addressing = .postConnect
             self.recorder = recorder
             self.session = session
             state = .ready(AdapterStatus(identity: identity))
@@ -73,7 +77,31 @@ public actor ConnectionManager {
         await session?.disconnect()
         session = nil
         recorder = nil
+        addressing = .postConnect
         state = .disconnected
+    }
+
+    /// Makes the adapter state safe for `job`, reinitialising in place when a previous module
+    /// read left it addressed to that module. Module reads claim that state before any command.
+    public func prepare(for job: DiagnosticJob) async throws {
+        switch state {
+        case .ready: break
+        case .reconnectRequired(let reason): throw ConnectionError.reconnectRequired(reason)
+        default: throw ConnectionError.notConnected
+        }
+        guard let session, !inUse else { throw ConnectionError.busy }
+        inUse = true
+        defer { inUse = false }
+        if addressing.needsReinitialization(for: job) {
+            do {
+                try await session.reinitialize(protocol: selectedProtocol)
+            } catch {
+                addressing = .reconnectRequired(reason: error.readable)
+                state = .reconnectRequired(reason: error.readable)
+                throw error
+            }
+        }
+        addressing = addressing.state(after: job)
     }
 
     /// Runs `body` with exclusive use of the session. An error that may have left the adapter
