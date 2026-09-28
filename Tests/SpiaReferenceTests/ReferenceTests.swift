@@ -130,27 +130,54 @@ struct ReferenceParsingTests {
     }
 }
 
-@Suite("Bulletin search")
-struct BulletinSearchTests {
-    let bulletins: [Bulletin]
+@Suite("Reference search")
+struct ReferenceSearchTests {
+    let safety: SafetyRecord
 
     init() throws {
-        bulletins = try NHTSA.safety(from: fixture("nhtsa-byymmt-2017-maserati-ghibli.json"))
-            .bulletins
+        safety = try NHTSA.safety(from: fixture("nhtsa-byymmt-2017-maserati-ghibli.json"))
     }
 
     @Test("“steering wheel” finds the steering-wheel vibration bulletin first")
-    func steering() throws {
-        let results = BulletinSearch.search("steering wheel", in: bulletins)
+    func steering() {
+        let results = ReferenceSearch.bulletins("steering wheel", in: safety.bulletins)
         #expect(results.first?.number == "MAS003095 MTB 24-21")
         #expect(results.contains { $0.number.hasPrefix("MAS004669") })
     }
 
     @Test("prefixes match whole words, and a bulletin number finds itself")
     func prefixAndNumber() {
-        #expect(BulletinSearch.search("thermostat", in: bulletins).first?.id == 11_034_165)
-        #expect(BulletinSearch.search("MAS005184", in: bulletins).first?.id == 11_034_165)
-        #expect(BulletinSearch.search("xyzzy", in: bulletins).isEmpty)
+        let bulletins = safety.bulletins
+        #expect(ReferenceSearch.bulletins("thermostat", in: bulletins).first?.id == 11_034_165)
+        #expect(ReferenceSearch.bulletins("MAS005184", in: bulletins).first?.id == 11_034_165)
+        #expect(ReferenceSearch.bulletins("xyzzy", in: bulletins).isEmpty)
+    }
+
+    @Test("recalls are found by component, by campaign number, and by what could happen")
+    func recalls() {
+        #expect(ReferenceSearch.recalls("seat", in: safety.recalls).first?.id == "17V046000")
+        #expect(ReferenceSearch.recalls("16V856000", in: safety.recalls).map(\.id) == ["16V856000"])
+        #expect(ReferenceSearch.recalls("camera", in: safety.recalls).first?.id == "16V839000")
+    }
+
+    @Test("a complaint filed under a component outranks one that only mentions it")
+    func complaints() {
+        // Three are filed under brakes; three more only mention them, two of those newer.
+        let filed = safety.complaints.filter { $0.components.contains("SERVICE BRAKES") }
+        let results = ReferenceSearch.complaints("brake", in: safety.complaints)
+        #expect(filed.count == 3)
+        #expect(results.count == 6)
+        #expect(Set(results.prefix(filed.count).map(\.id)) == Set(filed.map(\.id)))
+    }
+
+    @Test("a query narrows every kind of record; one with nothing to look for keeps them all")
+    func matching() {
+        #expect(safety.matching("  ") == safety)
+        #expect(safety.matching("the") == safety)
+        let seats = safety.matching("seat")
+        #expect(seats.recalls.first?.id == "17V046000")
+        #expect(seats.recalls.count < safety.recalls.count)
+        #expect(seats.bulletins.count < safety.bulletins.count)
     }
 }
 

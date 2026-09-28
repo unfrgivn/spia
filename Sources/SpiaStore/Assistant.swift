@@ -461,7 +461,7 @@ public final class AssistantConversation {
     public static func bulletinSearch(_ query: String, in bulletins: [Bulletin], callID: String)
         -> (summary: String, result: ToolResult)
     {
-        let matches = BulletinSearch.search(query, in: bulletins, limit: 8)
+        let matches = ReferenceSearch.bulletins(query, in: bulletins, limit: 8)
         let summary =
             "Searched bulletins for “\(query)”: "
             + (matches.isEmpty ? "none found" : "\(matches.count) found")

@@ -99,7 +99,7 @@ struct ReferencesView: View {
     private func bulletins(_ all: [Bulletin]) -> some View {
         let shown =
             query.trimmingCharacters(in: .whitespaces).isEmpty
-            ? all : BulletinSearch.search(query, in: all, limit: all.count)
+            ? all : ReferenceSearch.bulletins(query, in: all)
         return List(shown) { bulletin in
             BulletinRow(
                 bulletin: bulletin, isOpening: references.openingBulletin == bulletin.id
