@@ -112,12 +112,12 @@ For each module the report keeps its target, how it answered, its identification
 
 ### The catalog
 
-Make knowledge ships as bundled, versioned JSON in SpiaKit: makes, then platforms (models and year ranges), then modules with label, bus, exact request and reply, and provenance with its source. Matching normalizes the vPIC make and model (case, punctuation, aliases) within bounded year ranges and never guesses a neighbouring generation. With no match, the survey covers the legislated range only and says make-specific coverage isn't available. Adding a make is a data change. `DemoGarage` takes its modules from the catalog.
+Make knowledge ships as bundled, versioned JSON in SpiaKit: makes, then platforms (models and year ranges), then modules with label, bus, exact request and reply, and provenance with its source. Matching normalizes the vPIC make and model (case, punctuation, aliases) within bounded year ranges and never guesses a neighbouring generation. With no match, the survey covers the legislated range only and says make-specific coverage isn't available. Adding a make is a data change. The demo keeps the modules its recordings were made with, and a test keeps those modules in agreement with the catalog.
 
 Seeds:
 
 - Maserati M157, observed on the Ghibli: airbag `744` → `4C4`, ABS `747` → `4C7`, body computer `620` → `504`. Steering column `763` → `4E3` is from references and unverified.
-- VW MQB, reference only, from a public list extracted from ODIS ([vag-uds-ids](https://github.com/ConnorHowell/vag-uds-ids)): gateway `710` → `77A`, central electronics `70E` → `778`, steering assist `712` → `77C`, brakes `713` → `77D`, airbag `715` → `77F`.
+- VW MQB, 24 modules, reference only, from a public list extracted from ODIS ([vag-uds-ids](https://github.com/ConnorHowell/vag-uds-ids)): gateway `710` → `77A`, central electronics `70E` → `778`, steering assist `712` → `77C`, brakes `713` → `77D`, airbag `715` → `77F`.
 
 ### Testing
 
@@ -125,7 +125,7 @@ Pure tests cover the catalog, the matcher, the planner (deterministic; a catalog
 
 ### Steps
 
-1. Catalog and domain types: the JSON, decoder, matcher, `SurveyPlan`, `SurveyReport`.
+1. The catalog: the JSON, decoder, and matcher. Survey types arrive with their first user: the plan in step 2, the report in step 4.
 2. Planner and command safety: scope rules, bounds, planned commands, forbidden-service tests.
 3. Protocol pieces: probe classification moved out of `Discover.swift`, identification decoding, `BUFFER FULL` in `monitor`.
 4. The survey in JobRunner: phases, cancellation, the ignition prompt, recording, addressing.
