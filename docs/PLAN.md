@@ -13,6 +13,8 @@ The app also runs on iPhone and iPad, where it reaches Bluetooth LE adapters (th
 | Dependencies | `apple/swift-argument-parser` only | Serial I/O is hand-rolled POSIX termios. |
 | Testing | Unit tests for pure decoders (J1979 formulas). Session/framing tests replay REAL recorded transcripts. Live e2e against the car. | No mocks. Fixtures come only from real captures. |
 | v1 scope | Generic OBD-II + raw terminal + CAN capture | Manufacturer-specific UDS module map is a later reverse-engineering effort. |
+| Module survey scope | By default the make's known modules plus the legislated range; a wider search only when the owner asks for it, behind a plain warning | Probing arbitrary IDs on a live car is the risky part. Owner's decision, 2026-09-28. |
+| Make knowledge | A bundled, versioned JSON catalog | Adding a make is a data change, not a code change. A hosted catalog may come later. Owner's decision, 2026-09-28. |
 
 ## Architecture
 
@@ -84,6 +86,56 @@ App phases: 1 foundation (done), 2 assistant (built, see below), 3 media (camera
 - Photos (attach or drop) are resized to 2000 px JPEG, which also strips location metadata, and stored under `Attachments/<session>`. The on-device model can't see them.
 - Verified: stream decoding and request shapes against the documented examples, tool validation, briefing and redaction, Keychain round trip, and approval running a real demo check through the Workbench. Live provider tests run when `SPIA_ANTHROPIC_API_KEY` / `SPIA_OPENAI_API_KEY` are set; not yet run. The on-device path compiles but is untested (this Mac runs macOS 15).
 
+## Vehicle onboarding: the survey
+
+Any owner, using only the app, adds a car, connects, and ends with its modules found, named, and read: no CAN IDs, no code changes. The owner's Ghibli and Tiguan are development cars only. Today modules come only from Advanced → Edit Modules (raw bus and IDs) or the demo's `DemoGarage`, and discovery exists only in `spia discover`.
+
+Flow: add the car (VIN, decoded by vPIC to make, model, and year), connect (the adapter check reports STN firmware), Survey This Car, review the results, save the modules. The vehicle overview offers "Find this car's modules" until the car has some, and the Run menu keeps "Survey This Car". Edit Modules stays under Advanced. The assistant can't propose a survey; it's the owner's action.
+
+### What one survey does
+
+A survey is one read-only `DiagnosticJob.survey(SurveyPlan)` with one `JobPayload.survey(SurveyReport)`, recorded and replayable like any check. A pure planner resolves the plan before it runs, from the catalog, the car's identity, the scope, and the adapter's capabilities: buses, exact request and reply IDs, timeouts, identification DIDs, the DTC status mask, and the catalog version. Because the plan is stored in the job, a saved survey replays exactly after the catalog changes. The survey starts from the post-connect adapter state (the in-place reset runs first after a module read) and ends module-addressed.
+
+1. Buses. 500k (pins 6/14) always. 125k (pins 3/11) only on STN adapters that accept `STP 53`, and then only for the make's known modules unless the thorough search includes that bus. STN firmware (`STI`) is evidence, not proof: each bus reports whether it was reached.
+2. Generic OBD. The emissions ECUs that answer `7DF`, named by `09 0A`, become modules named by themselves (engine `7E0` → `7E8`, transmission `7E1` → `7E9`).
+3. Probe. Each candidate gets TesterPresent (`3E 00`) with a short fixed timeout and a filter on its exact reply ID. A positive reply, or any negative reply other than `78`, counts as a module; `78` is waited out. DiagnosticSessionControl (`10 01`), which other tools use for discovery, stays forbidden by the read-only rule; identification confirms each responder instead.
+4. Identify. ReadDataByIdentifier, one DID at a time: `F190` VIN, `F197` system name, `F187`, `F191`, `F192`, `F194`, `F195`, `F19E`. Raw bytes are kept, and text is decoded only when it's printable. `31` means that DID isn't supported and the module still counts; `7E` or `7F` means found but not identifiable in the default session. The survey never changes session, never requests security access, and never works around a gateway (FCA's Secure Gateway, MY2018 on).
+5. Codes. Each responder's DTCs with `19 02 09`.
+6. Thorough only: listen, then sweep. A monitor filtered to the sweep range (an aligned window) records which IDs the car already uses, and the sweep skips them. `BUFFER FULL`, or a listen cut short any other way, means the sweep doesn't run. Replies are accepted within an aligned window, and each pair is confirmed with a second probe on its exact reply ID, because reply IDs follow no formula: VW `713` → `77D` but `7E0` → `7E8`; FCA `744` → `4C4` but `620` → `504`.
+7. Stop on bus errors, repeated `78`, adapter overflow, malformed ISO-TP, or replies from unexpected IDs. Only read-only services go out (`3E`, `22`, `19`, and the OBD modes), and the allowlist test covers the survey's planned commands.
+
+Silence is never proof a module is absent: a gateway, a sleeping module, and a session-gated module all look alike. Unanswered candidates stay in the report and never become modules.
+
+### Results and storage
+
+For each module the report keeps its target, how it answered, its identification, its codes, and its provenance (identified, catalog observed, catalog reference, user entered). The results sheet shows the module's own name when it gave one (`F197` or `09 0A`), else the catalog's label marked unconfirmed, else "Module 7xx". The owner keeps, renames, and saves; `Garage.apply(report, choices, to:)` merges by bus, request, and reply. `ModulePreset` stays as it is, with `confirmed` meaning the module named itself. Full provenance lives in the session's survey result; a stored `source` field (a SpiaSchemaV2 migration) waits until the app needs it after a session is deleted. `SessionBoard` reads a survey's per-module codes the way it reads module reads.
+
+### The catalog
+
+Make knowledge ships as bundled, versioned JSON in SpiaKit: makes, then platforms (models and year ranges), then modules with label, bus, exact request and reply, and provenance with its source. Matching normalizes the vPIC make and model (case, punctuation, aliases) within bounded year ranges and never guesses a neighbouring generation. With no match, the survey covers the legislated range only and says make-specific coverage isn't available. Adding a make is a data change. `DemoGarage` takes its modules from the catalog.
+
+Seeds:
+
+- Maserati M157, observed on the Ghibli: airbag `744` → `4C4`, ABS `747` → `4C7`, body computer `620` → `504`. Steering column `763` → `4E3` is from references and unverified.
+- VW MQB, reference only, from a public list extracted from ODIS ([vag-uds-ids](https://github.com/ConnorHowell/vag-uds-ids)): gateway `710` → `77A`, central electronics `70E` → `778`, steering assist `712` → `77C`, brakes `713` → `77D`, airbag `715` → `77F`.
+
+### Testing
+
+Pure tests cover the catalog, the matcher, the planner (deterministic; a catalog change leaves an existing plan alone), filter construction, probe classification, identification decoding, merge rules, and board mapping. Until car captures exist, identification decoding may be tested against the worked examples in ISO 14229-1, labelled as normative vectors and never put into transcript files. Replay tests use only real captures: a bench capture (USB adapter, no car) runs the whole survey through its no-answer path, and the first car visit supplies responders, multi-frame identification, and codes. That visit follows the owner's path end to end: add by VIN, connect, survey, review, save, then replay the saved survey at the desk.
+
+### Steps
+
+1. Catalog and domain types: the JSON, decoder, matcher, `SurveyPlan`, `SurveyReport`.
+2. Planner and command safety: scope rules, bounds, planned commands, forbidden-service tests.
+3. Protocol pieces: probe classification moved out of `Discover.swift`, identification decoding, `BUFFER FULL` in `monitor`.
+4. The survey in JobRunner: phases, cancellation, the ignition prompt, recording, addressing.
+5. Replay and the demo, then the real bench capture through the executor.
+6. Store and board: `Garage.apply`, the board mapping.
+7. Onboarding UI: the overview card, the thorough-search warning, the results sheet, the Run menu entry.
+8. The first car visit, on the owner's path.
+
+Sources for these rules: Caring Caribou's [UDS discovery](https://github.com/CaringCaribou/caringcaribou/blob/master/documentation/uds.md) (listen first, blacklist, verify each pair), the [OBDLink family reference](https://www.scantool.net/scantool/downloads/678/obdlink_frpm_e.pdf) (filters, flow control, `STP 53`; filters must be set again after `STP`), and the Linux [can327 notes](https://kernel.org/doc/html/next/networking/device_drivers/can/can327.html) (ELM327 monitoring ends in `BUFFER FULL` and drops frames).
+
 ## Milestones
 
 | # | Milestone | Verified by | Status |
@@ -97,6 +149,7 @@ App phases: 1 foundation (done), 2 assistant (built, see below), 3 media (camera
 | 7 (#2) | `spia clear` | Codes clear, CEL off, re-scan clean | pending |
 | 8 (#3) | `spia live` with CSV logging | RPM/coolant/etc. track reality at idle | pending |
 | iOS (#6) | `BLETransport` (CoreBluetooth), SwiftUI shell | Bluetooth FS on iPhone | `BLETransport` and `spia --ble` verified on the Ghibli; iOS app wiring builds, not yet run on an iPhone |
+| Survey | In-app onboarding: find, identify, name, and read a car's modules | Bench capture replays through the survey; first car visit on the owner's path | designed 2026-09-28 |
 
 Reordered 2026-09-26: the fault that started this project is not an emissions code (Mode 03/07/0A are clean), so UDS access to body modules moves ahead of the generic-OBD polish.
 
