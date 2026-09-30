@@ -72,7 +72,7 @@ Each vehicle has one adapter profile. The Mac connect sheet switches it between 
 
 Demo mode replays recordings through the same code as a live adapter where the recorded command order matches (adapter check, airbag module), and decodes the rest from their recordings with the production decoders (generic scan, vehicle info, ABS, body computer). Results are labelled "From recording". The steering-column module has no recording and says so.
 
-Verified: engine and store behaviour by `swift test` against the real recordings; app builds universal with warnings as errors; app launches. Not verified: the app against the live car, sandboxed serial access to the vLinker FS, the iOS app over Bluetooth on a device, the Mac app over Bluetooth, and the screens by eye.
+Verified: engine and store behaviour by `swift test` against the real recordings; app builds universal with warnings as errors; app launches; sandboxed serial access to the vLinker FS (2026-09-29: the signed Mac app lists `usbserial-D3C53BNF`, connects, and reads `vLinker FS r2` and `STN1170 v4.3.2` on USB power, with no car). Not verified: the app against the live car, the iOS app over Bluetooth on a device, the Mac app over Bluetooth, and the screens by eye.
 
 App phases: 1 foundation (done), 2 assistant (built, see below), 3 media (camera, video, audio capture), 4 guided workflow from symptoms to tests to a solution.
 
