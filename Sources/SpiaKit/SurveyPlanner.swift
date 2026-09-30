@@ -48,12 +48,63 @@ public struct SurveyPlan: Codable, Sendable, Equatable, Hashable {
 
     public var plannedRequests: [String] {
         let info = OBDInfoPlan.standard.requests.map(\.hex)
-        let module = candidates.flatMap { candidate in
-            ["3E00"]
-                + identification.map { String(format: "22%04X", $0) }
-                + [candidate.target.readCommand]
+        return info
+            + candidates.flatMap { candidate in
+                let commands = commands(for: candidate)
+                return [commands.probe] + commands.identification + [commands.codes]
+            }
+    }
+
+    public var plannedCommands: [String] {
+        ["ATRV"] + OBDInfoPlan.standard.requests.map(\.hex)
+            + candidates.flatMap { commands(for: $0).all }
+    }
+
+    /// What one candidate costs, by part, so the executor never counts positions.
+    public struct CandidateCommands: Sendable, Equatable {
+        /// The bus protocol, the short probe timeout, and automatic flow control. Each answers OK.
+        public let setup: [String]
+        /// What `ELM327Session.configureDiagnosticHeaders` sends for the target.
+        public let headers: [String]
+        public let probe: String
+        /// Sent only when the module answered the probe, before identification and codes.
+        public let readTimeout: String
+        public let identification: [String]
+        public let codes: String
+
+        /// Everything, in the order it's sent when the module answers.
+        public var all: [String] {
+            setup + headers + [probe, readTimeout] + identification + [codes]
         }
-        return info + module
+    }
+
+    public func commands(for candidate: SurveyCandidate) -> CandidateCommands {
+        CandidateCommands(
+            setup: [
+                candidate.target.bus.protocolCommand(extended: false), probeTimeoutCommand,
+                "ATCFC 1",
+            ],
+            headers: candidate.target.headerCommands,
+            probe: "3E00",
+            readTimeout: readTimeoutCommand,
+            identification: identification.map { String(format: "22%04X", $0) },
+            codes: candidate.target.readCommand)
+    }
+
+    /// The adapter's per-reply timeout (`ATST`) while probing: short, because most candidates
+    /// don't answer. Not how long the app waits for the adapter's prompt.
+    public var probeTimeoutCommand: String {
+        timeoutCommand(milliseconds: probeTimeoutMilliseconds)
+    }
+
+    /// The adapter's per-reply timeout (`ATST`) for identification and codes.
+    public var readTimeoutCommand: String {
+        timeoutCommand(milliseconds: readTimeoutMilliseconds)
+    }
+
+    private func timeoutCommand(milliseconds: UInt64) -> String {
+        let value = min(max(milliseconds / 4, 1), 255)
+        return String(format: "ATST %02X", value)
     }
 }
 

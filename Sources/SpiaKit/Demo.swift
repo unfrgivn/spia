@@ -33,6 +33,7 @@ public enum DemoError: Error, Equatable, Sendable, CustomStringConvertible {
     case missingRecording(String)
     case noRecording(DiagnosticJob)
     case recordingHasNoAnswer(String)
+    case surveyUnavailable
 
     public var description: String {
         switch self {
@@ -43,6 +44,8 @@ public enum DemoError: Error, Equatable, Sendable, CustomStringConvertible {
                 + "Connect the adapter to the car to run it."
         case .recordingHasNoAnswer(let name):
             return "the recording \(name) contains no answer for this check"
+        case .surveyUnavailable:
+            return "The demo recordings do not include a car survey. Connect the adapter to run it."
         }
     }
 }
@@ -168,6 +171,8 @@ public actor DemoBackend: DiagnosticsBackend {
                 ) {
                     .genericScan($0.obdScan.map(ECUScan.init))
                 }
+            case .survey:
+                throw DemoError.surveyUnavailable
             case .moduleDTCs:
                 throw DemoError.noRecording(job)
             }
@@ -184,6 +189,7 @@ public actor DemoBackend: DiagnosticsBackend {
     public nonisolated func canRun(_ job: DiagnosticJob) -> Bool {
         switch job {
         case .adapterCheck, .vehicleInfo, .genericScan: true
+        case .survey: false
         case .moduleDTCs(let target): DemoGarage.recorded.contains { $0.target == target }
         }
     }

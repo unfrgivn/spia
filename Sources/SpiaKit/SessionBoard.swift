@@ -42,7 +42,7 @@ public struct SessionBoard: Equatable, Sendable {
             case .genericScan: self = .engine
             case .moduleDTCs(let target): self = .module(target)
             case .adapterCheck: self = .battery
-            case .vehicleInfo: return nil
+            case .vehicleInfo, .survey: return nil
             }
         }
 
@@ -153,6 +153,8 @@ public struct SessionBoard: Equatable, Sendable {
             case .adapter(let status):
                 adapter = (result.date, status)
             case .vehicleInfo:
+                continue
+            case .survey:
                 continue
             }
         }

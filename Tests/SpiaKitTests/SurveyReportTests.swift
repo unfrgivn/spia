@@ -1,0 +1,111 @@
+import Foundation
+import OBDCore
+import SpiaKit
+import Testing
+
+@Suite("Survey reports")
+struct SurveyReportTests {
+    private func candidate() throws -> SurveyCandidate {
+        SurveyCandidate(
+            target: try ModuleTarget(bus: .highSpeed, request: 0x7E0, response: 0x7E8),
+            origin: .legislated)
+    }
+
+    @Test("a legislated probe has one complete, deterministic command sequence")
+    func plannedCommands() throws {
+        let plan = SurveyPlan(
+            catalogVersion: "test", vehicle: nil, platform: nil, candidates: [try candidate()],
+            unreachable: [], identification: [0xF190, 0xF197])
+        #expect(
+            plan.plannedCommands == [
+                "ATRV", "0900", "0902", "0904", "0906", "090A",
+                "ATSP6", "ATST 19", "ATCFC 1", "ATSH 7E0", "ATCRA 7E8",
+                "ATFCSD 30 00 00", "ATFCSH 7E0", "ATFCSM 1", "3E00", "ATST 64",
+                "22F190", "22F197", "190209",
+            ])
+    }
+
+    @Test("survey reports round-trip through Codable")
+    func coding() throws {
+        let plan = SurveyPlan(
+            catalogVersion: "test", vehicle: nil, platform: nil, candidates: [try candidate()],
+            unreachable: [])
+        let report = SurveyReport(
+            plan: plan, voltage: 12.4, vehicleInfo: [],
+            modules: [
+                SurveyModule(
+                    candidate: try candidate(), presence: .refused(0x11),
+                    identification: [
+                        SurveyIdentification(did: 0xF197, result: .value([0x45, 0x43, 0x4D]))
+                    ],
+                    codes: .outcome(.negative(service: 0x19, code: 0x22)))
+            ],
+            unanswered: [], notProbed: [], stop: nil)
+        #expect(
+            try JSONDecoder().decode(SurveyReport.self, from: JSONEncoder().encode(report))
+                == report)
+    }
+
+    @Test("module naming uses module, OBD, catalog, then no name")
+    func namingPrecedence() throws {
+        var obdReport = ECUInfoReport(ecu: 0x7E8)
+        obdReport.name = .positive("Engine")
+        let obd = ECUIdentity(obdReport)
+        let catalog = SurveyCandidate(
+            target: try candidate().target,
+            origin: .catalog(label: "Engine controller", provenance: .reference, source: "test"))
+        let plan = SurveyPlan(
+            catalogVersion: "test", vehicle: nil, platform: nil, candidates: [catalog],
+            unreachable: [])
+        func report(_ module: SurveyModule, vehicleInfo: [ECUIdentity] = [obd]) -> SurveyReport {
+            SurveyReport(
+                plan: plan, voltage: nil, vehicleInfo: vehicleInfo, modules: [module],
+                unanswered: [], notProbed: [], stop: nil)
+        }
+        let module = SurveyModule(
+            candidate: catalog, presence: .present,
+            identification: [SurveyIdentification(did: 0xF197, result: .value(Array("ECM".utf8)))],
+            codes: .noAnswer)
+        #expect(report(module).name(of: module) == SurveyName(text: "ECM", source: .module))
+
+        let withoutModuleName = SurveyModule(
+            candidate: catalog, presence: .present, identification: [], codes: .noAnswer)
+        #expect(
+            report(withoutModuleName).name(of: withoutModuleName)
+                == SurveyName(text: "Engine", source: .obd))
+        #expect(
+            report(withoutModuleName, vehicleInfo: []).name(of: withoutModuleName)
+                == SurveyName(text: "Engine controller", source: .catalog))
+        let unknown = SurveyModule(
+            candidate: try candidate(), presence: .present, identification: [], codes: .noAnswer)
+        #expect(report(unknown, vehicleInfo: []).name(of: unknown) == nil)
+    }
+
+    @Test("survey result text reports modules, codes, unanswered, and stops")
+    func resultText() throws {
+        let plan = SurveyPlan(
+            catalogVersion: "test", vehicle: nil, platform: nil, candidates: [try candidate()],
+            unreachable: [])
+        let module = SurveyModule(
+            candidate: try candidate(), presence: .present, identification: [],
+            codes: .outcome(.negative(service: 0x19, code: 0x22)))
+        let report = SurveyReport(
+            plan: plan, voltage: nil, vehicleInfo: [], modules: [module],
+            unanswered: [try candidate()],
+            notProbed: [], stop: SurveyStop(candidate: try candidate(), reason: "CAN ERROR"))
+        let result = JobResult(
+            job: .survey(plan), payload: .survey(report), source: .live, transcript: nil)
+        #expect(
+            ResultText.summary(result)
+                == "Found 1 module, 1 with codes; 1 didn't answer. Stopped at CAN ERROR.")
+    }
+
+    @Test("a TesterPresent answer, a refusal, or a busy reply is a module; anything else isn't")
+    func presenceFromReply() {
+        #expect(SurveyPresence(TesterPresentReply(payload: [0x7E, 0x00])) == .present)
+        #expect(SurveyPresence(TesterPresentReply(payload: [0x7F, 0x3E, 0x11])) == .refused(0x11))
+        #expect(SurveyPresence(TesterPresentReply(payload: [0x7F, 0x3E, 0x78])) == .pending)
+        #expect(SurveyPresence(TesterPresentReply(payload: [0x7E, 0x80])) == nil)
+        #expect(SurveyPresence(TesterPresentReply(payload: [0x7F, 0x22, 0x11])) == nil)
+    }
+}

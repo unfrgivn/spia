@@ -176,6 +176,12 @@ private struct LedgerSummary {
                     ([row.codes.joined(separator: " ")].filter { !$0.isEmpty } + [row.detail])
                         .joined(separator: " · ")
                 } ?? entry.body
+        case .survey(let report):
+            title = "Survey"
+            text = ResultText.summary(
+                JobResult(
+                    job: .survey(report.plan), payload: .survey(report), source: .live,
+                    transcript: nil))
         }
     }
 }
@@ -261,6 +267,14 @@ private struct ResultDetail: View {
                     "Car battery",
                     status.voltage.map { String(format: "%.1f V", $0) } ?? "no power detected")
             }
+            .font(.callout)
+        case .survey(let report):
+            Text(
+                ResultText.summary(
+                    JobResult(
+                        job: .survey(report.plan), payload: .survey(report), source: .live,
+                        transcript: nil))
+            )
             .font(.callout)
         }
     }

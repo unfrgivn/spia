@@ -13,7 +13,7 @@ public enum AdapterAddressing: Equatable, Sendable {
 
     public func state(after job: DiagnosticJob) -> AdapterAddressing {
         switch job {
-        case .moduleDTCs:
+        case .moduleDTCs, .survey:
             return .moduleAddressed
         case .adapterCheck:
             return self
@@ -26,7 +26,7 @@ public enum AdapterAddressing: Equatable, Sendable {
 extension DiagnosticJob {
     fileprivate var requiresPostConnectAddressing: Bool {
         switch self {
-        case .genericScan, .vehicleInfo: true
+        case .genericScan, .vehicleInfo, .survey: true
         case .adapterCheck, .moduleDTCs: false
         }
     }

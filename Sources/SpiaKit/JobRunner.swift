@@ -43,6 +43,11 @@ public enum JobEvent: Sendable, Equatable {
 
 /// Runs one diagnostic check at a time on a connection and reports what is happening.
 public actor JobRunner {
+    private enum SurveyAttempt: Sendable {
+        case module(SurveyModule)
+        case unanswered
+    }
+
     private let connection: ConnectionManager
     private var task: Task<Void, Never>?
     private var pending: (id: UUID, continuation: CheckedContinuation<Bool, Never>)?
@@ -184,7 +189,137 @@ public actor JobRunner {
             }
             await connection.update(voltage: voltage)
             return .moduleDTCs(ModuleDTCs(target: target, response: response))
+
+        case .survey(let plan):
+            return .survey(try await performSurvey(plan, emit: emit))
         }
+    }
+
+    private func performSurvey(
+        _ plan: SurveyPlan, emit: @escaping @Sendable (JobEvent) -> Void
+    ) async throws -> SurveyReport {
+        emit(.step("Reading the car's voltage"))
+        let voltage = try await connection.withSession { session in try await session.voltage() }
+        await connection.update(voltage: voltage)
+
+        let vehicleInfo = try await askingForIgnition(emit: emit) {
+            try await self.connection.withSession { session in
+                try await GenericOBDWorkflow.info(on: session) { emit(Self.describe($0)) }
+            }
+        }.map(ECUIdentity.init)
+
+        var modules: [SurveyModule] = []
+        var unanswered: [SurveyCandidate] = []
+        var notProbed: [SurveyCandidate] = []
+        var stop: SurveyStop?
+
+        for (index, candidate) in plan.candidates.enumerated() {
+            emit(.step("Looking for modules: \(index + 1) of \(plan.candidates.count)"))
+            do {
+                let attempt = try await connection.withSession { session in
+                    try await self.performSurveyCandidate(
+                        candidate, plan: plan, session: session, emit: emit)
+                }
+                switch attempt {
+                case .unanswered:
+                    unanswered.append(candidate)
+                case .module(let module):
+                    modules.append(module)
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                if ConnectionManager.desynchronizes(error) { throw error }
+                stop = SurveyStop(candidate: candidate, reason: error.readable)
+                notProbed = Array(plan.candidates.dropFirst(index + 1))
+                break
+            }
+        }
+
+        return SurveyReport(
+            plan: plan, voltage: voltage, vehicleInfo: vehicleInfo, modules: modules,
+            unanswered: unanswered, notProbed: notProbed, stop: stop)
+    }
+
+    private func performSurveyCandidate(
+        _ candidate: SurveyCandidate, plan: SurveyPlan, session: ELM327Session,
+        emit: @escaping @Sendable (JobEvent) -> Void
+    ) async throws -> SurveyAttempt {
+        let commands = plan.commands(for: candidate)
+        for command in commands.setup {
+            try await sendSurveyCommand(command, session: session)
+        }
+        try await session.configureDiagnosticHeaders(
+            requestHeader: candidate.target.request, responseHeader: candidate.target.response)
+
+        guard
+            let reply = try await session.testerPresent(responseHeader: candidate.target.response),
+            let presence = SurveyPresence(reply)
+        else {
+            return .unanswered
+        }
+
+        let label = candidateLabel(candidate)
+        emit(.step("\(label) answered; asking what it is"))
+        try await sendSurveyCommand(commands.readTimeout, session: session)
+        // The reads keep the session's own deadlines for the adapter's prompt; the plan's read
+        // timeout is the adapter's per-reply wait (`ATST`), already set above.
+        var identification: [SurveyIdentification] = []
+        identify: for did in plan.identification {
+            do {
+                let reading = try await session.readDataByIdentifier(
+                    did, responseHeader: candidate.target.response)
+                switch reading {
+                case .value(let bytes):
+                    identification.append(SurveyIdentification(did: did, result: .value(bytes)))
+                case .refused(let code):
+                    identification.append(
+                        SurveyIdentification(did: did, result: .refused(code.byte)))
+                    // Unsupported service, or not in this session: every other DID would be
+                    // refused the same way.
+                    if [0x11, 0x7E, 0x7F].contains(code.byte) { break identify }
+                }
+            } catch UDSReadError.adapterStatus(.noData) {
+                identification.append(SurveyIdentification(did: did, result: .noAnswer))
+            } catch let error as IdentificationDecodeError {
+                identification.append(
+                    SurveyIdentification(did: did, result: .unreadable(error.readable)))
+            } catch UDSReadError.pendingWithoutFinalResponse {
+                identification.append(
+                    SurveyIdentification(
+                        did: did,
+                        result: .unreadable(UDSReadError.pendingWithoutFinalResponse.readable)))
+            }
+        }
+
+        let codes: SurveyCodes
+        do {
+            let response = try await session.readUDSDTC(
+                responseHeader: candidate.target.response, statusMask: candidate.target.statusMask)
+            codes = .outcome(ModuleDTCs(target: candidate.target, response: response).outcome)
+        } catch UDSReadError.adapterStatus(.noData) {
+            codes = .noAnswer
+        } catch let error as UDSDTCDecodeError {
+            codes = .unreadable(error.readable)
+        } catch UDSReadError.pendingWithoutFinalResponse {
+            codes = .unreadable(UDSReadError.pendingWithoutFinalResponse.readable)
+        }
+        return .module(
+            SurveyModule(
+                candidate: candidate, presence: presence, identification: identification,
+                codes: codes))
+    }
+
+    private func sendSurveyCommand(_ command: String, session: ELM327Session) async throws {
+        let reply = try await session.send(command)
+        guard reply.trimmingCharacters(in: .whitespacesAndNewlines) == "OK" else {
+            throw ELM327Error.unexpectedResponse(command: command, response: reply)
+        }
+    }
+
+    private func candidateLabel(_ candidate: SurveyCandidate) -> String {
+        if case .catalog(let label, _, _) = candidate.origin { return label }
+        return String(format: "Module %03X", candidate.target.request)
     }
 
     /// Runs `read`; when no ECU answers at all, asks the user to switch the ignition on and

@@ -41,6 +41,7 @@ extension DiagnosticJob {
         case .vehicleInfo: "Read Vehicle Information"
         case .genericScan: "Scan for Engine and Transmission Codes"
         case .moduleDTCs: "Read Module Trouble Codes"
+        case .survey: "Survey This Car"
         }
     }
 }

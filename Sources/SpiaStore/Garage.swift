@@ -193,16 +193,19 @@ public final class Garage {
         try context.save()
     }
 
-    /// The VIN a live vehicle-information check read, if the car reported one. Recordings are
-    /// never copied into a vehicle.
-    static func reportedVIN(_ result: JobResult) -> String? {
-        guard result.source == .live, case .vehicleInfo(let ecus) = result.payload else {
-            return nil
+    /// The VIN a live vehicle-information check or survey read, if the car reported one.
+    /// Recordings are never copied into a vehicle.
+    public static func reportedVIN(_ result: JobResult) -> String? {
+        guard result.source == .live else { return nil }
+        let ecus: [ECUIdentity]
+        switch result.payload {
+        case .vehicleInfo(let reports): ecus = reports
+        case .survey(let report): ecus = report.vehicleInfo
+        default: return nil
         }
         return ecus.lazy.compactMap { ecu in
-            ecu.vin.value.map {
-                $0.trimmingCharacters(in: .whitespacesAndNewlines.union(.controlCharacters))
-            }
+            ecu.vin.value?.trimmingCharacters(
+                in: .whitespacesAndNewlines.union(.controlCharacters))
         }.first { $0.count == 17 }
     }
 

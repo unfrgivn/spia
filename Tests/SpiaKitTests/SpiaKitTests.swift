@@ -33,21 +33,29 @@ struct SpiaKitTests {
 
     @Test("adapter addressing decisions cover every job from both states")
     func adapterAddressing() {
-        let jobs: [DiagnosticJob] = [
-            .adapterCheck, .vehicleInfo, .genericScan, .moduleDTCs(Self.airbag),
+        let survey = DiagnosticJob.survey(
+            SurveyPlan(
+                catalogVersion: "test", vehicle: nil, platform: nil, candidates: [],
+                unreachable: []))
+        let cases: [(job: DiagnosticJob, needsPostConnect: Bool, leavesModule: Bool)] = [
+            (.adapterCheck, false, false),
+            (.vehicleInfo, true, false),
+            (.genericScan, true, false),
+            (survey, true, true),
+            (.moduleDTCs(Self.airbag), false, true),
         ]
-        for job in jobs {
+        for (job, needsPostConnect, leavesModule) in cases {
             #expect(!AdapterAddressing.postConnect.needsReinitialization(for: job))
             #expect(
-                AdapterAddressing.postConnect.state(after: job)
-                    == (job == .moduleDTCs(Self.airbag) ? .moduleAddressed : .postConnect))
-            #expect(
                 AdapterAddressing.moduleAddressed.needsReinitialization(for: job)
-                    == (job == .vehicleInfo || job == .genericScan))
+                    == needsPostConnect)
+            #expect(
+                AdapterAddressing.postConnect.state(after: job)
+                    == (leavesModule ? .moduleAddressed : .postConnect))
+            // An adapter check leaves the addressing as it found it.
             #expect(
                 AdapterAddressing.moduleAddressed.state(after: job)
-                    == (job == .moduleDTCs(Self.airbag) || job == .adapterCheck
-                        ? .moduleAddressed : .postConnect))
+                    == (leavesModule || job == .adapterCheck ? .moduleAddressed : .postConnect))
         }
     }
 
@@ -271,13 +279,24 @@ struct SpiaKitTests {
         ]
         var jobs: [DiagnosticJob] = [.adapterCheck, .vehicleInfo, .genericScan]
         jobs += DemoGarage.modules.map { .moduleDTCs($0.target) }
+        let bundled = try ModuleCatalog.bundled()
+        jobs += try bundled.makes.flatMap { make in
+            try make.platforms.map { platform in
+                .survey(
+                    try SurveyPlanner.plan(
+                        catalog: bundled,
+                        vehicle: CatalogVehicle(
+                            make: make.make, model: platform.models[0], year: platform.firstYear),
+                        reachableBuses: [.highSpeed, .mediumSpeed]))
+            }
+        }
         jobs.append(
             .moduleDTCs(
                 try ModuleTarget(
                     bus: .mediumSpeed, request: 0x7BF, response: 0x53F, statusMask: 0xFF)))
         for job in jobs {
             for command in job.plannedCommands
-            where !command.hasPrefix("AT") && !command.hasPrefix("ST") {
+            where command != "ATRV" && !command.hasPrefix("AT") && !command.hasPrefix("ST") {
                 let service = try #require(
                     UInt8(command.prefix(2), radix: 16), "\(command) is not hex")
                 #expect(!forbidden.contains(service), "\(job.id) would send \(command)")
@@ -373,6 +392,17 @@ struct SpiaKitTests {
 struct DemoBackendTests {
     private func run(_ job: DiagnosticJob, on demo: DemoBackend) async -> [JobEvent] {
         await collect(demo.run(job, transcript: nil))
+    }
+
+    @Test("demo refuses a survey because it has no survey recording")
+    func surveyUnavailable() async {
+        let demo = DemoBackend()
+        try? await demo.connect()
+        let plan = SurveyPlan(
+            catalogVersion: "test", vehicle: nil, platform: nil, candidates: [], unreachable: [])
+        #expect(!demo.canRun(.survey(plan)))
+        let events = await run(.survey(plan), on: demo)
+        #expect(events.compactMap(\.failure).first?.message.contains("car survey") == true)
     }
 
     @Test("connecting replays the recorded adapter check")

@@ -44,6 +44,18 @@ public enum ResultText {
             case .negative(_, let code):
                 return NegativeResponse.explanation(code)
             }
+
+        case .survey(let report):
+            let codeModules = report.modules.filter {
+                if case .outcome(.records(_, let records)) = $0.codes { return !records.isEmpty }
+                if case .outcome(.negative) = $0.codes { return true }
+                return false
+            }.count
+            var text =
+                "Found \(report.modules.count) module\(report.modules.count == 1 ? "" : "s"), "
+                + "\(codeModules) with codes; \(report.unanswered.count) didn't answer."
+            if let stop = report.stop { text += " Stopped at \(stop.reason)." }
+            return text
         }
     }
 }

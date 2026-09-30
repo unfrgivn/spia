@@ -152,6 +152,10 @@ public actor ELM327Session {
             return nil
         } catch UDSReadError.pendingWithoutFinalResponse {
             return .pending
+        } catch UDSReadError.invalidPositiveService {
+            return .unrelated
+        } catch UDSReadError.wrongNegativeService {
+            return .unrelated
         }
     }
 

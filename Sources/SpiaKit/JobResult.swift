@@ -92,6 +92,7 @@ public enum JobPayload: Codable, Sendable, Equatable {
     case vehicleInfo([ECUIdentity])
     case genericScan([ECUScan])
     case moduleDTCs(ModuleDTCs)
+    case survey(SurveyReport)
 }
 
 public enum ResultSource: Codable, Sendable, Equatable {

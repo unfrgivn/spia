@@ -84,6 +84,7 @@ public enum DiagnosticJob: Codable, Sendable, Hashable {
     case vehicleInfo
     case genericScan
     case moduleDTCs(ModuleTarget)
+    case survey(SurveyPlan)
 
     public var id: String {
         switch self {
@@ -94,6 +95,7 @@ public enum DiagnosticJob: Codable, Sendable, Hashable {
             return String(
                 format: "module-dtcs-%@-%03X-%03X", target.bus.rawValue, target.request,
                 target.response)
+        case .survey: return "survey"
         }
     }
 
@@ -103,6 +105,7 @@ public enum DiagnosticJob: Codable, Sendable, Hashable {
         case .vehicleInfo: return "Read vehicle information"
         case .genericScan: return "Scan for engine and transmission codes"
         case .moduleDTCs: return "Read module trouble codes"
+        case .survey: return "Survey the car"
         }
     }
 
@@ -117,13 +120,15 @@ public enum DiagnosticJob: Codable, Sendable, Hashable {
             return "Reads the standard emissions codes, readiness monitors, and freeze frame."
         case .moduleDTCs:
             return "Asks one module, such as the airbag controller, for its trouble codes."
+        case .survey:
+            return "Finds the car's diagnostic modules, asks what they are, and reads their codes."
         }
     }
 
     public var requirement: VehicleRequirement {
         switch self {
         case .adapterCheck: return .none
-        case .vehicleInfo, .genericScan, .moduleDTCs: return .ignitionOn
+        case .vehicleInfo, .genericScan, .moduleDTCs, .survey: return .ignitionOn
         }
     }
 
@@ -142,6 +147,7 @@ public enum DiagnosticJob: Codable, Sendable, Hashable {
                 ]).map(\.hex)
         case .moduleDTCs(let target):
             return ["ATRV"] + target.setupCommands + target.headerCommands + [target.readCommand]
+        case .survey(let plan): return plan.plannedCommands
         }
     }
 }
