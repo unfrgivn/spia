@@ -11,6 +11,8 @@ struct SessionView: View {
     @State private var showConnection = false
     @State private var editingModules = false
     @State private var transcript: TimelineEntry?
+    @State private var reviewReport: SurveyReport?
+    @State private var reviewVehicle: Vehicle?
     @State private var note = ""
     @State private var error: String?
     @State private var width: CGFloat = 1_000
@@ -46,9 +48,15 @@ struct SessionView: View {
                         explain: { explain($0) }, openAssistant: { showAssistant = true }
                     )
                     .padding(.top, wide ? 32 : 22)
-                    CaseFile(session: session, layout: layout) { transcript = $0 }
-                        .padding(.top, wide ? 40 : 30)
-                        .id(Self.timelineID)
+                    CaseFile(
+                        session: session, layout: layout, showTranscript: { transcript = $0 },
+                        reviewSurvey: {
+                            reviewReport = $0
+                            reviewVehicle = session.vehicle
+                        }
+                    )
+                    .padding(.top, wide ? 40 : 30)
+                    .id(Self.timelineID)
                     NoteComposer(note: $note, add: addNote)
                         .padding(.top, 16)
                 }
@@ -73,6 +81,15 @@ struct SessionView: View {
                             $0.question != nil && notes[$0.subject] == nil
                         }) {
                             explain(row)
+                        }
+                    case .surveyResults:
+                        try? await Task.sleep(for: .milliseconds(500))
+                        if let entry = session.timeline.last,
+                            case .survey(let report) = entry.result?.payload,
+                            let vehicle = session.vehicle
+                        {
+                            reviewReport = report
+                            reviewVehicle = vehicle
                         }
                     default:
                         break
@@ -105,14 +122,36 @@ struct SessionView: View {
         .sheet(item: $transcript) { entry in
             TranscriptView(entry: entry)
         }
+        .sheet(
+            isPresented: Binding(
+                get: { reviewReport != nil }, set: { if !$0 { reviewReport = nil } })
+        ) {
+            if let reviewReport, let reviewVehicle {
+                SurveyResultsView(report: reviewReport, vehicle: reviewVehicle)
+            }
+        }
         .task(id: session.vehicle?.id) {
             if let vehicle = session.vehicle { workbench = model.workbench(for: vehicle) }
+            startPendingSurveyIfReady()
+            if let workbench, workbench.connection.status == nil,
+                model.hasSurveyRequest(for: session)
+            {
+                showConnection = true
+            }
             #if DEBUG
                 if Fixture.screen == .recordings {
                     try? await Task.sleep(for: .milliseconds(500))
                     showConnection = true
                 }
             #endif
+        }
+        .onChange(of: workbench?.connection) { _, state in
+            if case .ready = state { startPendingSurveyIfReady() }
+        }
+        .onChange(of: showConnection) { wasShown, isShown in
+            if wasShown && !isShown && workbench?.connection.status == nil {
+                model.cancelSurveyRequest(for: session)
+            }
         }
         .onChange(of: workbench.map(ObjectIdentifier.init), initial: true) {
             model.conversation(for: session).workbench = workbench
@@ -284,13 +323,29 @@ struct SessionView: View {
         }
     }
 
+    private func startPendingSurveyIfReady() {
+        guard let workbench, workbench.connection.status != nil,
+            model.consumeSurveyRequest(for: session)
+        else { return }
+        showConnection = false
+        runSurvey(workbench)
+    }
+
     private func run(_ job: DiagnosticJob) {
         guard let workbench else { return }
         guard workbench.connection.status != nil else {
             showConnection = true
             return
         }
-        Task { await workbench.run(job, in: session) }
+        Task {
+            let outcome = await workbench.run(job, in: session)
+            if case .completed(let result) = outcome,
+                case .survey(let report) = result.payload
+            {
+                reviewReport = report
+                reviewVehicle = session.vehicle
+            }
+        }
     }
 
     private func addNote() {

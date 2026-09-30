@@ -135,7 +135,7 @@ Pure tests cover the catalog, the matcher, the planner (deterministic; a catalog
 4. The survey in JobRunner: phases, cancellation, the ignition prompt, recording, addressing.
 5. Replay and the demo, then the real bench capture through the executor.
 6. Store and board: `SurveyReport.proposedModules()` creates confirmed names from module or OBD answers, while catalog and fallback labels remain unconfirmed until `Garage.apply` saves them. The board maps survey code outcomes through the same module-read rules.
-7. Onboarding UI: the overview card, the thorough-search warning, the results sheet, the Run menu entry.
+7. Onboarding UI is done: the Overview card starts a survey, the results sheet reviews and saves modules, it reopens from the case file, and owner-edited names are confirmed.
 8. The first car visit, on the owner's path.
 9. The thorough search: per-platform sweep ranges as catalog data, listen first, sweep, and confirm each pair (item 6 above). It handles `BUFFER FULL` in `monitor` and waits until the standard survey works end to end.
 

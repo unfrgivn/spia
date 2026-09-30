@@ -27,6 +27,10 @@ struct VehicleOverview: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 hero(compact: compact)
+                if !vehicle.isDemo && vehicle.modules.isEmpty {
+                    findModulesCard(compact: compact)
+                        .padding(.top, compact ? 18 : 24)
+                }
                 VehicleBoard(readouts: readouts, compact: compact)
                     .padding(.top, compact ? 18 : 28)
                 referenceStatus
@@ -70,6 +74,36 @@ struct VehicleOverview: View {
     }
 
     // MARK: - The bay
+
+    private func findModulesCard(compact: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Find this car's modules")
+                .font(.headline)
+                .foregroundStyle(Palette.primary)
+            Text(
+                "Ask the car which diagnostic modules are awake, then review their names and codes."
+            )
+            .font(.callout)
+            .foregroundStyle(Palette.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            Button("Find Modules") { findModules() }
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(compact ? 16 : 20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card(tint: Palette.accent)
+    }
+
+    private func findModules() {
+        do {
+            let session = try model.garage.addSession(
+                to: vehicle, title: "Finding this car's modules")
+            model.requestSurvey(for: session)
+            show(.session(session.id))
+        } catch {
+            problem = error.readable
+        }
+    }
 
     /// The car as the garage shows it, always drawn dark: beside its photo when there's room,
     /// under it when there isn't, so the name never sits on the car.

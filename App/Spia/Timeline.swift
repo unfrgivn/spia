@@ -8,6 +8,7 @@ struct CaseFile: View {
     let session: DiagnosticSession
     let layout: BoardLayout
     let showTranscript: (TimelineEntry) -> Void
+    let reviewSurvey: (SurveyReport) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -21,9 +22,9 @@ struct CaseFile: View {
                     .padding(.vertical, 12)
             }
             ForEach(session.timeline) { entry in
-                LedgerRow(entry: entry, modules: modules, layout: layout) {
-                    showTranscript(entry)
-                }
+                LedgerRow(
+                    entry: entry, modules: modules, layout: layout,
+                    showTranscript: { showTranscript(entry) }, reviewSurvey: reviewSurvey)
             }
             if !session.entries.isEmpty { Hairline() }
         }
@@ -41,6 +42,7 @@ private struct LedgerRow: View {
     let modules: [ModulePreset]
     let layout: BoardLayout
     let showTranscript: () -> Void
+    let reviewSurvey: (SurveyReport) -> Void
     @State private var expanded = false
 
     var body: some View {
@@ -125,7 +127,8 @@ private struct LedgerRow: View {
                 .foregroundStyle(Palette.secondary)
         case .result:
             if let result = entry.result {
-                ResultDetail(payload: result.payload, modules: modules)
+                ResultDetail(
+                    payload: result.payload, modules: modules, reviewSurvey: reviewSurvey)
             } else {
                 Text("This result was saved by a newer version of Spia.")
                     .font(.caption)
@@ -249,6 +252,7 @@ private struct EntryFooter: View {
 private struct ResultDetail: View {
     let payload: JobPayload
     let modules: [ModulePreset]
+    let reviewSurvey: (SurveyReport) -> Void
 
     var body: some View {
         switch payload {
@@ -269,13 +273,17 @@ private struct ResultDetail: View {
             }
             .font(.callout)
         case .survey(let report):
-            Text(
-                ResultText.summary(
-                    JobResult(
-                        job: .survey(report.plan), payload: .survey(report), source: .live,
-                        transcript: nil))
-            )
-            .font(.callout)
+            VStack(alignment: .leading, spacing: 10) {
+                Text(
+                    ResultText.summary(
+                        JobResult(
+                            job: .survey(report.plan), payload: .survey(report), source: .live,
+                            transcript: nil))
+                )
+                .font(.callout)
+                Button("Review Modules") { reviewSurvey(report) }
+                    .buttonStyle(.borderedProminent)
+            }
         }
     }
 

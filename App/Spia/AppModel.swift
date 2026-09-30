@@ -28,6 +28,7 @@ final class AppModel {
     private var referenceSets: [UUID: VehicleReferences] = [:]
     private var surveyCatalog: ModuleCatalog?
     private var surveyCatalogError: String?
+    private var pendingSurveySessions: Set<UUID> = []
     private let savedChecksProvider: (() -> [SavedCheck])?
 
     init(
@@ -144,6 +145,22 @@ final class AppModel {
             catalog: catalog,
             vehicle: identity.map(CatalogVehicle.init),
             reachableBuses: SurveyPlanner.reachableBuses(for: workbench.connection.status))
+    }
+
+    func requestSurvey(for session: DiagnosticSession) {
+        pendingSurveySessions.insert(session.id)
+    }
+
+    func consumeSurveyRequest(for session: DiagnosticSession) -> Bool {
+        pendingSurveySessions.remove(session.id) != nil
+    }
+
+    func hasSurveyRequest(for session: DiagnosticSession) -> Bool {
+        pendingSurveySessions.contains(session.id)
+    }
+
+    func cancelSurveyRequest(for session: DiagnosticSession) {
+        pendingSurveySessions.remove(session.id)
     }
 
     func delete(_ session: DiagnosticSession) throws {

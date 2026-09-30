@@ -19,6 +19,8 @@
             case garage, overview, references, photos, session, settings, replay
             case replayTimeline = "replay-timeline"
             case recordings
+            case onboarding
+            case surveyResults = "survey-results"
             /// References, on the bulletins or the complaints.
             case bulletins, complaints
             /// The garage before any vehicle is added.
@@ -58,7 +60,21 @@
                 container: try Garage.inMemoryContainer(), files: SpiaFiles(root: root),
                 assistant: assistant(), replayTiming: .immediate,
                 savedChecksProvider: checks.map { saved in { saved } })
-            if screen != .welcome {
+            if screen == .onboarding {
+                _ = try model.garage.addVehicle(
+                    name: "2017 Maserati Ghibli S Q4", vin: DemoGarage.vin)
+            } else if screen == .surveyResults {
+                let vehicle = try model.garage.addVehicle(
+                    name: DemoGarage.vehicleName, vin: DemoGarage.vin)
+                let session = try model.garage.addSession(
+                    to: vehicle, title: "Finding this car's modules")
+                let report = try surveyReport()
+                try model.garage.record(
+                    JobResult(
+                        job: .survey(report.plan), payload: .survey(report), source: .live,
+                        transcript: nil),
+                    warnings: [], transcriptPath: nil, in: session)
+            } else if screen != .welcome {
                 if screen == .replay || screen == .replayTimeline || screen == .recordings {
                     let vehicle = try model.garage.addVehicle(
                         name: DemoGarage.vehicleName, vin: DemoGarage.vin)
@@ -108,6 +124,9 @@
             case .session, .timeline, .explain, .replay, .replayTimeline, .recordings:
                 vehicle.orderedSessions.first.map { .session($0.id) }
             case .garage, .settings, .welcome, nil: nil
+            case .onboarding: .overview
+            case .surveyResults:
+                vehicle.orderedSessions.first.map { .session($0.id) }
             }
         }
 
@@ -155,6 +174,59 @@
             await workbench.connect()
             _ = await workbench.run(.adapterCheck, in: session)
             _ = await workbench.run(.moduleDTCs(DemoGarage.airbag.target), in: session)
+        }
+
+        private static func surveyReport() throws -> SurveyReport {
+            let catalog = try ModuleCatalog.bundled()
+            let identity = CatalogVehicle(make: "Maserati", model: "Ghibli", year: 2017)
+            let plan = try SurveyPlanner.plan(
+                catalog: catalog, vehicle: identity, reachableBuses: [.highSpeed, .mediumSpeed])
+            func candidate(_ request: UInt32) throws -> SurveyCandidate {
+                guard let candidate = plan.candidates.first(where: { $0.target.request == request })
+                else { throw CocoaError(.coderValueNotFound) }
+                return candidate
+            }
+            let airbag = try candidate(0x744)
+            let abs = try candidate(0x747)
+            let bcm = try candidate(0x620)
+            let engine = try candidate(0x7E0)
+            let transmission = try candidate(0x7E1)
+            // The names the Ghibli's engine and transmission computers gave to 09 0A on the car.
+            var ecm = ECUInfoReport(ecu: 0x7E8)
+            ecm.name = .positive("ECM1-EngineControl1")
+            var tcm = ECUInfoReport(ecu: 0x7E9)
+            tcm.name = .positive("TCM\0-TransmisCtrl")
+            let noCodes = SurveyCodes.outcome(.records(availability: 0xFF, []))
+            let modules = [
+                SurveyModule(
+                    candidate: airbag, presence: .present, identification: [],
+                    codes: .outcome(
+                        .records(
+                            availability: 0xCF,
+                            [
+                                ModuleDTCRecord(code: "80011B", status: 0x8F),
+                                ModuleDTCRecord(code: "80021B", status: 0x8F),
+                            ]))),
+                SurveyModule(
+                    candidate: abs, presence: .present, identification: [], codes: noCodes),
+                SurveyModule(
+                    candidate: bcm, presence: .present, identification: [],
+                    codes: .outcome(
+                        .records(
+                            availability: 0xFB,
+                            [ModuleDTCRecord(code: "100900", status: 0x2B)]))),
+                SurveyModule(
+                    candidate: engine, presence: .present, identification: [], codes: noCodes),
+                SurveyModule(
+                    candidate: transmission, presence: .present, identification: [],
+                    codes: noCodes),
+            ]
+            let answered = Set(modules.map(\.candidate.target))
+            return SurveyReport(
+                plan: plan, voltage: 14.3, vehicleInfo: [ECUIdentity(ecm), ECUIdentity(tcm)],
+                modules: modules,
+                unanswered: plan.candidates.filter { !answered.contains($0.target) },
+                notProbed: [], stop: nil)
         }
 
         /// A question about the airbag row and an answer, as if the owner had tapped Explain,
