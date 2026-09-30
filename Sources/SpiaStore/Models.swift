@@ -5,6 +5,12 @@ import SpiaKit
 import SpiaReference
 import SwiftData
 
+extension CatalogVehicle {
+    public init(_ identity: VehicleIdentity) {
+        self.init(make: identity.make, model: identity.model, year: identity.modelYear)
+    }
+}
+
 /// Version 1 of the on-disk store. Future versions add a new schema and a migration stage;
 /// existing users' garages must always open.
 public enum SpiaSchemaV1: VersionedSchema {

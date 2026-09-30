@@ -26,6 +26,8 @@ final class AppModel {
     private var recordingsActive: Set<UUID> = []
     private var conversations: [UUID: AssistantConversation] = [:]
     private var referenceSets: [UUID: VehicleReferences] = [:]
+    private var surveyCatalog: ModuleCatalog?
+    private var surveyCatalogError: String?
     private let savedChecksProvider: (() -> [SavedCheck])?
 
     init(
@@ -121,6 +123,29 @@ final class AppModel {
         return references
     }
 
+    func surveyPlan(for vehicle: Vehicle, workbench: Workbench) throws -> SurveyPlan {
+        let catalog: ModuleCatalog
+        if let surveyCatalog {
+            catalog = surveyCatalog
+        } else if let surveyCatalogError {
+            throw SurveySetupError(surveyCatalogError)
+        } else {
+            do {
+                catalog = try ModuleCatalog.bundled()
+                surveyCatalog = catalog
+            } catch {
+                let message = "The vehicle survey catalog couldn't be loaded: \(error.readable)"
+                surveyCatalogError = message
+                throw SurveySetupError(message)
+            }
+        }
+        let identity = references(for: vehicle).identity
+        return try SurveyPlanner.plan(
+            catalog: catalog,
+            vehicle: identity.map(CatalogVehicle.init),
+            reachableBuses: SurveyPlanner.reachableBuses(for: workbench.connection.status))
+    }
+
     func delete(_ session: DiagnosticSession) throws {
         conversations.removeValue(forKey: session.id)?.stop()
         try garage.delete(session)
@@ -194,4 +219,12 @@ enum AdapterSetupError: Error, CustomStringConvertible {
                 "USB adapters work with Spia on a Mac. iPhone and iPad need a Bluetooth LE adapter such as the vLinker FS in BLE+BT mode."
         }
     }
+}
+
+private struct SurveySetupError: Error, CustomStringConvertible {
+    let message: String
+
+    init(_ message: String) { self.message = message }
+
+    var description: String { message }
 }

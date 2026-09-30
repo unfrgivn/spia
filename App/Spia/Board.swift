@@ -481,6 +481,7 @@ struct RunMenu: View {
     let vehicle: Vehicle?
     let workbench: Workbench
     let run: (DiagnosticJob) -> Void
+    let survey: (() -> Void)?
     let connect: () -> Void
     let editModules: () -> Void
 
@@ -496,6 +497,15 @@ struct RunMenu: View {
                         ForEach(Self.jobs.filter { $0.requirement == requirement }, id: \.title) {
                             job in
                             Button(job.menuTitle) { run(job) }
+                        }
+                        if requirement == .ignitionOn, vehicle != nil, let survey {
+                            Button("Survey This Car", action: survey)
+                                .disabled(
+                                    workbench.canRun(
+                                        .survey(
+                                            SurveyPlan(
+                                                catalogVersion: "menu", vehicle: nil, platform: nil,
+                                                candidates: [], unreachable: []))))
                         }
                         // Module reads always need the ignition on.
                         if requirement == .ignitionOn { modules }

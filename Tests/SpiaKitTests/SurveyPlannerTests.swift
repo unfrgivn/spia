@@ -5,6 +5,17 @@ import Testing
 
 @Suite("Survey planner")
 struct SurveyPlannerTests {
+    @Test("adapter firmware determines whether the medium-speed bus is reachable")
+    func reachableBuses() {
+        #expect(SurveyPlanner.reachableBuses(for: nil) == [.highSpeed])
+        #expect(
+            SurveyPlanner.reachableBuses(
+                for: AdapterStatus(identity: "ELM327", firmware: nil)) == [.highSpeed])
+        #expect(
+            SurveyPlanner.reachableBuses(
+                for: AdapterStatus(identity: "ELM327", firmware: "STN1170"))
+                == [.highSpeed, .mediumSpeed])
+    }
     private func catalog() throws -> ModuleCatalog { try ModuleCatalog.bundled() }
 
     private func ghibli() throws -> CatalogVehicle {

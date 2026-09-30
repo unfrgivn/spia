@@ -202,11 +202,17 @@ public actor JobRunner {
         let voltage = try await connection.withSession { session in try await session.voltage() }
         await connection.update(voltage: voltage)
 
-        let vehicleInfo = try await askingForIgnition(emit: emit) {
-            try await self.connection.withSession { session in
-                try await GenericOBDWorkflow.info(on: session) { emit(Self.describe($0)) }
-            }
-        }.map(ECUIdentity.init)
+        let vehicleInfo: [ECUIdentity]
+        do {
+            vehicleInfo = try await askingForIgnition(emit: emit) {
+                try await self.connection.withSession { session in
+                    try await GenericOBDWorkflow.info(on: session) { emit(Self.describe($0)) }
+                }
+            }.map(ECUIdentity.init)
+        } catch GenericOBDWorkflow.Failure.noVehicleResponse {
+            emit(.warning("The engine computers didn't answer."))
+            vehicleInfo = []
+        }
 
         var modules: [SurveyModule] = []
         var unanswered: [SurveyCandidate] = []

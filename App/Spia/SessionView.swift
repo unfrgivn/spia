@@ -156,7 +156,8 @@ struct SessionView: View {
     private func runMenu(_ workbench: Workbench) -> some View {
         RunMenu(
             vehicle: session.vehicle, workbench: workbench, run: { run($0) },
-            connect: { showConnection = true }, editModules: { editingModules = true })
+            survey: { runSurvey(workbench) }, connect: { showConnection = true },
+            editModules: { editingModules = true })
     }
 
     private var assistantToggle: some View {
@@ -255,9 +256,32 @@ struct SessionView: View {
             assistantShown: showAssistant,
             toggleAssistant: { showAssistant.toggle() }, connect: { showConnection = true },
             checks: RunMenu.jobs.map { check($0, $0.menuTitle) },
+            survey: surveyAction(workbench),
             moduleChecks: (session.vehicle?.orderedModules ?? []).compactMap { module in
                 module.target.map { check(.moduleDTCs($0), module.label) }
             })
+    }
+
+    private func surveyAction(_ workbench: Workbench?) -> (() -> Void)? {
+        guard let workbench, session.vehicle != nil,
+            workbench.canRun(
+                .survey(
+                    SurveyPlan(
+                        catalogVersion: "menu", vehicle: nil, platform: nil, candidates: [],
+                        unreachable: [])
+                ))
+        else { return nil }
+        return { runSurvey(workbench) }
+    }
+
+    private func runSurvey(_ workbench: Workbench) {
+        guard let vehicle = session.vehicle else { return }
+        do {
+            let plan = try model.surveyPlan(for: vehicle, workbench: workbench)
+            run(.survey(plan))
+        } catch {
+            workbench.lastError = error.readable
+        }
     }
 
     private func run(_ job: DiagnosticJob) {

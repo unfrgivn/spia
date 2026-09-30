@@ -1,11 +1,21 @@
 import OBDCore
 import SpiaKit
+import SpiaReference
 import SpiaStore
 import Testing
 
 @Suite("Garage survey VIN")
 @MainActor
 struct GarageSurveyTests {
+    @Test("a decoded vehicle identity becomes a catalog vehicle")
+    func catalogVehicle() {
+        let identity = VehicleIdentity(
+            vin: "ZAM57RTS4H1249941", make: "Maserati", model: "Ghibli", modelYear: 2017)
+        #expect(
+            CatalogVehicle(identity)
+                == CatalogVehicle(make: "Maserati", model: "Ghibli", year: 2017))
+    }
+
     @Test("reportedVIN accepts the VIN from a live survey")
     func surveyVIN() throws {
         var info = ECUInfoReport(ecu: 0x7E8)

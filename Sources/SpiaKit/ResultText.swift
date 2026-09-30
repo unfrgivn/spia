@@ -51,7 +51,8 @@ public enum ResultText {
                 if case .outcome(.negative) = $0.codes { return true }
                 return false
             }.count
-            var text =
+            var text = report.vehicleInfo.isEmpty ? "The engine computers didn't answer. " : ""
+            text +=
                 "Found \(report.modules.count) module\(report.modules.count == 1 ? "" : "s"), "
                 + "\(codeModules) with codes; \(report.unanswered.count) didn't answer."
             if let stop = report.stop { text += " Stopped at \(stop.reason)." }

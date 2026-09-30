@@ -124,6 +124,10 @@ public enum SurveyPlanner {
     /// A bad catalog edit must not turn a survey into a flood of probes.
     public static let candidateLimit = 64
 
+    public static func reachableBuses(for status: AdapterStatus?) -> Set<CANBus> {
+        status?.firmware == nil ? [.highSpeed] : [.highSpeed, .mediumSpeed]
+    }
+
     public static func plan(
         catalog: ModuleCatalog, vehicle: CatalogVehicle?, reachableBuses: Set<CANBus>
     ) throws -> SurveyPlan {

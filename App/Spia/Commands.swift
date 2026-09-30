@@ -30,6 +30,7 @@ struct SessionActions {
     let toggleAssistant: () -> Void
     let connect: () -> Void
     let checks: [Check]
+    let survey: (() -> Void)?
     let moduleChecks: [Check]
 }
 
@@ -105,6 +106,8 @@ struct SpiaCommands: Commands {
                     .keyboardShortcut(check.job == .genericScan ? KeyboardShortcut("r") : nil)
                     .disabled(check.perform == nil)
             }
+            Button("Survey This Car") { session?.survey?() }
+                .disabled(session?.survey == nil)
             Menu("Read Module Trouble Codes") {
                 ForEach(session?.moduleChecks ?? [], id: \.title) { check in
                     Button(check.title) { check.perform?() }

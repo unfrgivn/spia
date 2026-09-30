@@ -98,6 +98,8 @@ A survey is one read-only `DiagnosticJob.survey(SurveyPlan)` with one `JobPayloa
 
 The executor completes with the partial report when a candidate produces a safe, readable stop such as a malformed answer or adapter error. The stopped candidate is recorded in `stop`, and candidates after it are `notProbed`; candidates that were probed and gave no answer are kept separately in `unanswered`.
 
+If the engine computers do not answer after the ignition prompts, the survey continues with the module probes and says so in its summary. “Survey This Car” is available in the Run and Session menus until step 7 adds the onboarding card and results screen.
+
 1. Buses. 500k (pins 6/14) always. 125k (pins 3/11) only on STN adapters that accept `STP 53`, and then only for the make's known modules unless the thorough search includes that bus. STN firmware (`STI`) is evidence, not proof: each bus reports whether it was reached.
 2. Generic OBD. The emissions ECUs that answer `7DF`, named by `09 0A`, become modules named by themselves (engine `7E0` → `7E8`, transmission `7E1` → `7E9`).
 3. Probe. Each candidate gets TesterPresent (`3E 00`) with a short fixed timeout and a filter on its exact reply ID. A positive reply, or any negative reply other than `78`, counts as a module; `78` is waited out. DiagnosticSessionControl (`10 01`), which other tools use for discovery, stays forbidden by the read-only rule; identification confirms each responder instead.
