@@ -127,13 +127,13 @@ Pure tests cover the catalog, the matcher, the planner (deterministic; a catalog
 
 1. The catalog: the JSON, decoder, and matcher. Survey types arrive with their first user: the plan in step 2, the report in step 4.
 2. The planner for the standard survey, with its command-safety tests: an explicit allowlist of services (`09`, `3E`, `22`, `19`), the exact probe, the DID range, and a cap of 64 candidates.
-3. Protocol pieces: probe classification moved out of `Discover.swift`, identification decoding, `BUFFER FULL` in `monitor`.
+3. The answers: TesterPresent classification shared by the CLI and the survey, identification decoding, and named negative response codes.
 4. The survey in JobRunner: phases, cancellation, the ignition prompt, recording, addressing.
 5. Replay and the demo, then the real bench capture through the executor.
 6. Store and board: `Garage.apply`, the board mapping.
 7. Onboarding UI: the overview card, the thorough-search warning, the results sheet, the Run menu entry.
 8. The first car visit, on the owner's path.
-9. The thorough search: per-platform sweep ranges as catalog data, listen first, sweep, and confirm each pair (item 6 above). It waits until the standard survey works end to end.
+9. The thorough search: per-platform sweep ranges as catalog data, listen first, sweep, and confirm each pair (item 6 above). It handles `BUFFER FULL` in `monitor` and waits until the standard survey works end to end.
 
 Sources for these rules: Caring Caribou's [UDS discovery](https://github.com/CaringCaribou/caringcaribou/blob/master/documentation/uds.md) (listen first, blacklist, verify each pair), the [OBDLink family reference](https://www.scantool.net/scantool/downloads/678/obdlink_frpm_e.pdf) (filters, flow control, `STP 53`; filters must be set again after `STP`), and the Linux [can327 notes](https://kernel.org/doc/html/next/networking/device_drivers/can/can327.html) (ELM327 monitoring ends in `BUFFER FULL` and drops frames).
 

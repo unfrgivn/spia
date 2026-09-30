@@ -8,28 +8,6 @@ public struct UDSDTCRecord: Equatable, Sendable {
     }
 }
 
-public enum UDSNegativeResponseCode: Equatable, Sendable {
-    case conditionsNotCorrect
-    case responsePending
-    case other(UInt8)
-
-    public init(byte: UInt8) {
-        switch byte {
-        case 0x22: self = .conditionsNotCorrect
-        case 0x78: self = .responsePending
-        default: self = .other(byte)
-        }
-    }
-
-    public var byte: UInt8 {
-        switch self {
-        case .conditionsNotCorrect: return 0x22
-        case .responsePending: return 0x78
-        case .other(let value): return value
-        }
-    }
-}
-
 public enum UDSDTCResponse: Equatable, Sendable {
     case positive(availability: UInt8, records: [UDSDTCRecord])
     case negative(service: UInt8, code: UDSNegativeResponseCode)
