@@ -81,6 +81,57 @@ struct SurveyReportTests {
         #expect(report(unknown, vehicleInfo: []).name(of: unknown) == nil)
     }
 
+    @Test("proposed modules preserve plan order and confirmation sources")
+    func proposedModules() throws {
+        let targets = try [
+            ModuleTarget(bus: .highSpeed, request: 0x700, response: 0x708),
+            ModuleTarget(bus: .highSpeed, request: 0x701, response: 0x709),
+            ModuleTarget(bus: .highSpeed, request: 0x702, response: 0x70A),
+            ModuleTarget(bus: .highSpeed, request: 0x703, response: 0x70B),
+        ]
+        let candidates = [
+            SurveyCandidate(
+                target: targets[0],
+                origin: .catalog(label: "First reference", provenance: .reference, source: "test")),
+            SurveyCandidate(
+                target: targets[1],
+                origin: .catalog(label: "Second reference", provenance: .reference, source: "test")),
+            SurveyCandidate(
+                target: targets[2],
+                origin: .catalog(label: "Third reference", provenance: .reference, source: "test")),
+            SurveyCandidate(target: targets[3], origin: .legislated),
+        ]
+        var engine = ECUInfoReport(ecu: targets[1].response)
+        engine.name = .positive("OBD engine")
+        let modules = [
+            SurveyModule(
+                candidate: candidates[0], presence: .present,
+                identification: [
+                    SurveyIdentification(did: 0xF197, result: .value(Array("Own module".utf8)))
+                ], codes: .noAnswer),
+            SurveyModule(
+                candidate: candidates[1], presence: .present, identification: [], codes: .noAnswer),
+            SurveyModule(
+                candidate: candidates[2], presence: .present, identification: [], codes: .noAnswer),
+            SurveyModule(
+                candidate: candidates[3], presence: .present, identification: [], codes: .noAnswer),
+        ]
+        let plan = SurveyPlan(
+            catalogVersion: "test", vehicle: nil, platform: nil, candidates: candidates,
+            unreachable: [])
+        let report = SurveyReport(
+            plan: plan, voltage: nil, vehicleInfo: [ECUIdentity(engine)], modules: modules,
+            unanswered: [], notProbed: [], stop: nil)
+        #expect(
+            report.proposedModules()
+                == [
+                    ModuleChoice(target: targets[0], label: "Own module", confirmed: true),
+                    ModuleChoice(target: targets[1], label: "OBD engine", confirmed: true),
+                    ModuleChoice(target: targets[2], label: "Third reference", confirmed: false),
+                    ModuleChoice(target: targets[3], label: "Module 703", confirmed: false),
+                ])
+    }
+
     @Test("survey result text reports modules, codes, unanswered, and stops")
     func resultText() throws {
         let plan = SurveyPlan(

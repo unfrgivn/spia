@@ -193,6 +193,23 @@ public final class Garage {
         try context.save()
     }
 
+    public func apply(_ choices: [ModuleChoice], to vehicle: Vehicle) throws {
+        var nextPosition = (vehicle.modules.map(\.position).max() ?? -1) + 1
+        for choice in choices {
+            if let existing = vehicle.modules.first(where: { $0.target == choice.target }) {
+                existing.label = choice.label
+                existing.confirmed = choice.confirmed
+            } else {
+                vehicle.modules.append(
+                    ModulePreset(
+                        label: choice.label, target: choice.target, position: nextPosition,
+                        confirmed: choice.confirmed))
+                nextPosition += 1
+            }
+        }
+        try context.save()
+    }
+
     /// The VIN a live vehicle-information check or survey read, if the car reported one.
     /// Recordings are never copied into a vehicle.
     public static func reportedVIN(_ result: JobResult) -> String? {

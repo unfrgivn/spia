@@ -83,6 +83,18 @@ public struct SurveyName: Codable, Sendable, Equatable {
     }
 }
 
+public struct ModuleChoice: Codable, Sendable, Equatable, Hashable {
+    public let target: ModuleTarget
+    public let label: String
+    public let confirmed: Bool
+
+    public init(target: ModuleTarget, label: String, confirmed: Bool = false) {
+        self.target = target
+        self.label = label
+        self.confirmed = confirmed
+    }
+}
+
 public struct SurveyReport: Codable, Sendable, Equatable {
     public let plan: SurveyPlan
     public let voltage: Double?
@@ -122,5 +134,19 @@ public struct SurveyReport: Codable, Sendable, Equatable {
             return SurveyName(text: label, source: .catalog)
         }
         return nil
+    }
+
+    public func proposedModules() -> [ModuleChoice] {
+        modules.map { module in
+            if let name = name(of: module) {
+                return ModuleChoice(
+                    target: module.candidate.target, label: name.text,
+                    confirmed: name.source == .module || name.source == .obd)
+            }
+            return ModuleChoice(
+                target: module.candidate.target,
+                label: String(format: "Module %03X", module.candidate.target.request),
+                confirmed: false)
+        }
     }
 }

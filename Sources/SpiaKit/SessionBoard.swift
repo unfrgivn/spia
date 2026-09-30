@@ -140,22 +140,27 @@ public struct SessionBoard: Equatable, Sendable {
         var reads: [ModuleTarget: (date: Date, outcome: ModuleDTCOutcome)] = [:]
         var readOrder: [ModuleTarget] = []
         var adapter: (date: Date, status: AdapterStatus)?
+        func record(_ target: ModuleTarget, outcome: ModuleDTCOutcome, date: Date) {
+            if case .negative = outcome, case .records = reads[target]?.outcome { return }
+            if reads[target] == nil { readOrder.append(target) }
+            reads[target] = (date, outcome)
+        }
         for result in results.sorted(by: { $0.date < $1.date }) {
             switch result.payload {
             case .genericScan(let reports):
                 scan = (result.date, reports)
             case .moduleDTCs(let module):
-                if case .negative = module.outcome, case .records = reads[module.target]?.outcome {
-                    continue
-                }
-                if reads[module.target] == nil { readOrder.append(module.target) }
-                reads[module.target] = (result.date, module.outcome)
+                record(module.target, outcome: module.outcome, date: result.date)
             case .adapter(let status):
                 adapter = (result.date, status)
             case .vehicleInfo:
                 continue
-            case .survey:
-                continue
+            case .survey(let report):
+                for module in report.modules {
+                    if case .outcome(let outcome) = module.codes {
+                        record(module.candidate.target, outcome: outcome, date: result.date)
+                    }
+                }
             }
         }
         let known = Set(modules.map(\.target))
