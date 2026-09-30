@@ -169,8 +169,9 @@ public actor ConnectionManager {
                 .operationInProgress:
                 return false
             }
-        case is GenericOBDWorkflow.Failure, is UDSDTCReadError, is UDSDTCDecodeError,
-            is UDSMessageAssemblyError, is ELM327ParseError, is ISOTPError:
+        case is GenericOBDWorkflow.Failure, is UDSReadError, is UDSDTCDecodeError,
+            is IdentificationDecodeError, is UDSMessageAssemblyError, is ELM327ParseError,
+            is ISOTPError:
             return false
         default:
             // Transport I/O failures: the serial line itself broke.

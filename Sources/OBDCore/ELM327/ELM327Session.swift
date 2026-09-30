@@ -120,15 +120,52 @@ public actor ELM327Session {
     ) async throws -> UDSDTCResponse {
         try beginOperation()
         defer { endOperation() }
-        guard responseHeader <= 0x7FF else { throw UDSDTCReadError.invalidHeader(responseHeader) }
+        let payload = try await readUDSResponse(
+            responseHeader: responseHeader,
+            request: String(format: "1902%02X", statusMask), service: 0x19, timeout: timeout)
+        return try UDSDTCDecoder.decode(payload)
+    }
+
+    /// Reads one ReadDataByIdentifier response from the expected ECU.
+    public func readDataByIdentifier(
+        _ did: UInt16, responseHeader: UInt32, timeout: Duration = .seconds(10)
+    ) async throws -> IdentificationReading {
+        try beginOperation()
+        defer { endOperation() }
+        let payload = try await readUDSResponse(
+            responseHeader: responseHeader, request: String(format: "22%04X", did),
+            service: 0x22, timeout: timeout)
+        return try IdentificationDecoder.decode(did: did, payload: payload)
+    }
+
+    /// Asks an ECU whether a TesterPresent service is accepted by its diagnostic server.
+    public func testerPresent(
+        responseHeader: UInt32, timeout: Duration = .seconds(2)
+    ) async throws -> TesterPresentReply? {
+        try beginOperation()
+        defer { endOperation() }
+        do {
+            let payload = try await readUDSResponse(
+                responseHeader: responseHeader, request: "3E00", service: 0x3E, timeout: timeout)
+            return TesterPresentReply(payload: payload)
+        } catch UDSReadError.adapterStatus(.noData) {
+            return nil
+        } catch UDSReadError.pendingWithoutFinalResponse {
+            return .pending
+        }
+    }
+
+    private func readUDSResponse(
+        responseHeader: UInt32, request: String, service: UInt8, timeout: Duration
+    ) async throws -> [UInt8] {
+        guard responseHeader <= 0x7FF else { throw UDSReadError.invalidHeader(responseHeader) }
         guard timeout > .zero, timeout <= .seconds(120) else {
             throw ELM327Error.invalidTimeout
         }
         let raw: String
         do {
             try Task.checkCancellation()
-            raw = try await sendBounded(
-                String(format: "1902%02X", statusMask), timeout: timeout, limit: 65_536)
+            raw = try await sendBounded(request, timeout: timeout, limit: 65_536)
         } catch is CancellationError {
             transportUnsynchronized = true
             throw CancellationError()
@@ -136,7 +173,8 @@ public actor ELM327Session {
             if case .timeout = error { transportUnsynchronized = true }
             throw error
         }
-        return try UDSDTCResponseSelector.select(raw, expectedECU: responseHeader)
+        return try UDSResponseSelector.finalPayload(
+            raw, expectedECU: responseHeader, service: service)
     }
 
     /// `ATI`: adapter identification, e.g. `ELM327 v2.3`.

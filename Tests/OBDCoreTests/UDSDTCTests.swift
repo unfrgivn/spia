@@ -50,45 +50,45 @@ struct UDSDTCTests {
 
     @Test("rejects pending for an unrelated negative-response service")
     func rejectsWrongNegativeService() {
-        #expect(throws: UDSDTCReadError.wrongNegativeService(0x22)) {
+        #expect(throws: UDSReadError.wrongNegativeService(0x22)) {
             try UDSDTCResponseSelector.select("4C4037F2278\r", expectedECU: 0x4C4)
         }
     }
 
     @Test("rejects pending-only prompt")
     func rejectsPendingOnly() {
-        #expect(throws: UDSDTCReadError.pendingWithoutFinalResponse) {
+        #expect(throws: UDSReadError.pendingWithoutFinalResponse) {
             try UDSDTCResponseSelector.select("4C4037F1978\r", expectedECU: 0x4C4)
         }
     }
 
     @Test("rejects a prompt with no frames")
     func rejectsNoFrames() {
-        #expect(throws: UDSDTCReadError.noFrames) {
+        #expect(throws: UDSReadError.noFrames) {
             try UDSDTCResponseSelector.select("\r", expectedECU: 0x4C4)
         }
     }
 
     @Test("rejects adapter error statuses instead of returning a DTC result")
     func rejectsAdapterStatus() {
-        #expect(throws: UDSDTCReadError.adapterStatus(.noData)) {
+        #expect(throws: UDSReadError.adapterStatus(.noData)) {
             try UDSDTCResponseSelector.select("NO DATA\r", expectedECU: 0x4C4)
         }
-        #expect(throws: UDSDTCReadError.adapterStatus(.canError)) {
+        #expect(throws: UDSReadError.adapterStatus(.canError)) {
             try UDSDTCResponseSelector.select("CAN ERROR\r4C403590200\r", expectedECU: 0x4C4)
         }
     }
 
     @Test("rejects an unexpected ECU")
     func rejectsUnexpectedECU() {
-        #expect(throws: UDSDTCReadError.unexpectedECU(0x4C5)) {
+        #expect(throws: UDSReadError.unexpectedECU(0x4C5)) {
             try UDSDTCResponseSelector.select("4C5037F1978\r", expectedECU: 0x4C4)
         }
     }
 
     @Test("rejects duplicate final responses")
     func rejectsDuplicateFinal() {
-        #expect(throws: UDSDTCReadError.duplicateFinalResponse) {
+        #expect(throws: UDSReadError.duplicateFinalResponse) {
             try UDSDTCResponseSelector.select("4C403590200\r4C403590200\r", expectedECU: 0x4C4)
         }
     }
