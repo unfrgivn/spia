@@ -148,7 +148,7 @@ struct SurveyReportTests {
             job: .survey(plan), payload: .survey(report), source: .live, transcript: nil)
         #expect(
             ResultText.summary(result)
-                == "The engine computers didn't answer. Found 1 module, 1 with codes; 1 didn't answer. Stopped at CAN ERROR."
+                == "The engine computers didn't answer. Found 1 module, 1 with codes. 1 didn't answer. Stopped at Module 7E0 (7E0): CAN ERROR."
         )
     }
 

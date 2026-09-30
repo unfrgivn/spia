@@ -125,7 +125,7 @@ Seeds:
 
 ### Testing
 
-Pure tests cover the catalog, the matcher, the planner (deterministic; a catalog change leaves an existing plan alone), filter construction, probe classification, identification decoding, merge rules, and board mapping. Until car captures exist, identification decoding may be tested against the worked examples in ISO 14229-1, labelled as normative vectors and never put into transcript files. Replay tests use only real captures: a bench capture (USB adapter, no car) runs the whole survey through its no-answer path, and the first car visit supplies responders, multi-frame identification, and codes. That visit follows the owner's path end to end: add by VIN, connect, survey, review, save, then replay the saved survey at the desk.
+Pure tests cover the catalog, the matcher, the planner (deterministic; a catalog change leaves an existing plan alone), filter construction, probe classification, identification decoding, merge rules, and board mapping. Replay tests use only real captures: a USB bench capture with no car runs the whole survey through its no-answer path, and the first car visit supplies responders, multi-frame identification, and codes. That visit follows the owner's path end to end: add by VIN, connect, survey, review, save, then replay the saved survey at the desk.
 
 ### Steps
 
@@ -186,10 +186,13 @@ than treating connection status as a current reading. The DEBUG fixture adds `re
 with the real adapter and airbag recordings, so the board, case file, and connect sheet show a
 saved-check session without contacting a car.
 
-The in-place reset is not verified against a real adapter yet. A bench capture still needs the USB
-vLinker FS on USB power with no car: connect, read the airbag module, then run the scan. The scan
-transcript should start with `ATZ` through `ATSP0` and end with `UNABLE TO CONNECT`. USB and BLE
-reset behaviour remain unverified.
+The in-place reset is verified on the USB vLinker FS with STN1170 v4.3.2. Mid-session `ATZ` answers
+`ELM327 v2.3`, and each reset option answers `OK`. The 2026-09-29 no-car bench path is preserved in
+`vlinker-fs-usb-only-airbag-read.txt`, `vlinker-fs-usb-only-survey.txt`,
+`vlinker-fs-usb-only-survey.plan.json`, and `vlinker-fs-usb-only-scan-after-module.txt`. `CAN ERROR`
+without a car means nothing acknowledged the frames; on a running car, an absent module answers
+`NO DATA`. USB reset and the survey no-car path are verified, while BLE reset and real module
+answers remain unverified.
 
 ## The Ghibli's actual fault (why UDS comes first)
 

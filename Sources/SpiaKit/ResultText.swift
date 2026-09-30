@@ -51,12 +51,41 @@ public enum ResultText {
                 if case .outcome(.negative) = $0.codes { return true }
                 return false
             }.count
-            var text = report.vehicleInfo.isEmpty ? "The engine computers didn't answer. " : ""
-            text +=
-                "Found \(report.modules.count) module\(report.modules.count == 1 ? "" : "s"), "
-                + "\(codeModules) with codes; \(report.unanswered.count) didn't answer."
-            if let stop = report.stop { text += " Stopped at \(stop.reason)." }
-            return text
+            var sentences: [String] = []
+            if report.vehicleInfo.isEmpty {
+                sentences.append("The engine computers didn't answer.")
+            }
+            if report.modules.isEmpty {
+                sentences.append("No modules answered.")
+            } else {
+                var found =
+                    "Found \(report.modules.count) module\(report.modules.count == 1 ? "" : "s")."
+                if codeModules > 0 {
+                    found =
+                        "Found \(report.modules.count) module\(report.modules.count == 1 ? "" : "s"), "
+                        + "\(codeModules) with codes."
+                }
+                sentences.append(found)
+            }
+            if report.unanswered.count > 0 {
+                sentences.append("\(report.unanswered.count) didn't answer.")
+            }
+            if let stop = report.stop {
+                let label: String
+                if case .catalog(let catalogLabel, _, _) = stop.candidate.origin {
+                    label = catalogLabel
+                } else {
+                    label = String(format: "Module %03X", stop.candidate.target.request)
+                }
+                var stopped = String(
+                    format: "Stopped at %@ (%03X): %@.", label, stop.candidate.target.request,
+                    stop.reason)
+                if !report.notProbed.isEmpty {
+                    stopped += " \(report.notProbed.count) not asked."
+                }
+                sentences.append(stopped)
+            }
+            return sentences.joined(separator: " ")
         }
     }
 }
