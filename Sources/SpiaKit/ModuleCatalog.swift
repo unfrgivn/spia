@@ -2,7 +2,7 @@ import Foundation
 import OBDCore
 
 /// The vehicle identity used to match a bounded catalog platform.
-public struct CatalogVehicle: Sendable, Equatable {
+public struct CatalogVehicle: Codable, Sendable, Equatable, Hashable {
     public let make: String
     public let model: String
     public let year: Int

@@ -101,7 +101,7 @@ A survey is one read-only `DiagnosticJob.survey(SurveyPlan)` with one `JobPayloa
 3. Probe. Each candidate gets TesterPresent (`3E 00`) with a short fixed timeout and a filter on its exact reply ID. A positive reply, or any negative reply other than `78`, counts as a module; `78` is waited out. DiagnosticSessionControl (`10 01`), which other tools use for discovery, stays forbidden by the read-only rule; identification confirms each responder instead.
 4. Identify. ReadDataByIdentifier, one DID at a time: `F190` VIN, `F197` system name, `F187`, `F191`, `F192`, `F194`, `F195`, `F19E`. Raw bytes are kept, and text is decoded only when it's printable. `31` means that DID isn't supported and the module still counts; `7E` or `7F` means found but not identifiable in the default session. The survey never changes session, never requests security access, and never works around a gateway (FCA's Secure Gateway, MY2018 on).
 5. Codes. Each responder's DTCs with `19 02 09`.
-6. Thorough only: listen, then sweep. A monitor filtered to the sweep range (an aligned window) records which IDs the car already uses, and the sweep skips them. `BUFFER FULL`, or a listen cut short any other way, means the sweep doesn't run. Replies are accepted within an aligned window, and each pair is confirmed with a second probe on its exact reply ID, because reply IDs follow no formula: VW `713` → `77D` but `7E0` → `7E8`; FCA `744` → `4C4` but `620` → `504`.
+6. Thorough only, and built in step 9: listen, then sweep. A monitor filtered to the sweep range (an aligned window) records which IDs the car already uses, and the sweep skips them. `BUFFER FULL`, or a listen cut short any other way, means the sweep doesn't run. Replies are accepted within an aligned window, and each pair is confirmed with a second probe on its exact reply ID, because reply IDs follow no formula: VW `713` → `77D` but `7E0` → `7E8`; FCA `744` → `4C4` but `620` → `504`.
 7. Stop on bus errors, repeated `78`, adapter overflow, malformed ISO-TP, or replies from unexpected IDs. Only read-only services go out (`3E`, `22`, `19`, and the OBD modes), and the allowlist test covers the survey's planned commands.
 
 Silence is never proof a module is absent: a gateway, a sleeping module, and a session-gated module all look alike. Unanswered candidates stay in the report and never become modules.
@@ -126,13 +126,14 @@ Pure tests cover the catalog, the matcher, the planner (deterministic; a catalog
 ### Steps
 
 1. The catalog: the JSON, decoder, and matcher. Survey types arrive with their first user: the plan in step 2, the report in step 4.
-2. Planner and command safety: scope rules, bounds, planned commands, forbidden-service tests.
+2. The planner for the standard survey, with its command-safety tests: an explicit allowlist of services (`09`, `3E`, `22`, `19`), the exact probe, the DID range, and a cap of 64 candidates.
 3. Protocol pieces: probe classification moved out of `Discover.swift`, identification decoding, `BUFFER FULL` in `monitor`.
 4. The survey in JobRunner: phases, cancellation, the ignition prompt, recording, addressing.
 5. Replay and the demo, then the real bench capture through the executor.
 6. Store and board: `Garage.apply`, the board mapping.
 7. Onboarding UI: the overview card, the thorough-search warning, the results sheet, the Run menu entry.
 8. The first car visit, on the owner's path.
+9. The thorough search: per-platform sweep ranges as catalog data, listen first, sweep, and confirm each pair (item 6 above). It waits until the standard survey works end to end.
 
 Sources for these rules: Caring Caribou's [UDS discovery](https://github.com/CaringCaribou/caringcaribou/blob/master/documentation/uds.md) (listen first, blacklist, verify each pair), the [OBDLink family reference](https://www.scantool.net/scantool/downloads/678/obdlink_frpm_e.pdf) (filters, flow control, `STP 53`; filters must be set again after `STP`), and the Linux [can327 notes](https://kernel.org/doc/html/next/networking/device_drivers/can/can327.html) (ELM327 monitoring ends in `BUFFER FULL` and drops frames).
 
