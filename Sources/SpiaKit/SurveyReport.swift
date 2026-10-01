@@ -17,6 +17,13 @@ public enum SurveyPresence: Codable, Sendable, Equatable {
     }
 }
 
+/// Classifies the complete payload of a TesterPresent response during a broad sweep.
+public enum SearchReplyClassifier {
+    public static func isTesterPresent(_ payload: [UInt8]) -> Bool {
+        TesterPresentReply(payload: payload).isModule
+    }
+}
+
 public enum SurveyIdentificationResult: Codable, Sendable, Equatable {
     case value([UInt8])
     case refused(UInt8)

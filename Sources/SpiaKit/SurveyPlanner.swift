@@ -24,24 +24,60 @@ public struct ModuleSearch: Codable, Sendable, Equatable, Hashable {
     public let listenMilliseconds: UInt64
     public let replyTimeoutMilliseconds: UInt64
     public let busyLimitPerSecond: Int
+    public let perAddressMilliseconds: UInt64
+
+    private enum CodingKeys: String, CodingKey {
+        case requestRange, replyWindow, listenMilliseconds, replyTimeoutMilliseconds
+        case busyLimitPerSecond, perAddressMilliseconds
+    }
 
     public init(
         requestRange: ClosedRange<UInt32> = 0x600...0x7FF,
         replyWindow: ReceiveFilter = .window(mask: 0x400, pattern: 0x400),
         listenMilliseconds: UInt64,
         replyTimeoutMilliseconds: UInt64 = 48,
-        busyLimitPerSecond: Int = 5
+        busyLimitPerSecond: Int = 5,
+        perAddressMilliseconds: UInt64 = 80
     ) {
         self.requestRange = requestRange
         self.replyWindow = replyWindow
         self.listenMilliseconds = listenMilliseconds
         self.replyTimeoutMilliseconds = replyTimeoutMilliseconds
         self.busyLimitPerSecond = busyLimitPerSecond
+        self.perAddressMilliseconds = perAddressMilliseconds
     }
 
-    public var estimateMilliseconds: UInt64 {
-        let perAddress = listenMilliseconds == 1_000 ? 120 : 80
-        return UInt64(requestRange.upperBound - requestRange.lowerBound + 1) * UInt64(perAddress)
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        requestRange = try values.decode(ClosedRange<UInt32>.self, forKey: .requestRange)
+        replyWindow = try values.decode(ReceiveFilter.self, forKey: .replyWindow)
+        listenMilliseconds = try values.decode(UInt64.self, forKey: .listenMilliseconds)
+        replyTimeoutMilliseconds = try values.decode(UInt64.self, forKey: .replyTimeoutMilliseconds)
+        busyLimitPerSecond = try values.decode(Int.self, forKey: .busyLimitPerSecond)
+        perAddressMilliseconds =
+            try values.decodeIfPresent(UInt64.self, forKey: .perAddressMilliseconds)
+            ?? (listenMilliseconds == 1_000 ? 120 : 80)
+    }
+
+    public static func standard(over connection: ConnectionKind) -> ModuleSearch {
+        switch connection {
+        case .bluetooth:
+            return ModuleSearch(listenMilliseconds: 1_000, perAddressMilliseconds: 120)
+        case .usbSerial, .demo, .replay:
+            return ModuleSearch(listenMilliseconds: 2_000, perAddressMilliseconds: 80)
+        }
+    }
+
+    public func estimateMilliseconds(
+        candidates: [SurveyCandidate] = [], heardIDs: Set<UInt32> = []
+    ) -> UInt64 {
+        let count = sweepRequests(candidates: candidates, heardIDs: heardIDs).count
+        return listenMilliseconds + UInt64(count) * perAddressMilliseconds
+    }
+
+    public var replyTimeoutCommand: String {
+        let value = min(max(replyTimeoutMilliseconds / 4, 1), 255)
+        return String(format: "ATST %02X", value)
     }
 
     public func sweepRequests(
@@ -125,9 +161,23 @@ public struct SurveyPlan: Codable, Sendable, Equatable, Hashable {
     }
 
     public var plannedCommands: [String] {
-        ["ATRV"] + OBDInfoPlan.standard.requests.map(\.hex)
+        let searchCommands: [String] =
+            search.map { value in
+                let window: [String]
+                switch value.replyWindow {
+                case .expectedReply:
+                    window = []
+                case .window(let mask, let pattern):
+                    window = [
+                        String(format: "ATCM %03X", mask), String(format: "ATCF %03X", pattern),
+                    ]
+                }
+                return ["ATCRA"] + window + [value.replyTimeoutCommand, "3E00"]
+                    + value.requestRange.map { String(format: "ATSH %03X", $0) }
+            } ?? []
+        return ["ATRV"] + OBDInfoPlan.standard.requests.map(\.hex)
             + (detectsProtocol ? ["ATDPN"] : [])
-            + candidates.flatMap { commands(for: $0).all }
+            + candidates.flatMap { commands(for: $0).all } + searchCommands
     }
 
     /// What one candidate costs, by part, so the executor never counts positions.

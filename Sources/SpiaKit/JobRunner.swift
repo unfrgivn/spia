@@ -5,11 +5,13 @@ import OBDCore
 public enum UserAction: String, Codable, Sendable {
     case turnIgnitionOn
     case turnIgnitionOnForVIN
+    case confirmEngineOff
 
     public var title: String {
         switch self {
         case .turnIgnitionOn: return "Turn the ignition on"
         case .turnIgnitionOnForVIN: return "Turn the ignition fully on"
+        case .confirmEngineOff: return "Confirm the engine is off"
         }
     }
 
@@ -23,6 +25,9 @@ public enum UserAction: String, Codable, Sendable {
                 "Only part of the car answered and nothing gave the VIN. Switch the ignition fully on "
                 + "with the engine off, so every dash warning light comes on. On a push-button car, "
                 + "press START without the brake until they do."
+        case .confirmEngineOff:
+            return
+                "The engine speed could not be read. Confirm that the engine is off and the ignition stays on."
         }
     }
 }
@@ -53,6 +58,36 @@ public actor JobRunner {
     private enum SurveyAttempt: Sendable {
         case module(SurveyModule)
         case unanswered
+    }
+
+    private struct SearchRun: Sendable {
+        let outcome: SearchOutcome
+        let modules: [SurveyModule]
+    }
+
+    private actor SearchListenState {
+        var heard = Set<UInt32>()
+        var frameCount = 0
+        var reason: String?
+
+        func receive(_ event: MonitorEvent, limit: Int) -> Bool {
+            switch event {
+            case .frame(let frame):
+                heard.insert(frame.header)
+                frameCount += 1
+                return frameCount <= limit
+            case .message(let message):
+                if message != .noData {
+                    reason = message.description
+                    return false
+                }
+                return true
+            case .prompt:
+                return false
+            case .unparsable:
+                return true
+            }
+        }
     }
 
     private let connection: ConnectionManager
@@ -227,6 +262,26 @@ public actor JobRunner {
             emit(.warning("No computer gave the VIN."))
         }
 
+        var searchOutcome: SearchOutcome?
+        if plan.search != nil, Self.searchProtocol(detected: nil) {
+            let engineOff = try await engineIsOff(emit: emit)
+            if engineOff == false {
+                searchOutcome = SearchOutcome(
+                    heardIDs: [], sweptCount: 0, confirmed: [], unconfirmed: [],
+                    engineRunning: true,
+                    stopReason:
+                        "The engine is running. Turn it off, leaving the ignition on, to search.")
+                emit(
+                    .warning(
+                        "The engine is running. Turn it off, leaving the ignition on, to search."))
+            } else if engineOff == nil {
+                searchOutcome = SearchOutcome(
+                    heardIDs: [], sweptCount: 0, confirmed: [], unconfirmed: [],
+                    engineRunning: nil,
+                    stopReason: "The search was skipped because engine state was not confirmed.")
+            }
+        }
+
         let detectedProtocol: ELM327Protocol?
         if plan.detectsProtocol, !vehicleInfo.isEmpty {
             let response = try await connection.withSession { session in
@@ -240,7 +295,7 @@ public actor JobRunner {
             return SurveyReport(
                 plan: plan, voltage: voltage, vehicleInfo: vehicleInfo, modules: [],
                 unanswered: [], notProbed: plan.candidates, stop: nil,
-                detectedProtocol: detectedProtocol)
+                detectedProtocol: detectedProtocol, search: searchOutcome)
         }
 
         var modules: [SurveyModule] = []
@@ -301,14 +356,185 @@ public actor JobRunner {
             }
         }
 
+        if stop == nil, searchOutcome == nil, let search = plan.search,
+            Self.searchProtocol(detected: detectedProtocol)
+        {
+            let run = try await performThoroughSearch(
+                search, plan: plan, existingCandidates: plan.candidates, emit: emit)
+            searchOutcome = run.outcome
+            modules.append(contentsOf: run.modules)
+        }
+
         let order = Dictionary(
             uniqueKeysWithValues: plan.candidates.enumerated().map { ($1.target, $0) })
-        modules.sort { (order[$0.candidate.target] ?? .max) < (order[$1.candidate.target] ?? .max) }
+        modules.sort {
+            let left = order[$0.candidate.target] ?? .max
+            let right = order[$1.candidate.target] ?? .max
+            if left != right { return left < right }
+            if $0.candidate.target.request != $1.candidate.target.request {
+                return $0.candidate.target.request < $1.candidate.target.request
+            }
+            return $0.candidate.target.response < $1.candidate.target.response
+        }
 
         return SurveyReport(
             plan: plan, voltage: voltage, vehicleInfo: vehicleInfo, modules: modules,
             unanswered: unanswered, notProbed: notProbed, stop: stop,
-            detectedProtocol: detectedProtocol)
+            detectedProtocol: detectedProtocol, search: searchOutcome)
+    }
+
+    private static func searchProtocol(detected: ELM327Protocol?) -> Bool {
+        detected == nil || detected == .can11bit500k
+    }
+
+    private func engineIsOff(
+        emit: @escaping @Sendable (JobEvent) -> Void
+    ) async throws -> Bool? {
+        do {
+            let rpm = try await connection.withSession { session in
+                let responses = try await session.request(OBDRequest(raw: [0x01, 0x0C]))
+                return responses.compactMap { response -> Double? in
+                    guard
+                        case .currentData(pid: 0x0C, value: .rpm(let value)) =
+                            ServiceResponse.decode(response.payload)
+                    else { return nil }
+                    return value
+                }.first
+            }
+            guard let rpm else { return await ask(.confirmEngineOff, emit: emit) ? true : nil }
+            return rpm <= 0
+        } catch ELM327Error.adapter(.noData) {
+            return await ask(.confirmEngineOff, emit: emit) ? true : nil
+        }
+    }
+
+    private func performThoroughSearch(
+        _ search: ModuleSearch, plan: SurveyPlan, existingCandidates: [SurveyCandidate],
+        emit: @escaping @Sendable (JobEvent) -> Void
+    ) async throws -> SearchRun {
+        let result = try await connection.withSession { session in
+            try await self.listenAndSweep(
+                search, session: session, existingCandidates: existingCandidates, emit: emit)
+        }
+        var modules: [SurveyModule] = []
+        for pair in result.confirmed {
+            let candidate = SurveyCandidate(target: pair, origin: .discovered)
+            emit(.step(String(format: "Reading discovered module %03X", pair.request)))
+            let attempt = try await connection.withSession { session in
+                try await self.performSurveyCandidate(
+                    candidate, plan: plan, session: session, emit: emit)
+            }
+            if case .module(let module) = attempt { modules.append(module) }
+        }
+        return SearchRun(
+            outcome: SearchOutcome(
+                heardIDs: result.heardIDs.sorted(), sweptCount: result.sweptCount,
+                confirmed: result.confirmed, unconfirmed: result.unconfirmed,
+                engineRunning: false, stopReason: result.stopReason), modules: modules)
+    }
+
+    private struct SearchProbeResult: Sendable {
+        let heardIDs: Set<UInt32>
+        let sweptCount: Int
+        let confirmed: [ModuleTarget]
+        let unconfirmed: [ModuleTarget]
+        let stopReason: String?
+    }
+
+    private func listenAndSweep(
+        _ search: ModuleSearch, session: ELM327Session, existingCandidates: [SurveyCandidate],
+        emit: @escaping @Sendable (JobEvent) -> Void
+    ) async throws -> SearchProbeResult {
+        try await sendSearchCommand("ATCRA", session: session)
+        try await configureSearchWindow(search.replyWindow, session: session)
+        let listenState = SearchListenState()
+        do {
+            try await session.monitor(for: .milliseconds(Int64(search.listenMilliseconds))) {
+                _, event in
+                await listenState.receive(event, limit: search.busyLimitPerSecond)
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return SearchProbeResult(
+                heardIDs: await listenState.heard, sweptCount: 0, confirmed: [], unconfirmed: [],
+                stopReason: "The adapter stopped listening: \(error.readable)")
+        }
+        let heard = await listenState.heard
+        let frameCount = await listenState.frameCount
+        var adapterReason = await listenState.reason
+        if frameCount > search.busyLimitPerSecond {
+            adapterReason = "The bus is too busy to search safely."
+        }
+        if let adapterReason {
+            return SearchProbeResult(
+                heardIDs: heard, sweptCount: 0, confirmed: [], unconfirmed: [],
+                stopReason: adapterReason)
+        }
+        let requests = search.sweepRequests(candidates: existingCandidates, heardIDs: heard)
+        var pairs: [ModuleTarget] = []
+        for (index, request) in requests.enumerated() {
+            try Task.checkCancellation()
+            emit(.step("Searching: \(index + 1) of \(requests.count)"))
+            _ = try await session.send(String(format: "ATSH %03X", request))
+            do {
+                let raw = try await session.send(
+                    "3E00", timeout: .milliseconds(Int64(search.replyTimeoutMilliseconds)))
+                let parsed = try ELM327ResponseParser.parse(raw)
+                for frame in parsed.frames where SearchReplyClassifier.isTesterPresent(frame.data) {
+                    let target = try ModuleTarget(
+                        bus: .highSpeed, request: request, response: frame.header)
+                    pairs.append(target)
+                }
+            } catch ELM327Error.adapter(let message) where message == .noData {
+                continue
+            } catch {
+                return SearchProbeResult(
+                    heardIDs: heard, sweptCount: index + 1, confirmed: [], unconfirmed: pairs,
+                    stopReason: "The adapter stopped the search: \(error.readable)")
+            }
+        }
+        var confirmed: [ModuleTarget] = []
+        var unconfirmed: [ModuleTarget] = []
+        for pair in pairs {
+            try await sendSearchCommand(
+                String(format: "ATCRA %03X", pair.response), session: session)
+            try await sendSearchCommand(String(format: "ATSH %03X", pair.request), session: session)
+            do {
+                let raw = try await session.send(
+                    "3E00", timeout: .milliseconds(Int64(search.replyTimeoutMilliseconds)))
+                let parsed = try ELM327ResponseParser.parse(raw)
+                if parsed.frames.contains(where: { SearchReplyClassifier.isTesterPresent($0.data) })
+                {
+                    if !confirmed.contains(pair) { confirmed.append(pair) }
+                } else if !unconfirmed.contains(pair) {
+                    unconfirmed.append(pair)
+                }
+            } catch {
+                if !unconfirmed.contains(pair) { unconfirmed.append(pair) }
+            }
+        }
+        return SearchProbeResult(
+            heardIDs: heard, sweptCount: requests.count, confirmed: confirmed,
+            unconfirmed: unconfirmed, stopReason: nil)
+    }
+
+    private func configureSearchWindow(_ filter: ReceiveFilter, session: ELM327Session) async throws
+    {
+        switch filter {
+        case .expectedReply:
+            try await sendSearchCommand("ATCRA", session: session)
+        case .window(let mask, let pattern):
+            try await sendSearchCommand(String(format: "ATCM %03X", mask), session: session)
+            try await sendSearchCommand(String(format: "ATCF %03X", pattern), session: session)
+        }
+    }
+
+    private func sendSearchCommand(_ command: String, session: ELM327Session) async throws {
+        let response = try await session.send(command)
+        guard response.trimmingCharacters(in: .whitespacesAndNewlines) == "OK" else {
+            throw ELM327Error.unexpectedResponse(command: command, response: response)
+        }
     }
 
     private func performSurveyCandidate(
