@@ -186,6 +186,27 @@ struct SurveyReviewTests {
             ])
     }
 
+    @Test("saved modules show their saved label and self-identification caption")
+    func savedCaptions() throws {
+        let saved = SurveyCandidate(
+            target: try Self.target(0x747, 0x4C7),
+            origin: .saved(label: "Saved ABS", confirmed: false))
+        let named = SurveyModule(
+            candidate: saved, presence: .present,
+            identification: [
+                SurveyIdentification(did: 0xF197, result: .value(Array("ABS self".utf8)))
+            ], codes: .noAnswer)
+        let quiet = SurveyModule(
+            candidate: SurveyCandidate(
+                target: try Self.target(0x620, 0x504),
+                origin: .saved(label: "Saved BCM", confirmed: true)),
+            presence: .present, identification: [], codes: .noAnswer)
+        let review = SurveyReview(report: Self.report(modules: [named, quiet]))
+        #expect(review.rows.map(\.proposedName) == ["Saved ABS", "Saved BCM"])
+        #expect(review.rows.map(\.caption) == ["Calls itself ABS self", "Saved on this car"])
+        #expect(review.rows.map(\.confirmed) == [true, true])
+    }
+
     @Test("modules that didn't answer are listed by their names or addresses")
     func unanswered() throws {
         let review = SurveyReview(

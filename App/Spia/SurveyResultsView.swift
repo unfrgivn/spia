@@ -100,7 +100,7 @@ struct SurveyResultsView: View {
                 Text(row.caption)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(
-                        !row.confirmed && row.nameSource == .catalog
+                        !row.confirmed && [.catalog, .saved].contains(row.nameSource)
                             ? Palette.caution : Palette.secondary)
                 Text(row.codesSummary)
                     .font(.callout)

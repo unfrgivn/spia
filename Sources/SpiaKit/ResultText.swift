@@ -74,6 +74,8 @@ public enum ResultText {
                 let label: String
                 if case .catalog(let catalogLabel, _, _) = stop.candidate.origin {
                     label = catalogLabel
+                } else if case .saved(let savedLabel, _) = stop.candidate.origin {
+                    label = savedLabel
                 } else {
                     label = String(format: "Module %03X", stop.candidate.target.request)
                 }

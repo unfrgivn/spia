@@ -16,6 +16,32 @@ struct SurveyPlannerTests {
                 for: AdapterStatus(identity: "ELM327", firmware: "STN1170"))
                 == [.highSpeed, .mediumSpeed])
     }
+
+    @Test("saved modules replace known targets, append unknown targets, and keep bus reachability")
+    func savedModules() throws {
+        let abs = try ModuleTarget(bus: .highSpeed, request: 0x747, response: 0x4C7)
+        let savedUnknown = try ModuleTarget(bus: .highSpeed, request: 0x799, response: 0x7A1)
+        let savedMedium = try ModuleTarget(bus: .mediumSpeed, request: 0x620, response: 0x504)
+        let saved = [
+            ModuleChoice(target: abs, label: "Saved ABS", confirmed: false),
+            ModuleChoice(target: savedUnknown, label: "Saved extra", confirmed: true),
+            ModuleChoice(target: savedMedium, label: "Saved interior", confirmed: true),
+        ]
+        let plan = try SurveyPlanner.plan(
+            catalog: catalog(), vehicle: try ghibli(), reachableBuses: [.highSpeed],
+            savedModules: saved)
+        #expect(
+            plan.candidates.contains {
+                $0.target == abs && $0.origin == .saved(label: "Saved ABS", confirmed: false)
+            })
+        let unknownIndex = try #require(plan.candidates.firstIndex { $0.target == savedUnknown })
+        let engineIndex = try #require(plan.candidates.firstIndex { $0.target.request == 0x7E0 })
+        #expect(unknownIndex > engineIndex)
+        #expect(plan.unreachable.contains { $0.target == savedMedium })
+        #expect(plan.expected.contains(abs))
+        #expect(plan.expected.contains(savedUnknown))
+        #expect(plan.expected.contains(savedMedium))
+    }
     private func catalog() throws -> ModuleCatalog { try ModuleCatalog.bundled() }
 
     private func ghibli() throws -> CatalogVehicle {

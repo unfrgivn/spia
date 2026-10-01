@@ -146,7 +146,12 @@ final class AppModel {
         return try SurveyPlanner.plan(
             catalog: catalog,
             vehicle: identity.map(CatalogVehicle.init),
-            reachableBuses: SurveyPlanner.reachableBuses(for: workbench.connection.status))
+            reachableBuses: SurveyPlanner.reachableBuses(for: workbench.connection.status),
+            savedModules: vehicle.orderedModules.compactMap { module in
+                module.target.map {
+                    ModuleChoice(target: $0, label: module.label, confirmed: module.confirmed)
+                }
+            })
     }
 
     func requestSurvey(for session: DiagnosticSession) {

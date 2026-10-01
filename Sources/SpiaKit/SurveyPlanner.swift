@@ -4,6 +4,7 @@ import OBDCore
 public struct SurveyCandidate: Codable, Sendable, Equatable, Hashable {
     public enum Origin: Codable, Sendable, Equatable, Hashable {
         case catalog(label: String, provenance: ModuleProvenance, source: String)
+        case saved(label: String, confirmed: Bool)
         case legislated
     }
 
@@ -27,13 +28,14 @@ public struct SurveyPlan: Codable, Sendable, Equatable, Hashable {
     public let identification: [UInt16]
     public let requiresVIN: Bool
     public let expected: [ModuleTarget]
+    public let detectsProtocol: Bool
 
     public init(
         catalogVersion: String, vehicle: CatalogVehicle?, platform: String?,
         candidates: [SurveyCandidate], unreachable: [SurveyCandidate],
         probeTimeoutMilliseconds: UInt64 = 100, readTimeoutMilliseconds: UInt64 = 400,
         identification: [UInt16] = SurveyPlan.defaultIdentification,
-        requiresVIN: Bool = false, expected: [ModuleTarget] = []
+        requiresVIN: Bool = false, expected: [ModuleTarget] = [], detectsProtocol: Bool = false
     ) {
         self.catalogVersion = catalogVersion
         self.vehicle = vehicle
@@ -45,12 +47,13 @@ public struct SurveyPlan: Codable, Sendable, Equatable, Hashable {
         self.identification = identification
         self.requiresVIN = requiresVIN
         self.expected = expected
+        self.detectsProtocol = detectsProtocol
     }
 
     private enum CodingKeys: String, CodingKey {
         case catalogVersion, vehicle, platform, candidates, unreachable
         case probeTimeoutMilliseconds, readTimeoutMilliseconds, identification
-        case requiresVIN, expected
+        case requiresVIN, expected, detectsProtocol
     }
 
     public init(from decoder: Decoder) throws {
@@ -65,6 +68,7 @@ public struct SurveyPlan: Codable, Sendable, Equatable, Hashable {
         identification = try values.decode([UInt16].self, forKey: .identification)
         requiresVIN = try values.decodeIfPresent(Bool.self, forKey: .requiresVIN) ?? false
         expected = try values.decodeIfPresent([ModuleTarget].self, forKey: .expected) ?? []
+        detectsProtocol = try values.decodeIfPresent(Bool.self, forKey: .detectsProtocol) ?? false
     }
 
     public static let defaultIdentification: [UInt16] = [
@@ -82,6 +86,7 @@ public struct SurveyPlan: Codable, Sendable, Equatable, Hashable {
 
     public var plannedCommands: [String] {
         ["ATRV"] + OBDInfoPlan.standard.requests.map(\.hex)
+            + (detectsProtocol ? ["ATDPN"] : [])
             + candidates.flatMap { commands(for: $0).all }
     }
 
@@ -154,15 +159,28 @@ public enum SurveyPlanner {
     }
 
     public static func plan(
-        catalog: ModuleCatalog, vehicle: CatalogVehicle?, reachableBuses: Set<CANBus>
+        catalog: ModuleCatalog, vehicle: CatalogVehicle?, reachableBuses: Set<CANBus>,
+        savedModules: [ModuleChoice] = []
     ) throws -> SurveyPlan {
         var reachable = reachableBuses
         reachable.insert(.highSpeed)
         let match = vehicle.flatMap(catalog.match)
-        let known = (match?.modules ?? []).map {
+        let catalogCandidates = (match?.modules ?? []).map {
             SurveyCandidate(
                 target: $0.target,
                 origin: .catalog(label: $0.label, provenance: $0.provenance, source: $0.source))
+        }
+        let savedByTarget = Dictionary(uniqueKeysWithValues: savedModules.map { ($0.target, $0) })
+        var known = catalogCandidates.map { candidate in
+            guard let saved = savedByTarget[candidate.target] else { return candidate }
+            return SurveyCandidate(
+                target: candidate.target,
+                origin: .saved(label: saved.label, confirmed: saved.confirmed))
+        }
+        let catalogTargets = Set(catalogCandidates.map(\.target))
+        known += savedModules.filter { !catalogTargets.contains($0.target) }.map {
+            SurveyCandidate(
+                target: $0.target, origin: .saved(label: $0.label, confirmed: $0.confirmed))
         }
         // Whole targets, bus and reply included: the same request ID on another bus is another
         // module, and it mustn't drop the legislated probe on the 500k bus.
@@ -183,11 +201,16 @@ public enum SurveyPlanner {
             catalogVersion: catalog.catalogVersion, vehicle: vehicle,
             platform: match?.name, candidates: candidates,
             unreachable: known.filter { !reachable.contains($0.target.bus) },
-            requiresVIN: vehicle != nil, expected: expectedTargets(from: candidates))
+            requiresVIN: vehicle != nil,
+            expected: expectedTargets(from: candidates, saved: savedModules),
+            detectsProtocol: true)
     }
 
-    private static func expectedTargets(from candidates: [SurveyCandidate]) -> [ModuleTarget] {
-        var targets = candidates.compactMap { candidate -> ModuleTarget? in
+    private static func expectedTargets(
+        from candidates: [SurveyCandidate], saved: [ModuleChoice]
+    ) -> [ModuleTarget] {
+        var targets = saved.map(\.target)
+        targets += candidates.compactMap { candidate -> ModuleTarget? in
             if case .catalog(_, .observed, _) = candidate.origin { return candidate.target }
             return nil
         }

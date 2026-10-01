@@ -72,6 +72,7 @@ public struct SurveyName: Codable, Sendable, Equatable {
         case module
         case obd
         case catalog
+        case saved
     }
 
     public let text: String
@@ -103,10 +104,12 @@ public struct SurveyReport: Codable, Sendable, Equatable {
     public let unanswered: [SurveyCandidate]
     public let notProbed: [SurveyCandidate]
     public let stop: SurveyStop?
+    public let detectedProtocol: ELM327Protocol?
 
     public init(
         plan: SurveyPlan, voltage: Double?, vehicleInfo: [ECUIdentity], modules: [SurveyModule],
-        unanswered: [SurveyCandidate], notProbed: [SurveyCandidate], stop: SurveyStop?
+        unanswered: [SurveyCandidate], notProbed: [SurveyCandidate], stop: SurveyStop?,
+        detectedProtocol: ELM327Protocol? = nil
     ) {
         self.plan = plan
         self.voltage = voltage
@@ -115,6 +118,7 @@ public struct SurveyReport: Codable, Sendable, Equatable {
         self.unanswered = unanswered
         self.notProbed = notProbed
         self.stop = stop
+        self.detectedProtocol = detectedProtocol
     }
 
     public func ownName(of module: SurveyModule) -> SurveyName? {
@@ -134,6 +138,9 @@ public struct SurveyReport: Codable, Sendable, Equatable {
     }
 
     public func name(of module: SurveyModule) -> SurveyName? {
+        if case .saved(let label, _) = module.candidate.origin {
+            return SurveyName(text: label, source: .saved)
+        }
         if case .catalog(let label, _, _) = module.candidate.origin {
             return SurveyName(text: label, source: .catalog)
         }
@@ -142,6 +149,11 @@ public struct SurveyReport: Codable, Sendable, Equatable {
 
     public func proposedModules() -> [ModuleChoice] {
         modules.map { module in
+            if case .saved(let label, let confirmed) = module.candidate.origin {
+                return ModuleChoice(
+                    target: module.candidate.target, label: label,
+                    confirmed: confirmed || ownName(of: module) != nil)
+            }
             if case .catalog(let label, _, _) = module.candidate.origin {
                 return ModuleChoice(
                     target: module.candidate.target, label: label,

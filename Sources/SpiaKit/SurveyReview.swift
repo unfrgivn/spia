@@ -5,12 +5,14 @@ public struct SurveyReview: Sendable, Equatable {
         case module
         case obd
         case catalog
+        case saved
         case fallback
 
         public var caption: String {
             switch self {
             case .module, .obd: return "Named itself"
             case .catalog: return "From references, unconfirmed"
+            case .saved: return "Saved on this car"
             case .fallback: return "No name found"
             }
         }
@@ -27,7 +29,7 @@ public struct SurveyReview: Sendable, Equatable {
         public var id: ModuleTarget { target }
 
         public var caption: String {
-            if nameSource == .catalog, let ownName {
+            if [.catalog, .saved].contains(nameSource), let ownName {
                 return "Calls itself \(ownName)"
             }
             return nameSource.caption
@@ -49,6 +51,7 @@ public struct SurveyReview: Sendable, Equatable {
             case .module?: source = .module
             case .obd?: source = .obd
             case .catalog?: source = .catalog
+            case .saved?: source = .saved
             case nil: source = .fallback
             }
             return Row(
@@ -90,6 +93,11 @@ public struct SurveyReview: Sendable, Equatable {
         if report.plan.requiresVIN && !hasVIN {
             notes.append("No computer gave the VIN, so the ignition may not have been fully on.")
         }
+        if let detectedProtocol = report.detectedProtocol,
+            let protocolNote = detectedProtocol.surveyUnsupportedNote
+        {
+            notes.append(protocolNote)
+        }
         if let stop = report.stop {
             let label = Self.label(for: stop.candidate)
             var text =
@@ -124,12 +132,14 @@ public struct SurveyReview: Sendable, Equatable {
 
     public static func label(for candidate: SurveyCandidate) -> String {
         if case .catalog(let label, _, _) = candidate.origin { return label }
+        if case .saved(let label, _) = candidate.origin { return label }
         return String(format: "Module %03X", candidate.target.request)
     }
 
     private static func expectedLabel(_ target: ModuleTarget, in report: SurveyReport) -> String {
         if let candidate = report.plan.candidates.first(where: { $0.target == target }) {
             if case .catalog(let label, _, _) = candidate.origin { return label }
+            if case .saved(let label, _) = candidate.origin { return label }
         }
         if target.request == 0x7E0 && target.response == 0x7E8 {
             return "the engine computer (7E0)"
