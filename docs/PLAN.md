@@ -72,7 +72,7 @@ Each vehicle has one adapter profile. The Mac connect sheet switches it between 
 
 Demo mode replays recordings through the same code as a live adapter where the recorded command order matches (adapter check, airbag module), and decodes the rest from their recordings with the production decoders (generic scan, vehicle info, ABS, body computer). Results are labelled "From recording". The steering-column module has no recording and says so.
 
-Verified: engine and store behaviour by `swift test` against the real recordings; app builds universal with warnings as errors; app launches; sandboxed serial access to the vLinker FS (2026-09-29: the signed Mac app lists `usbserial-D3C53BNF`, connects, and reads `vLinker FS r2` and `STN1170 v4.3.2` on USB power, with no car); the app against the live car (2026-09-30: onboarding, the survey, vehicle information, and the scan on the Ghibli and the Tiguan in the Mac app over USB, recorded, and the Ghibli's recordings replayed in tests); the iOS app over Bluetooth on an iPhone (2026-09-30: the owner onboarded the Ghibli; its recordings stay on the phone). Not verified: the Mac app over Bluetooth.
+Verified: engine and store behaviour by `swift test` against the real recordings; app builds universal with warnings as errors; app launches; sandboxed serial access to the vLinker FS (2026-09-29: the signed Mac app lists `usbserial-D3C53BNF`, connects, and reads `vLinker FS r2` and `STN1170 v4.3.2` on USB power, with no car); the app against the live car (2026-09-30: onboarding, the survey, vehicle information, and the scan on the Ghibli and the Tiguan in the Mac app over USB, recorded, and replayed in tests); the iOS app over Bluetooth on an iPhone, including the adapter reset (2026-09-30: the owner onboarded the Ghibli; its recordings, copied off the phone, replay in tests). Not verified: the Mac app over Bluetooth.
 
 App phases: 1 foundation (done), 2 assistant (built, see below), 3 media (camera, video, audio capture), 4 guided workflow from symptoms to tests to a solution.
 
@@ -153,7 +153,7 @@ Sources for these rules: Caring Caribou's [UDS discovery](https://github.com/Car
 | 6 (#1) | `spia scan` (stored/pending/permanent DTCs, freeze frame, readiness) + `spia info` (VIN, CAL IDs) | Pure report/decoder tests, original `ghibli-ignition-on-term.txt` replay through production request/decode paths, CLI help/validation; live execution remains unverified | offline milestone implemented; live unverified |
 | 7 (#2) | `spia clear` | Codes clear, CEL off, re-scan clean | pending |
 | 8 (#3) | `spia live` with CSV logging | RPM/coolant/etc. track reality at idle | pending |
-| iOS (#6) | `BLETransport` (CoreBluetooth), SwiftUI shell | Bluetooth FS on iPhone | `BLETransport` and `spia --ble` verified on the Ghibli; the iOS app onboarded the Ghibli over Bluetooth on an iPhone (2026-09-30, owner's report) |
+| iOS (#6) | `BLETransport` (CoreBluetooth), SwiftUI shell | Bluetooth FS on iPhone | `BLETransport` and `spia --ble` verified on the Ghibli; the iOS app onboarded the Ghibli over Bluetooth on an iPhone, and its recordings replay in tests (2026-09-30) |
 | Survey | In-app onboarding: find, identify, name, and read a car's modules | Bench capture replays through the survey; first car visit on the owner's path | steps 1-8 done; verified on the Ghibli and the Tiguan over USB and the Ghibli over Bluetooth (2026-09-30); thorough search (step 9) next |
 
 Reordered 2026-09-26: the fault that started this project is not an emissions code (Mode 03/07/0A are clean), so UDS access to body modules moves ahead of the generic-OBD polish.
@@ -200,8 +200,16 @@ On the cars, 2026-09-30, through the Mac app over USB:
 - The Tiguan answered at 19 of the 24 MQB addresses, and every one named itself through `F197` (e.g. `GW MQB High`, `KOMBI`, `MQB_PP_APA`). The immobilizer, parking brake, second all-wheel-drive address, tire pressure, and headlight range didn't answer.
 - Vehicle information right after the Ghibli's survey reset the adapter in place and read the VIN: the reset, verified live.
 - The catalog (2026.09.30) marks the modules that answered as observed.
-- The Ghibli's survey, the vehicle information after it, and the scan are fixtures (`ghibli-app-*.txt`, each with the result the app saved, `ghibli-app-*.result.json`), and each replays to that saved result.
-- The owner also onboarded the Ghibli on an iPhone over Bluetooth; those recordings stay on the phone.
+- The Ghibli's and the Tiguan's recordings are fixtures (`ghibli-app-*.txt` and `tiguan-app-*.txt`, each with the result the app saved, `*.result.json`). Each replays to that saved result, with the same prompts the app gave at the car.
+- Proposed names (decided 2026-09-30): the catalog's readable label, confirmed when the module also named itself, as every Tiguan module did (e.g. "Steering assist", which calls itself `MQB_PP_APA`). A module the catalog doesn't know is proposed by its own name.
+
+On the Ghibli minutes later, through the iPhone app over the Bluetooth vLinker FS (`ghibli-app-ble-*`, copied off the phone):
+
+- The adapter reset works over Bluetooth. The survey left the adapter listening for `7EF` only; vehicle information reset it, and the engine computers' replies on `7E8` and `7E9` came through.
+- The survey found four modules, not six: the airbag controller and the engine stayed silent. The car's power was changing; the adapter wasn't dropping replies. Only the engine answered the opening requests while the transmission was still starting up. The body computer's code showed an operation cycle that had only just begun (status `69`: test not completed this cycle). And twenty seconds after the survey nothing answered until the owner switched the ignition on again.
+- So the survey takes one engine answer to mean the ignition is on, and one silent 100 ms probe to mean a module isn't there. An engine computer still winding down after the ignition goes off, or modules still starting up, defeat both. Open: how the survey should notice.
+
+Getting recordings off a phone: the iOS library isn't synced, but a build installed from Xcode can be copied off a paired iPhone, over Wi-Fi or a cable. `xcrun devicectl list devices` gives its identifier, then `xcrun devicectl device copy from --device <id> --domain-type appDataContainer --domain-identifier com.unfrgivn.spia --source "Library/Application Support/Spia/<item>" --destination <dir>/<item>` for `Library.store`, `Library.store-wal`, `Library.store-shm`, and `Transcripts`. Each result is `ZTIMELINEENTRY.ZRESULTDATA` after Core Data's one-byte inline marker. TestFlight and App Store builds don't allow this.
 
 ## The Ghibli's actual fault (why UDS comes first)
 
