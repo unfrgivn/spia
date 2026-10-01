@@ -304,9 +304,9 @@ struct SpiaKitTests {
         }
     }
 
-    @Test("module targets reject IDs that are not a single 11-bit module")
-    func moduleTargetValidation() {
-        #expect(throws: ModuleTarget.Invalid.notElevenBit(0x800)) {
+    @Test("module targets validate standard and extended CAN addresses")
+    func moduleTargetValidation() throws {
+        #expect(throws: ModuleTarget.Invalid.mixedAddressWidth(request: 0x800, response: 0x4C4)) {
             try ModuleTarget(bus: .highSpeed, request: 0x800, response: 0x4C4)
         }
         #expect(throws: ModuleTarget.Invalid.functionalBroadcast) {
@@ -315,6 +315,35 @@ struct SpiaKitTests {
         #expect(throws: ModuleTarget.Invalid.sameRequestAndResponse) {
             try ModuleTarget(bus: .highSpeed, request: 0x744, response: 0x744)
         }
+        let extended = try ModuleTarget(
+            bus: .highSpeed, request: 0x18DA30F1, response: 0x18DAF130)
+        #expect(extended.isExtended)
+        #expect(throws: ModuleTarget.Invalid.extendedOnMediumSpeed) {
+            try ModuleTarget(bus: .mediumSpeed, request: 0x18DA30F1, response: 0x18DAF130)
+        }
+        #expect(throws: ModuleTarget.Invalid.extendedFunctionalBroadcast) {
+            try ModuleTarget(bus: .highSpeed, request: 0x18DB33F1, response: 0x18DAF133)
+        }
+        #expect(throws: ModuleTarget.Invalid.invalidCANID(0x20000000)) {
+            try ModuleTarget(bus: .highSpeed, request: 0x20000000, response: 0x18DAF130)
+        }
+    }
+
+    @Test("29-bit module commands select protocol 7 and eight-digit headers")
+    func extendedModuleCommands() throws {
+        let target = try ModuleTarget(
+            bus: .highSpeed, request: 0x18DA30F1, response: 0x18DAF130)
+        #expect(target.setupCommands == ["ATSP7", "ATST 64", "ATCFC 1"])
+        #expect(
+            target.headerCommands == [
+                "ATSH 18DA30F1", "ATCRA 18DAF130", "ATFCSD 30 00 00", "ATFCSH 18DA30F1",
+                "ATFCSM 1",
+            ])
+        let plan = SurveyPlan(
+            catalogVersion: "test", vehicle: nil, platform: nil,
+            candidates: [SurveyCandidate(target: target, origin: .discovered)], unreachable: [])
+        #expect(plan.commands(for: plan.candidates[0]).setup.first == "ATSP7")
+        #expect(plan.plannedCommands.contains("ATSH 18DA30F1"))
     }
 
     @Test("connection state is delivered to every observer")

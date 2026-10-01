@@ -73,6 +73,18 @@ struct SpiaStoreTests {
         #expect(vehicle.sessions.map(\.title) == ["Dead steering-wheel controls"])
     }
 
+    @Test("extended module presets survive a store round trip")
+    func extendedModulePresetRoundTrip() throws {
+        let target = try ModuleTarget(
+            bus: .highSpeed, request: 0x18DA30F1, response: 0x18DAF130)
+        let preset = ModulePreset(label: "EPS", target: target)
+        container.mainContext.insert(preset)
+        try container.mainContext.save()
+        let saved = try #require(
+            try container.mainContext.fetch(FetchDescriptor<ModulePreset>()).first)
+        #expect(saved.target == target)
+    }
+
     @Test("a vehicle can start with a Bluetooth adapter profile")
     func bluetoothAdapterProfile() throws {
         let vehicle = try garage.addVehicle(name: "Bluetooth car", adapterKind: .bluetooth)

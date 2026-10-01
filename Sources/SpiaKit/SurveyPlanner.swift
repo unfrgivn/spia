@@ -206,7 +206,8 @@ public struct SurveyPlan: Codable, Sendable, Equatable, Hashable {
     public func commands(for candidate: SurveyCandidate) -> CandidateCommands {
         CandidateCommands(
             setup: [
-                candidate.target.bus.protocolCommand(extended: false), probeTimeoutCommand,
+                candidate.target.bus.protocolCommand(extended: candidate.target.isExtended),
+                probeTimeoutCommand,
                 "ATCFC 1",
             ],
             headers: candidate.target.headerCommands,
