@@ -72,7 +72,7 @@ Each vehicle has one adapter profile. The Mac connect sheet switches it between 
 
 Demo mode replays recordings through the same code as a live adapter where the recorded command order matches (adapter check, airbag module), and decodes the rest from their recordings with the production decoders (generic scan, vehicle info, ABS, body computer). Results are labelled "From recording". The steering-column module has no recording and says so.
 
-Verified: engine and store behaviour by `swift test` against the real recordings; app builds universal with warnings as errors; app launches; sandboxed serial access to the vLinker FS (2026-09-29: the signed Mac app lists `usbserial-D3C53BNF`, connects, and reads `vLinker FS r2` and `STN1170 v4.3.2` on USB power, with no car). Not verified: the app against the live car, the iOS app over Bluetooth on a device, the Mac app over Bluetooth, and the screens by eye.
+Verified: engine and store behaviour by `swift test` against the real recordings; app builds universal with warnings as errors; app launches; sandboxed serial access to the vLinker FS (2026-09-29: the signed Mac app lists `usbserial-D3C53BNF`, connects, and reads `vLinker FS r2` and `STN1170 v4.3.2` on USB power, with no car); the app against the live car (2026-09-30: onboarding, the survey, vehicle information, and the scan on the Ghibli and the Tiguan in the Mac app over USB, recorded, and the Ghibli's recordings replayed in tests); the iOS app over Bluetooth on an iPhone (2026-09-30: the owner onboarded the Ghibli; its recordings stay on the phone). Not verified: the Mac app over Bluetooth.
 
 App phases: 1 foundation (done), 2 assistant (built, see below), 3 media (camera, video, audio capture), 4 guided workflow from symptoms to tests to a solution.
 
@@ -136,7 +136,7 @@ Pure tests cover the catalog, the matcher, the planner (deterministic; a catalog
 5. Replay and the demo, then the real bench capture through the executor.
 6. Store and board: `SurveyReport.proposedModules()` creates confirmed names from module or OBD answers, while catalog and fallback labels remain unconfirmed until `Garage.apply` saves them. The board maps survey code outcomes through the same module-read rules.
 7. Onboarding UI is done: the Overview card starts a survey, the results sheet reviews and saves modules, it reopens from the case file, and owner-edited names are confirmed.
-8. The first car visit, on the owner's path.
+8. The first car visit, on the owner's path: done 2026-09-30, on the Ghibli and the Tiguan.
 9. The thorough search: per-platform sweep ranges as catalog data, listen first, sweep, and confirm each pair (item 6 above). It handles `BUFFER FULL` in `monitor` and waits until the standard survey works end to end.
 
 Sources for these rules: Caring Caribou's [UDS discovery](https://github.com/CaringCaribou/caringcaribou/blob/master/documentation/uds.md) (listen first, blacklist, verify each pair), the [OBDLink family reference](https://www.scantool.net/scantool/downloads/678/obdlink_frpm_e.pdf) (filters, flow control, `STP 53`; filters must be set again after `STP`), and the Linux [can327 notes](https://kernel.org/doc/html/next/networking/device_drivers/can/can327.html) (ELM327 monitoring ends in `BUFFER FULL` and drops frames).
@@ -153,8 +153,8 @@ Sources for these rules: Caring Caribou's [UDS discovery](https://github.com/Car
 | 6 (#1) | `spia scan` (stored/pending/permanent DTCs, freeze frame, readiness) + `spia info` (VIN, CAL IDs) | Pure report/decoder tests, original `ghibli-ignition-on-term.txt` replay through production request/decode paths, CLI help/validation; live execution remains unverified | offline milestone implemented; live unverified |
 | 7 (#2) | `spia clear` | Codes clear, CEL off, re-scan clean | pending |
 | 8 (#3) | `spia live` with CSV logging | RPM/coolant/etc. track reality at idle | pending |
-| iOS (#6) | `BLETransport` (CoreBluetooth), SwiftUI shell | Bluetooth FS on iPhone | `BLETransport` and `spia --ble` verified on the Ghibli; iOS app wiring builds, not yet run on an iPhone |
-| Survey | In-app onboarding: find, identify, name, and read a car's modules | Bench capture replays through the survey; first car visit on the owner's path | designed 2026-09-28 |
+| iOS (#6) | `BLETransport` (CoreBluetooth), SwiftUI shell | Bluetooth FS on iPhone | `BLETransport` and `spia --ble` verified on the Ghibli; the iOS app onboarded the Ghibli over Bluetooth on an iPhone (2026-09-30, owner's report) |
+| Survey | In-app onboarding: find, identify, name, and read a car's modules | Bench capture replays through the survey; first car visit on the owner's path | steps 1-8 done; verified on the Ghibli and the Tiguan over USB and the Ghibli over Bluetooth (2026-09-30); thorough search (step 9) next |
 
 Reordered 2026-09-26: the fault that started this project is not an emissions code (Mode 03/07/0A are clean), so UDS access to body modules moves ahead of the generic-OBD polish.
 
@@ -194,11 +194,22 @@ without a car means nothing acknowledged the frames; on a running car, an absent
 `NO DATA`. USB reset and the survey no-car path are verified, while BLE reset and real module
 answers remain unverified.
 
+On the cars, 2026-09-30, through the Mac app over USB:
+
+- The Ghibli answered at all six M157 addresses (airbag, ABS, body computer, steering column, engine, transmission) and at none of `7E2`-`7E7`. Every FCA module answered `F190` with the car's VIN and refused `F197` with `31`, so their names come from the catalog. The airbag controller also gave part numbers: `F187` `670101610`, `F191` and `F192` `0285012073`, `F194` `BB70518`.
+- The Tiguan answered at 19 of the 24 MQB addresses, and every one named itself through `F197` (e.g. `GW MQB High`, `KOMBI`, `MQB_PP_APA`). The immobilizer, parking brake, second all-wheel-drive address, tire pressure, and headlight range didn't answer.
+- Vehicle information right after the Ghibli's survey reset the adapter in place and read the VIN: the reset, verified live.
+- The catalog (2026.09.30) marks the modules that answered as observed.
+- The Ghibli's survey, the vehicle information after it, and the scan are fixtures (`ghibli-app-*.txt`, each with the result the app saved, `ghibli-app-*.result.json`), and each replays to that saved result.
+- The owner also onboarded the Ghibli on an iPhone over Bluetooth; those recordings stay on the phone.
+
 ## The Ghibli's actual fault (why UDS comes first)
 
 Reported symptoms: every steering-wheel control dead (volume, cluster menu, cruise), horn dead, airbag lamp on, ABS lamp reported on. Column-mounted paddles and wiper stalk work. Washer pump silent despite a full reservoir; whether this is related is unknown.
 
 The combined symptoms make the clock spring and its connections plausible suspects. A warning lamp alone does not identify a circuit or prove an open ribbon. Complete airbag-controller replies below support high-resistance faults in both driver-airbag stages under the SAE interpretation. They do not distinguish a clock spring from connectors, harness wiring, the airbag assembly, or controller faults. Working paddles/wipers do not prove all column electronics are healthy.
+
+The survey on 2026-09-30 read the steering-column module (SCCM, `763` -> `4E3`) for the first time (fixture `ghibli-app-survey.txt`). Raw records: `059300` and `058100` at status `29` (testFailed, confirmedDTC, testFailedSinceLastClear: failing now), and `D00800` at status `28` (confirmed, not failing now); availability `39`. Under the SAE J2012 reading these are P0593 and P0581, Cruise Control Multi-Function Input "B" and "A" Circuit High, which FCA calls speed control switch 1 and 2, and U1008, manufacturer-specific and unverified. "Circuit high" fits an open or high-resistance circuit. The wheel's switches reach the column module through the clock spring, so with the driver-airbag stage resistance faults every reported fault sits on a circuit that runs through it. FCA's clockspring warranty extension X68 for Jeep pairs these switch codes with driver-airbag squib codes; that's a related model, not Maserati service data, so this narrows the suspects without proving the clock spring itself.
 
 Targets are ORC, BCM, steering-column module, and ABS. Generic emissions scans do not cover these faults. Preserve DTCs before repair; no code clearing, output controls, coding, or airbag-circuit probing is part of this investigation. SRS electrical diagnosis requires the vehicle's service procedure and appropriate equipment.
 
