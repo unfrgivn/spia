@@ -67,6 +67,27 @@ public struct SurveyStop: Codable, Sendable, Equatable {
     }
 }
 
+public struct SearchOutcome: Codable, Sendable, Equatable {
+    public let heardIDs: [UInt32]
+    public let sweptCount: Int
+    public let confirmed: [ModuleTarget]
+    public let unconfirmed: [ModuleTarget]
+    public let engineRunning: Bool?
+    public let stopReason: String?
+
+    public init(
+        heardIDs: [UInt32], sweptCount: Int, confirmed: [ModuleTarget],
+        unconfirmed: [ModuleTarget], engineRunning: Bool?, stopReason: String?
+    ) {
+        self.heardIDs = heardIDs
+        self.sweptCount = sweptCount
+        self.confirmed = confirmed
+        self.unconfirmed = unconfirmed
+        self.engineRunning = engineRunning
+        self.stopReason = stopReason
+    }
+}
+
 public struct SurveyName: Codable, Sendable, Equatable {
     public enum Source: String, Codable, Sendable {
         case module
@@ -105,11 +126,12 @@ public struct SurveyReport: Codable, Sendable, Equatable {
     public let notProbed: [SurveyCandidate]
     public let stop: SurveyStop?
     public let detectedProtocol: ELM327Protocol?
+    public let search: SearchOutcome?
 
     public init(
         plan: SurveyPlan, voltage: Double?, vehicleInfo: [ECUIdentity], modules: [SurveyModule],
         unanswered: [SurveyCandidate], notProbed: [SurveyCandidate], stop: SurveyStop?,
-        detectedProtocol: ELM327Protocol? = nil
+        detectedProtocol: ELM327Protocol? = nil, search: SearchOutcome? = nil
     ) {
         self.plan = plan
         self.voltage = voltage
@@ -119,6 +141,7 @@ public struct SurveyReport: Codable, Sendable, Equatable {
         self.notProbed = notProbed
         self.stop = stop
         self.detectedProtocol = detectedProtocol
+        self.search = search
     }
 
     public func ownName(of module: SurveyModule) -> SurveyName? {
@@ -141,6 +164,7 @@ public struct SurveyReport: Codable, Sendable, Equatable {
         if case .saved(let label, _) = module.candidate.origin {
             return SurveyName(text: label, source: .saved)
         }
+        if case .discovered = module.candidate.origin { return ownName(of: module) }
         if case .catalog(let label, _, _) = module.candidate.origin {
             return SurveyName(text: label, source: .catalog)
         }
@@ -153,6 +177,10 @@ public struct SurveyReport: Codable, Sendable, Equatable {
                 return ModuleChoice(
                     target: module.candidate.target, label: label,
                     confirmed: confirmed || ownName(of: module) != nil)
+            }
+            if case .discovered = module.candidate.origin, let name = ownName(of: module) {
+                return ModuleChoice(
+                    target: module.candidate.target, label: name.text, confirmed: true)
             }
             if case .catalog(let label, _, _) = module.candidate.origin {
                 return ModuleChoice(

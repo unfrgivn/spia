@@ -6,6 +6,7 @@ public struct SurveyReview: Sendable, Equatable {
         case obd
         case catalog
         case saved
+        case discovered
         case fallback
 
         public var caption: String {
@@ -13,6 +14,7 @@ public struct SurveyReview: Sendable, Equatable {
             case .module, .obd: return "Named itself"
             case .catalog: return "From references, unconfirmed"
             case .saved: return "Saved on this car"
+            case .discovered: return "Found by searching"
             case .fallback: return "No name found"
             }
         }
@@ -97,6 +99,15 @@ public struct SurveyReview: Sendable, Equatable {
             let protocolNote = detectedProtocol.surveyUnsupportedNote
         {
             notes.append(protocolNote)
+        }
+        if let search = report.search {
+            if let reason = search.stopReason {
+                notes.append(reason)
+            } else {
+                notes.append(
+                    "Searched \(search.sweptCount) addresses and found \(search.confirmed.count) modules."
+                )
+            }
         }
         if let stop = report.stop {
             let label = Self.label(for: stop.candidate)

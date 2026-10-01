@@ -5,6 +5,7 @@ public struct SurveyCandidate: Codable, Sendable, Equatable, Hashable {
     public enum Origin: Codable, Sendable, Equatable, Hashable {
         case catalog(label: String, provenance: ModuleProvenance, source: String)
         case saved(label: String, confirmed: Bool)
+        case discovered
         case legislated
     }
 
@@ -14,6 +15,41 @@ public struct SurveyCandidate: Codable, Sendable, Equatable, Hashable {
     public init(target: ModuleTarget, origin: Origin) {
         self.target = target
         self.origin = origin
+    }
+}
+
+public struct ModuleSearch: Codable, Sendable, Equatable, Hashable {
+    public let requestRange: ClosedRange<UInt32>
+    public let replyWindow: ReceiveFilter
+    public let listenMilliseconds: UInt64
+    public let replyTimeoutMilliseconds: UInt64
+    public let busyLimitPerSecond: Int
+
+    public init(
+        requestRange: ClosedRange<UInt32> = 0x600...0x7FF,
+        replyWindow: ReceiveFilter = .window(mask: 0x400, pattern: 0x400),
+        listenMilliseconds: UInt64,
+        replyTimeoutMilliseconds: UInt64 = 48,
+        busyLimitPerSecond: Int = 5
+    ) {
+        self.requestRange = requestRange
+        self.replyWindow = replyWindow
+        self.listenMilliseconds = listenMilliseconds
+        self.replyTimeoutMilliseconds = replyTimeoutMilliseconds
+        self.busyLimitPerSecond = busyLimitPerSecond
+    }
+
+    public var estimateMilliseconds: UInt64 {
+        let perAddress = listenMilliseconds == 1_000 ? 120 : 80
+        return UInt64(requestRange.upperBound - requestRange.lowerBound + 1) * UInt64(perAddress)
+    }
+
+    public func sweepRequests(
+        candidates: [SurveyCandidate], heardIDs: Set<UInt32>
+    ) -> [UInt32] {
+        let excluded = Set([0x7DF] + Array(0x7E0...0x7E7))
+            .union(candidates.map { $0.target.request }).union(heardIDs)
+        return requestRange.filter { !excluded.contains($0) }
     }
 }
 
@@ -29,13 +65,15 @@ public struct SurveyPlan: Codable, Sendable, Equatable, Hashable {
     public let requiresVIN: Bool
     public let expected: [ModuleTarget]
     public let detectsProtocol: Bool
+    public let search: ModuleSearch?
 
     public init(
         catalogVersion: String, vehicle: CatalogVehicle?, platform: String?,
         candidates: [SurveyCandidate], unreachable: [SurveyCandidate],
         probeTimeoutMilliseconds: UInt64 = 100, readTimeoutMilliseconds: UInt64 = 400,
         identification: [UInt16] = SurveyPlan.defaultIdentification,
-        requiresVIN: Bool = false, expected: [ModuleTarget] = [], detectsProtocol: Bool = false
+        requiresVIN: Bool = false, expected: [ModuleTarget] = [], detectsProtocol: Bool = false,
+        search: ModuleSearch? = nil
     ) {
         self.catalogVersion = catalogVersion
         self.vehicle = vehicle
@@ -48,12 +86,13 @@ public struct SurveyPlan: Codable, Sendable, Equatable, Hashable {
         self.requiresVIN = requiresVIN
         self.expected = expected
         self.detectsProtocol = detectsProtocol
+        self.search = search
     }
 
     private enum CodingKeys: String, CodingKey {
         case catalogVersion, vehicle, platform, candidates, unreachable
         case probeTimeoutMilliseconds, readTimeoutMilliseconds, identification
-        case requiresVIN, expected, detectsProtocol
+        case requiresVIN, expected, detectsProtocol, search
     }
 
     public init(from decoder: Decoder) throws {
@@ -69,6 +108,7 @@ public struct SurveyPlan: Codable, Sendable, Equatable, Hashable {
         requiresVIN = try values.decodeIfPresent(Bool.self, forKey: .requiresVIN) ?? false
         expected = try values.decodeIfPresent([ModuleTarget].self, forKey: .expected) ?? []
         detectsProtocol = try values.decodeIfPresent(Bool.self, forKey: .detectsProtocol) ?? false
+        search = try values.decodeIfPresent(ModuleSearch.self, forKey: .search)
     }
 
     public static let defaultIdentification: [UInt16] = [
@@ -218,7 +258,7 @@ public enum SurveyPlanner {
             switch candidate.origin {
             case .saved, .catalog(_, .observed, _):
                 return target
-            case .catalog, .legislated:
+            case .catalog, .legislated, .discovered:
                 let engine =
                     target.bus == .highSpeed && target.request == 0x7E0 && target.response == 0x7E8
                 return engine ? target : nil
