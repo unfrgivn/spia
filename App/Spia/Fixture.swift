@@ -20,6 +20,7 @@
             case replayTimeline = "replay-timeline"
             case recordings
             case onboarding
+            case onboardingSession = "onboarding-session"
             case surveyResults = "survey-results"
             /// References, on the bulletins or the complaints.
             case bulletins, complaints
@@ -63,6 +64,10 @@
             if screen == .onboarding {
                 _ = try model.garage.addVehicle(
                     name: "2017 Maserati Ghibli S Q4", vin: DemoGarage.vin)
+            } else if screen == .onboardingSession {
+                let vehicle = try model.garage.addVehicle(
+                    name: "2017 Maserati Ghibli S Q4", vin: DemoGarage.vin)
+                _ = try model.garage.addSession(to: vehicle, title: "First session")
             } else if screen == .surveyResults {
                 let vehicle = try model.garage.addVehicle(
                     name: DemoGarage.vehicleName, vin: DemoGarage.vin)
@@ -125,6 +130,8 @@
                 vehicle.orderedSessions.first.map { .session($0.id) }
             case .garage, .settings, .welcome, nil: nil
             case .onboarding: .overview
+            case .onboardingSession:
+                vehicle.orderedSessions.first.map { .session($0.id) }
             case .surveyResults:
                 vehicle.orderedSessions.first.map { .session($0.id) }
             }

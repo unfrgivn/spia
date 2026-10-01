@@ -28,7 +28,7 @@ struct VehicleOverview: View {
             VStack(alignment: .leading, spacing: 0) {
                 hero(compact: compact)
                 if !vehicle.isDemo && vehicle.modules.isEmpty {
-                    findModulesCard(compact: compact)
+                    FindModulesCard(compact: compact, disabled: false, action: findModules)
                         .padding(.top, compact ? 18 : 24)
                 }
                 VehicleBoard(readouts: readouts, compact: compact)
@@ -58,7 +58,9 @@ struct VehicleOverview: View {
         .sheet(isPresented: $editingModules) { ModulesEditor(vehicle: vehicle) }
         .sheet(isPresented: $connecting) {
             if let workbench {
-                ConnectionAssistant(vehicle: vehicle, workbench: workbench) { self.workbench = $0 }
+                ConnectionAssistant(vehicle: vehicle, workbench: workbench, purpose: nil) {
+                    self.workbench = $0
+                }
             }
         }
         .fileImporter(isPresented: $uploadingCover, allowedContentTypes: [.image]) { result in
@@ -74,25 +76,6 @@ struct VehicleOverview: View {
     }
 
     // MARK: - The bay
-
-    private func findModulesCard(compact: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Find this car's modules")
-                .font(.headline)
-                .foregroundStyle(Palette.primary)
-            Text(
-                "Ask the car which diagnostic modules are awake, then review their names and codes."
-            )
-            .font(.callout)
-            .foregroundStyle(Palette.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-            Button("Find Modules") { findModules() }
-                .buttonStyle(.borderedProminent)
-        }
-        .padding(compact ? 16 : 20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .card(tint: Palette.accent)
-    }
 
     private func findModules() {
         do {

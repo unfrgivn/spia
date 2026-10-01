@@ -11,6 +11,7 @@ struct ConnectionAssistant: View {
     @Environment(\.dismiss) private var dismiss
     let vehicle: Vehicle
     let workbench: Workbench
+    let purpose: String?
     /// Called with a new workbench when the chosen port changes.
     let replaced: (Workbench) -> Void
 
@@ -26,6 +27,12 @@ struct ConnectionAssistant: View {
             Text("Connect to your car")
                 .font(.title2.weight(.semibold))
 
+            if let purpose {
+                Text(purpose)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if workbench.adapter.kind == .demo {
                 Text(
                     "This vehicle uses real recordings from a 2017 Maserati Ghibli, made with a vLinker FS on 2026-09-26. Connecting replays the recorded adapter check; every result is labeled as coming from a recording."

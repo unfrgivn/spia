@@ -33,6 +33,13 @@ struct SessionView: View {
                     BoardHeader(
                         session: session, board: board, layout: layout,
                         connectionKind: workbench?.adapter.kind)
+                    if let vehicle = session.vehicle, !vehicle.isDemo, vehicle.modules.isEmpty {
+                        FindModulesCard(
+                            compact: !wide, disabled: workbench?.activity != nil,
+                            action: requestSurveyInSession
+                        )
+                        .padding(.top, 18)
+                    }
                     // A check waiting for the owner, or one with no row, gets the panel; the rest
                     // show on their row.
                     if let workbench, let activity = workbench.activity,
@@ -111,7 +118,11 @@ struct SessionView: View {
         }
         .sheet(isPresented: $showConnection) {
             if let workbench, let vehicle = session.vehicle {
-                ConnectionAssistant(vehicle: vehicle, workbench: workbench) { refreshed in
+                ConnectionAssistant(
+                    vehicle: vehicle, workbench: workbench,
+                    purpose: model.hasSurveyRequest(for: session)
+                        ? "Connect the adapter, and Spia will find this car's modules." : nil
+                ) { refreshed in
                     self.workbench = refreshed
                 }
             }
@@ -320,6 +331,16 @@ struct SessionView: View {
             run(.survey(plan))
         } catch {
             workbench.lastError = error.readable
+        }
+    }
+
+    private func requestSurveyInSession() {
+        guard let workbench, session.vehicle != nil else { return }
+        model.requestSurvey(for: session)
+        if workbench.connection.status == nil {
+            showConnection = true
+        } else {
+            startPendingSurveyIfReady()
         }
     }
 
