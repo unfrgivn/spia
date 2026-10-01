@@ -15,6 +15,10 @@ import Testing
 ///   read.
 /// - `tiguan-app-*`: the 2018 Tiguan onboarded in the Mac app over USB. The survey, then vehicle
 ///   information.
+/// - `cx5-app-ble-*`: a 2014 Mazda CX-5 onboarded on the iPhone over Bluetooth with only part of
+///   the car on: the transmission answered, the engine computer didn't. The survey, vehicle
+///   information, then, after the owner switched the ignition fully on, the scan and vehicle
+///   information again.
 @Suite("App recordings from the cars")
 struct CarSurveyReplayTests {
     struct Recording: Sendable, CustomTestStringConvertible {
@@ -38,10 +42,17 @@ struct CarSurveyReplayTests {
         Recording(name: "ghibli-app-ble-bcm-read", adapter: .bluetooth, prompts: []),
         Recording(name: "tiguan-app-survey", adapter: .usbSerial, prompts: []),
         Recording(name: "tiguan-app-vehicle-info-after-survey", adapter: .usbSerial, prompts: []),
+        Recording(name: "cx5-app-ble-survey", adapter: .bluetooth, prompts: []),
+        Recording(
+            name: "cx5-app-ble-vehicle-info-before-ignition", adapter: .bluetooth, prompts: []),
+        Recording(name: "cx5-app-ble-scan", adapter: .bluetooth, prompts: []),
+        Recording(
+            name: "cx5-app-ble-vehicle-info-after-ignition", adapter: .bluetooth, prompts: []),
     ]
 
     private static let ghibliVIN = "ZAM57RTS4H1249941"
     private static let tiguanVIN = "3VV4B7AX3JM197049"
+    private static let cx5VIN = "JM3KE4DY6E0322030"
 
     private static func fixture(_ name: String) -> URL {
         URL(fileURLWithPath: #filePath)
@@ -321,5 +332,47 @@ struct CarSurveyReplayTests {
         let ecus = try Self.vehicleInfo("tiguan-app-vehicle-info-after-survey")
         #expect(ecus.map(\.ecu) == [0x7E8, 0x7E9])
         #expect(ecus.first { $0.ecu == 0x7E8 }?.vin.value == Self.tiguanVIN)
+    }
+
+    @Test("the CX-5 with only part of the car on: the transmission answered, the engine didn't")
+    func cx5PartlyOn() throws {
+        let report = try Self.survey("cx5-app-ble-survey")
+        // Spia knows no Mazda modules, so the survey asked the eight legislated addresses only.
+        #expect(report.plan.platform == nil)
+        #expect(report.plan.candidates.map(\.target.request) == Array(0x7E0...0x7E7))
+        #expect(report.modules.map(\.candidate.target.request) == [0x7E1])
+        #expect(report.unanswered.map(\.target.request) == [0x7E0] + Array(0x7E2...0x7E7))
+        // Only the transmission answered the opening requests, and nothing gave a VIN: the
+        // engine computer, which every car has, wasn't on.
+        #expect(report.vehicleInfo.map(\.ecu) == [0x7E9])
+        #expect(report.vehicleInfo.compactMap(\.vin.value).isEmpty)
+        let transmission = try Self.module(0x7E1, in: report)
+        let refusals = transmission.identification.filter { $0.result == .refused(0x31) }
+        #expect(refusals.count == SurveyPlan.defaultIdentification.count)
+        #expect(transmission.codes == .outcome(.records(availability: 0xFF, [])))
+
+        let before = try Self.vehicleInfo("cx5-app-ble-vehicle-info-before-ignition")
+        #expect(before.map(\.ecu) == [0x7E9])
+        #expect(before.compactMap(\.vin.value).isEmpty)
+
+        // With the ignition fully on, both answered: no codes, the check-engine light off, and
+        // every readiness monitor complete.
+        guard case .genericScan(let scans) = try Self.saved("cx5-app-ble-scan").payload else {
+            Issue.record("the saved result isn't a scan")
+            return
+        }
+        #expect(scans.map(\.ecu) == [0x7E8, 0x7E9])
+        for scan in scans {
+            #expect(scan.stored == .value([]))
+            #expect(scan.pending == .value([]))
+            #expect(scan.permanent == .value([]))
+            #expect(scan.readiness.value?.milOn == false)
+            let incomplete = scan.readiness.value?.monitors.filter { !$0.complete }
+            #expect(incomplete == [])
+        }
+        #expect(scans.first?.readiness.value?.monitors.count == 8)
+        let after = try Self.vehicleInfo("cx5-app-ble-vehicle-info-after-ignition")
+        #expect(after.map(\.ecu) == [0x7E8, 0x7E9])
+        #expect(after.first { $0.ecu == 0x7E8 }?.vin.value == Self.cx5VIN)
     }
 }
