@@ -30,14 +30,14 @@ struct SurveyReviewTests {
         vehicle: CatalogVehicle? = ghibli, platform: String? = "M157",
         vehicleInfo: [ECUIdentity] = [], modules: [SurveyModule] = [],
         unanswered: [SurveyCandidate] = [], notProbed: [SurveyCandidate] = [],
-        stop: SurveyStop? = nil, unreachable: [SurveyCandidate] = []
+        stop: SurveyStop? = nil, unreachable: [SurveyCandidate] = [], expected: [ModuleTarget] = []
     ) -> SurveyReport {
         let candidates =
             modules.map(\.candidate) + unanswered + (stop.map { [$0.candidate] } ?? []) + notProbed
         return SurveyReport(
             plan: SurveyPlan(
                 catalogVersion: "test", vehicle: vehicle, platform: platform,
-                candidates: candidates, unreachable: unreachable),
+                candidates: candidates, unreachable: unreachable, expected: expected),
             voltage: nil, vehicleInfo: vehicleInfo, modules: modules, unanswered: unanswered,
             notProbed: notProbed, stop: stop)
     }
@@ -79,6 +79,17 @@ struct SurveyReviewTests {
                     platform: nil, vehicleInfo: [engine])
             ).notes == [
                 "Spia has no module list for a 2016 Volkswagen Passat yet, so it asked the standard engine addresses only."
+            ])
+
+        let silent = Self.known("Airbag controller (ORC)", try Self.target(0x744, 0x4C4))
+        #expect(
+            SurveyReview(
+                report: Self.report(
+                    modules: [], unanswered: [silent], expected: [silent.target])
+            )
+            .notes == [
+                "Airbag controller (ORC) didn't answer. If the ignition wasn't fully on, switch it on, then try again.",
+                "The engine computers didn't answer.",
             ])
 
         let airbag = Self.known("Airbag controller (ORC)", try Self.target(0x744, 0x4C4))

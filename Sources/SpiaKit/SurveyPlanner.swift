@@ -25,12 +25,15 @@ public struct SurveyPlan: Codable, Sendable, Equatable, Hashable {
     public let probeTimeoutMilliseconds: UInt64
     public let readTimeoutMilliseconds: UInt64
     public let identification: [UInt16]
+    public let requiresVIN: Bool
+    public let expected: [ModuleTarget]
 
     public init(
         catalogVersion: String, vehicle: CatalogVehicle?, platform: String?,
         candidates: [SurveyCandidate], unreachable: [SurveyCandidate],
         probeTimeoutMilliseconds: UInt64 = 100, readTimeoutMilliseconds: UInt64 = 400,
-        identification: [UInt16] = SurveyPlan.defaultIdentification
+        identification: [UInt16] = SurveyPlan.defaultIdentification,
+        requiresVIN: Bool = false, expected: [ModuleTarget] = []
     ) {
         self.catalogVersion = catalogVersion
         self.vehicle = vehicle
@@ -40,6 +43,28 @@ public struct SurveyPlan: Codable, Sendable, Equatable, Hashable {
         self.probeTimeoutMilliseconds = probeTimeoutMilliseconds
         self.readTimeoutMilliseconds = readTimeoutMilliseconds
         self.identification = identification
+        self.requiresVIN = requiresVIN
+        self.expected = expected
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case catalogVersion, vehicle, platform, candidates, unreachable
+        case probeTimeoutMilliseconds, readTimeoutMilliseconds, identification
+        case requiresVIN, expected
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        catalogVersion = try values.decode(String.self, forKey: .catalogVersion)
+        vehicle = try values.decodeIfPresent(CatalogVehicle.self, forKey: .vehicle)
+        platform = try values.decodeIfPresent(String.self, forKey: .platform)
+        candidates = try values.decode([SurveyCandidate].self, forKey: .candidates)
+        unreachable = try values.decode([SurveyCandidate].self, forKey: .unreachable)
+        probeTimeoutMilliseconds = try values.decode(UInt64.self, forKey: .probeTimeoutMilliseconds)
+        readTimeoutMilliseconds = try values.decode(UInt64.self, forKey: .readTimeoutMilliseconds)
+        identification = try values.decode([UInt16].self, forKey: .identification)
+        requiresVIN = try values.decodeIfPresent(Bool.self, forKey: .requiresVIN) ?? false
+        expected = try values.decodeIfPresent([ModuleTarget].self, forKey: .expected) ?? []
     }
 
     public static let defaultIdentification: [UInt16] = [
@@ -157,6 +182,19 @@ public enum SurveyPlanner {
         return SurveyPlan(
             catalogVersion: catalog.catalogVersion, vehicle: vehicle,
             platform: match?.name, candidates: candidates,
-            unreachable: known.filter { !reachable.contains($0.target.bus) })
+            unreachable: known.filter { !reachable.contains($0.target.bus) },
+            requiresVIN: vehicle != nil, expected: expectedTargets(from: candidates))
+    }
+
+    private static func expectedTargets(from candidates: [SurveyCandidate]) -> [ModuleTarget] {
+        var targets = candidates.compactMap { candidate -> ModuleTarget? in
+            if case .catalog(_, .observed, _) = candidate.origin { return candidate.target }
+            return nil
+        }
+        let engine =
+            candidates.first { $0.target.request == 0x7E0 && $0.target.response == 0x7E8 }?.target
+            ?? (try? ModuleTarget(bus: .highSpeed, request: 0x7E0, response: 0x7E8))
+        if let engine, !targets.contains(engine) { targets.append(engine) }
+        return targets
     }
 }

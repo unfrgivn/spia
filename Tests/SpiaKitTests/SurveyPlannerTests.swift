@@ -40,6 +40,36 @@ struct SurveyPlannerTests {
             make: result.make, model: result.model, year: try #require(Int(result.year)))
     }
 
+    @Test("survey plans carry VIN and second-look expectations, with old-plan defaults")
+    func surveyPolicyRoundTrip() throws {
+        let catalog = try catalog()
+        let ghibliPlan = try SurveyPlanner.plan(
+            catalog: catalog, vehicle: ghibli(), reachableBuses: [.highSpeed, .mediumSpeed])
+        #expect(ghibliPlan.requiresVIN)
+        #expect(ghibliPlan.expected.count == 6)
+        #expect(ghibliPlan.expected.contains { $0.request == 0x7E0 && $0.response == 0x7E8 })
+
+        let tiguan = CatalogVehicle(make: "Volkswagen", model: "Tiguan", year: 2018)
+        let tiguanPlan = try SurveyPlanner.plan(
+            catalog: catalog, vehicle: tiguan, reachableBuses: [.highSpeed, .mediumSpeed])
+        #expect(tiguanPlan.expected.count == 19)
+
+        let cx5 = CatalogVehicle(make: "Mazda", model: "CX-5", year: 2014)
+        let cx5Plan = try SurveyPlanner.plan(
+            catalog: catalog, vehicle: cx5, reachableBuses: [.highSpeed])
+        #expect(cx5Plan.expected.map(\.request) == [0x7E0])
+
+        var oldJSON =
+            try JSONSerialization.jsonObject(
+                with: JSONEncoder().encode(ghibliPlan)) as! [String: Any]
+        oldJSON.removeValue(forKey: "requiresVIN")
+        oldJSON.removeValue(forKey: "expected")
+        let oldPlan = try JSONDecoder().decode(
+            SurveyPlan.self, from: JSONSerialization.data(withJSONObject: oldJSON))
+        #expect(!oldPlan.requiresVIN)
+        #expect(oldPlan.expected.isEmpty)
+    }
+
     @Test("Ghibli and Tiguan plans put catalog modules before legislated candidates")
     func knownPlans() throws {
         let catalog = try catalog()

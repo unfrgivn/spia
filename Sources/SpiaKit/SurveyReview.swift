@@ -38,6 +38,7 @@ public struct SurveyReview: Sendable, Equatable {
     public let notes: [String]
     public let rows: [Row]
     public let unansweredLabels: [String]
+    public let canTryAgain: Bool
 
     public init(report: SurveyReport) {
         let choices = report.proposedModules()
@@ -60,6 +61,20 @@ public struct SurveyReview: Sendable, Equatable {
             ? "No modules answered"
             : "Found \(report.modules.count) module\(report.modules.count == 1 ? "" : "s")"
         var notes: [String] = []
+        let expectedSilent = report.plan.expected.filter { expected in
+            report.unanswered.contains { $0.target == expected }
+        }
+        if !expectedSilent.isEmpty {
+            let labels = expectedSilent.map { Self.expectedLabel($0, in: report) }
+            let joined =
+                labels.count == 1
+                ? labels[0]
+                : labels.dropLast().joined(separator: ", ") + " and " + labels[labels.count - 1]
+            notes.append(
+                "\(joined) didn't answer. If the ignition wasn't fully on, switch it on, then try again."
+            )
+        }
+        let hasVIN = report.vehicleInfo.contains { $0.vin.value != nil }
         if report.vehicleInfo.isEmpty { notes.append("The engine computers didn't answer.") }
         if let vehicle = report.plan.vehicle {
             if report.plan.platform == nil {
@@ -71,6 +86,9 @@ public struct SurveyReview: Sendable, Equatable {
             notes.append(
                 "Spia doesn't know this car's make yet. Add its VIN, then survey again to include the modules known for it."
             )
+        }
+        if report.plan.requiresVIN && !hasVIN {
+            notes.append("No computer gave the VIN, so the ignition may not have been fully on.")
         }
         if let stop = report.stop {
             let label = Self.label(for: stop.candidate)
@@ -86,6 +104,7 @@ public struct SurveyReview: Sendable, Equatable {
         }
         self.notes = notes
         unansweredLabels = report.unanswered.map(Self.label(for:))
+        canTryAgain = !expectedSilent.isEmpty || (report.plan.requiresVIN && !hasVIN)
     }
 
     /// The modules to save: the kept rows, named as the owner left them. A name the owner changed
@@ -106,6 +125,16 @@ public struct SurveyReview: Sendable, Equatable {
     public static func label(for candidate: SurveyCandidate) -> String {
         if case .catalog(let label, _, _) = candidate.origin { return label }
         return String(format: "Module %03X", candidate.target.request)
+    }
+
+    private static func expectedLabel(_ target: ModuleTarget, in report: SurveyReport) -> String {
+        if let candidate = report.plan.candidates.first(where: { $0.target == target }) {
+            if case .catalog(let label, _, _) = candidate.origin { return label }
+        }
+        if target.request == 0x7E0 && target.response == 0x7E8 {
+            return "the engine computer (7E0)"
+        }
+        return String(format: "Module %03X", target.request)
     }
 
     private static func codesSummary(_ codes: SurveyCodes) -> String {

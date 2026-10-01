@@ -4,10 +4,12 @@ import OBDCore
 /// Something only the person at the car can do.
 public enum UserAction: String, Codable, Sendable {
     case turnIgnitionOn
+    case turnIgnitionOnForVIN
 
     public var title: String {
         switch self {
         case .turnIgnitionOn: return "Turn the ignition on"
+        case .turnIgnitionOnForVIN: return "Turn the ignition fully on"
         }
     }
 
@@ -16,6 +18,11 @@ public enum UserAction: String, Codable, Sendable {
         case .turnIgnitionOn:
             return "The car didn't answer. Put the ignition in RUN so the dash lights up. "
                 + "On push-button cars, press START without the brake pedal. The engine can stay off."
+        case .turnIgnitionOnForVIN:
+            return
+                "Only part of the car answered and nothing gave the VIN. Switch the ignition fully on "
+                + "with the engine off, so every dash warning light comes on. On a push-button car, "
+                + "press START without the brake until they do."
         }
     }
 }
@@ -156,10 +163,37 @@ public actor JobRunner {
             return .adapter(status)
 
         case .vehicleInfo:
-            let reports = try await askingForIgnition(emit: emit) {
+            let infoRead: @Sendable () async throws -> [ECUInfoReport] = {
                 try await self.connection.withSession { session in
                     try await GenericOBDWorkflow.info(on: session) { emit(Self.describe($0)) }
                 }
+            }
+            let first = try await askingForIgnition(action: .turnIgnitionOn, emit: emit) {
+                try await infoRead()
+            }
+            let reports: [ECUInfoReport]
+            if !first.isEmpty,
+                !first.contains(where: {
+                    if case .positive = $0.vin { return true }
+                    return false
+                })
+            {
+                reports = try await askingForIgnition(
+                    initial: first, action: .turnIgnitionOnForVIN, emit: emit,
+                    shouldRetry: { reports in
+                        !reports.contains {
+                            if case .positive = $0.vin { return true }
+                            return false
+                        }
+                    }, read: infoRead)
+                if !reports.contains(where: {
+                    if case .positive = $0.vin { return true }
+                    return false
+                }) {
+                    emit(.warning("No computer gave the VIN."))
+                }
+            } else {
+                reports = first
             }
             return .vehicleInfo(reports.map(ECUIdentity.init))
 
@@ -202,16 +236,31 @@ public actor JobRunner {
         let voltage = try await connection.withSession { session in try await session.voltage() }
         await connection.update(voltage: voltage)
 
-        let vehicleInfo: [ECUIdentity]
-        do {
-            vehicleInfo = try await askingForIgnition(emit: emit) {
-                try await self.connection.withSession { session in
-                    try await GenericOBDWorkflow.info(on: session) { emit(Self.describe($0)) }
-                }
+        let infoRead: @Sendable () async throws -> [ECUIdentity] = {
+            try await self.connection.withSession { session in
+                try await GenericOBDWorkflow.info(on: session) { emit(Self.describe($0)) }
             }.map(ECUIdentity.init)
+        }
+        let firstInfo: [ECUIdentity]
+        do {
+            firstInfo = try await askingForIgnition(action: .turnIgnitionOn, emit: emit) {
+                try await infoRead()
+            }
         } catch GenericOBDWorkflow.Failure.noVehicleResponse {
             emit(.warning("The engine computers didn't answer."))
-            vehicleInfo = []
+            firstInfo = []
+        }
+        let vehicleInfo: [ECUIdentity]
+        if plan.requiresVIN, !firstInfo.isEmpty, !firstInfo.contains(where: { $0.vin.value != nil })
+        {
+            vehicleInfo = try await askingForIgnition(
+                initial: firstInfo, action: .turnIgnitionOnForVIN, emit: emit,
+                shouldRetry: { !$0.contains(where: { $0.vin.value != nil }) }, read: infoRead)
+            if !vehicleInfo.contains(where: { $0.vin.value != nil }) {
+                emit(.warning("No computer gave the VIN."))
+            }
+        } else {
+            vehicleInfo = firstInfo
         }
 
         var modules: [SurveyModule] = []
@@ -241,6 +290,40 @@ public actor JobRunner {
                 break
             }
         }
+
+        if stop == nil {
+            let silentTargets = Set(unanswered.map(\.target))
+            let secondLook = plan.expected.filter { silentTargets.contains($0) }
+            for (index, target) in secondLook.enumerated() {
+                guard let candidate = plan.candidates.first(where: { $0.target == target }) else {
+                    continue
+                }
+                emit(.step("Looking again: \(index + 1) of \(secondLook.count)"))
+                do {
+                    let attempt = try await connection.withSession { session in
+                        try await self.performSurveyCandidate(
+                            candidate, plan: plan, session: session, emit: emit)
+                    }
+                    switch attempt {
+                    case .unanswered:
+                        break
+                    case .module(let module):
+                        modules.append(module)
+                        unanswered.removeAll { $0.target == target }
+                    }
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    if ConnectionManager.desynchronizes(error) { throw error }
+                    stop = SurveyStop(candidate: candidate, reason: error.readable)
+                    break
+                }
+            }
+        }
+
+        let order = Dictionary(
+            uniqueKeysWithValues: plan.candidates.enumerated().map { ($1.target, $0) })
+        modules.sort { (order[$0.candidate.target] ?? .max) < (order[$1.candidate.target] ?? .max) }
 
         return SurveyReport(
             plan: plan, voltage: voltage, vehicleInfo: vehicleInfo, modules: modules,
@@ -331,17 +414,38 @@ public actor JobRunner {
     /// Runs `read`; when no ECU answers at all, asks the user to switch the ignition on and
     /// tries again. Gives up after `maxPrompts` rather than looping.
     private func askingForIgnition<T: Sendable>(
-        emit: @escaping @Sendable (JobEvent) -> Void, _ read: @Sendable () async throws -> T
+        action: UserAction = .turnIgnitionOn,
+        emit: @escaping @Sendable (JobEvent) -> Void,
+        shouldRetry: @escaping @Sendable (T) -> Bool = { _ in false },
+        _ read: @Sendable () async throws -> T
     ) async throws -> T {
         var prompts = 0
         while true {
             do {
-                return try await read()
+                let value = try await read()
+                guard shouldRetry(value), prompts < maxPrompts else { return value }
+                prompts += 1
+                guard await ask(action, emit: emit) else { throw CancellationError() }
             } catch GenericOBDWorkflow.Failure.noVehicleResponse where prompts < maxPrompts {
                 prompts += 1
-                guard await ask(.turnIgnitionOn, emit: emit) else { throw CancellationError() }
+                guard await ask(action, emit: emit) else { throw CancellationError() }
             }
         }
+    }
+
+    private func askingForIgnition<T: Sendable>(
+        initial: T, action: UserAction, emit: @escaping @Sendable (JobEvent) -> Void,
+        shouldRetry: @escaping @Sendable (T) -> Bool,
+        read: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        var value = initial
+        var prompts = 0
+        while shouldRetry(value), prompts < maxPrompts {
+            prompts += 1
+            guard await ask(action, emit: emit) else { throw CancellationError() }
+            value = try await read()
+        }
+        return value
     }
 
     private func ask(_ action: UserAction, emit: @Sendable (JobEvent) -> Void) async -> Bool {

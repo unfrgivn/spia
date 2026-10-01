@@ -43,8 +43,6 @@ struct CarSurveyReplayTests {
         Recording(name: "tiguan-app-survey", adapter: .usbSerial, prompts: []),
         Recording(name: "tiguan-app-vehicle-info-after-survey", adapter: .usbSerial, prompts: []),
         Recording(name: "cx5-app-ble-survey", adapter: .bluetooth, prompts: []),
-        Recording(
-            name: "cx5-app-ble-vehicle-info-before-ignition", adapter: .bluetooth, prompts: []),
         Recording(name: "cx5-app-ble-scan", adapter: .bluetooth, prompts: []),
         Recording(
             name: "cx5-app-ble-vehicle-info-after-ignition", adapter: .bluetooth, prompts: []),
@@ -374,5 +372,32 @@ struct CarSurveyReplayTests {
         let after = try Self.vehicleInfo("cx5-app-ble-vehicle-info-after-ignition")
         #expect(after.map(\.ecu) == [0x7E8, 0x7E9])
         #expect(after.first { $0.ecu == 0x7E8 }?.vin.value == Self.cx5VIN)
+    }
+
+    @Test("the CX-5 vehicle information asks for full ignition after a partial answer")
+    func cx5VehicleInfoBeforeIgnition() async throws {
+        let name = "cx5-app-ble-vehicle-info-before-ignition"
+        let transport = try ReplayTransport(contentsOf: Self.fixture("\(name).txt"))
+        let connection = ConnectionManager(
+            adapter: AdapterDescriptor(kind: .bluetooth, displayName: "vLinker FS")
+        ) { transport }
+        try await connection.connect()
+        let runner = JobRunner(connection: connection)
+        var prompts: [UserAction] = []
+        var failure: JobFailure?
+        for await event in await runner.run(.vehicleInfo) {
+            switch event {
+            case .needsUser(let id, let action):
+                prompts.append(action)
+                await runner.confirm(id)
+            case .failed(let value): failure = value
+            default: break
+            }
+        }
+        #expect(prompts == [.turnIgnitionOnForVIN])
+        #expect(
+            failure?.message == "replay: expected write \"<end of transcript>\", got \"0900\r\"")
+        #expect(try Self.sent(name).last == "090A")
+        #expect(await transport.isFinished)
     }
 }
