@@ -383,14 +383,18 @@ struct SessionView: View {
         runSurvey(workbench, search: model.consumeThoroughSurveyRequest(for: session))
     }
 
+    /// The confirmation for the plan a Search More Thoroughly click would run, or nil when it
+    /// can't run: the demo, no adapter, a protocol the search can't probe, or saved recordings
+    /// without that search.
     private func thoroughSearchMessage(for report: SurveyReport) -> String? {
-        guard report.plan.search == nil, let vehicle = session.vehicle, !vehicle.isDemo,
+        guard report.plan.search == nil, report.detectedProtocol?.surveyUnsupportedNote == nil,
+            let vehicle = session.vehicle, !vehicle.isDemo,
             let workbench, workbench.connection.status != nil,
-            report.detectedProtocol == nil || report.detectedProtocol == .can11bit500k
+            let plan = try? model.surveyPlan(for: vehicle, workbench: workbench, search: true),
+            workbench.canRun(.survey(plan)), let search = plan.search
         else { return nil }
-        let search = ModuleSearch.standard(over: workbench.adapter.kind)
         return search.confirmationMessage(
-            connection: workbench.adapter.kind, candidates: report.plan.candidates)
+            connection: workbench.adapter.kind, candidates: plan.candidates)
     }
 
     private func run(_ job: DiagnosticJob) {

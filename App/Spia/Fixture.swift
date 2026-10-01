@@ -286,21 +286,30 @@
                 catalog: try ModuleCatalog.bundled(),
                 vehicle: CatalogVehicle(make: "Maserati", model: "Ghibli", year: 2017),
                 reachableBuses: [.highSpeed, .mediumSpeed], search: search)
-            let target = try ModuleTarget(bus: .highSpeed, request: 0x600, response: 0x608)
+            // No search has run on a car yet, so the found module is made up, but it behaves as the
+            // Ghibli's modules do: it gives the VIN and refuses F197, and its reply follows FCA's
+            // request - 280 (744 -> 4C4). The listen heard the network management the Ghibli's
+            // capture shows in the window.
+            let target = try ModuleTarget(bus: .highSpeed, request: 0x75A, response: 0x4DA)
             let discovered = SurveyModule(
                 candidate: SurveyCandidate(target: target, origin: .discovered),
                 presence: .present,
                 identification: [
-                    SurveyIdentification(did: 0xF197, result: .value(Array("F197".utf8)))
+                    SurveyIdentification(
+                        did: 0xF190, result: .value(Array("ZAM57RTS4H1249941".utf8))),
+                    SurveyIdentification(did: 0xF197, result: .refused(0x31)),
                 ], codes: .outcome(.records(availability: 0xFF, [])))
+            let heard: Set<UInt32> = [
+                0x400, 0x401, 0x402, 0x403, 0x407, 0x409, 0x422, 0x423, 0x44A, 0x44C,
+            ]
             return SurveyReport(
                 plan: plan, voltage: base.voltage, vehicleInfo: base.vehicleInfo,
                 modules: base.modules + [discovered], unanswered: base.unanswered,
                 notProbed: base.notProbed, stop: nil, detectedProtocol: .can11bit500k,
                 search: SearchOutcome(
-                    heardIDs: [],
+                    heardIDs: heard.sorted(),
                     sweptCount: search.sweepRequests(
-                        candidates: plan.candidates, heardIDs: []
+                        candidates: plan.candidates, heardIDs: heard
                     ).count,
                     confirmed: [target], unconfirmed: [], engineRunning: false,
                     stopReason: nil))
