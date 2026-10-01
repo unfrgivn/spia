@@ -26,8 +26,10 @@ final class AppModel {
     private var recordingsActive: Set<UUID> = []
     private var conversations: [UUID: AssistantConversation] = [:]
     private var referenceSets: [UUID: VehicleReferences] = [:]
-    private var surveyCatalog: ModuleCatalog?
-    private var surveyCatalogError: String?
+    /// Loaded on first use. Not observed: building a plan while a menu is drawn fills it in, and
+    /// that must not count as a change to redraw for.
+    @ObservationIgnored private var surveyCatalog: ModuleCatalog?
+    @ObservationIgnored private var surveyCatalogError: String?
     private var pendingSurveySessions: Set<UUID> = []
     private let savedChecksProvider: (() -> [SavedCheck])?
 

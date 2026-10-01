@@ -206,7 +206,7 @@ struct SessionView: View {
     private func runMenu(_ workbench: Workbench) -> some View {
         RunMenu(
             vehicle: session.vehicle, workbench: workbench, run: { run($0) },
-            survey: { runSurvey(workbench) }, connect: { showConnection = true },
+            survey: surveyAction(workbench), connect: { showConnection = true },
             editModules: { editingModules = true })
     }
 
@@ -313,14 +313,14 @@ struct SessionView: View {
     }
 
     private func surveyAction(_ workbench: Workbench?) -> (() -> Void)? {
-        guard let workbench, session.vehicle != nil,
-            workbench.canRun(
-                .survey(
-                    SurveyPlan(
-                        catalogVersion: "menu", vehicle: nil, platform: nil, candidates: [],
-                        unreachable: [])
-                ))
-        else { return nil }
+        guard let workbench, let vehicle = session.vehicle else { return nil }
+        // The plan a click would run decides, so saved recordings offer only a survey they hold.
+        // When no plan can be made, the item stays on and the click says why.
+        if let plan = try? model.surveyPlan(for: vehicle, workbench: workbench),
+            !workbench.canRun(.survey(plan))
+        {
+            return nil
+        }
         return { runSurvey(workbench) }
     }
 

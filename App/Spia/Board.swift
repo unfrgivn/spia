@@ -489,6 +489,7 @@ struct RunMenu: View {
         if workbench.connection.status == nil {
             Button(action: connect) { PrimaryPill(title: "Connect", menu: false) }
                 .buttonStyle(.plain)
+                .fixedSize()
                 .help("Connect the adapter to run checks")
         } else {
             Menu {
@@ -498,14 +499,10 @@ struct RunMenu: View {
                             job in
                             Button(job.menuTitle) { run(job) }
                         }
-                        if requirement == .ignitionOn, vehicle != nil, let survey {
-                            Button("Survey This Car", action: survey)
-                                .disabled(
-                                    workbench.canRun(
-                                        .survey(
-                                            SurveyPlan(
-                                                catalogVersion: "menu", vehicle: nil, platform: nil,
-                                                candidates: [], unreachable: []))))
+                        if requirement == .ignitionOn, vehicle != nil {
+                            // Off for the demo, and for saved recordings without this survey.
+                            Button("Survey This Car") { survey?() }
+                                .disabled(survey == nil)
                         }
                         // Module reads always need the ignition on.
                         if requirement == .ignitionOn { modules }
