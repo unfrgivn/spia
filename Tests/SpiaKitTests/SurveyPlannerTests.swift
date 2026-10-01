@@ -40,7 +40,72 @@ struct SurveyPlannerTests {
         #expect(plan.unreachable.contains { $0.target == savedMedium })
         #expect(plan.expected.contains(abs))
         #expect(plan.expected.contains(savedUnknown))
-        #expect(plan.expected.contains(savedMedium))
+        // The 125k bus is out of this adapter's reach, so it's never probed or missed.
+        #expect(!plan.expected.contains(savedMedium))
+    }
+
+    @Test("a module saved twice is probed once")
+    func duplicateSavedModules() throws {
+        let tcm = try ModuleTarget(bus: .highSpeed, request: 0x7E1, response: 0x7E9)
+        let plan = try SurveyPlanner.plan(
+            catalog: catalog(), vehicle: CatalogVehicle(make: "Mazda", model: "CX-5", year: 2014),
+            reachableBuses: [.highSpeed],
+            savedModules: [
+                ModuleChoice(target: tcm, label: "TCM-TransmisCtrl", confirmed: true),
+                ModuleChoice(target: tcm, label: "Transmission", confirmed: false),
+            ])
+        #expect(plan.candidates.filter { $0.target == tcm }.count == 1)
+        #expect(plan.expected.filter { $0 == tcm }.count == 1)
+        #expect(
+            plan.candidates.first { $0.target == tcm }?.origin
+                == .saved(label: "TCM-TransmisCtrl", confirmed: true))
+    }
+
+    @Test("the owner's real saved modules: the phone's Ghibli and the CX-5")
+    func realSavedModules() throws {
+        func target(_ request: UInt32, _ response: UInt32) throws -> ModuleTarget {
+            try ModuleTarget(bus: .highSpeed, request: request, response: response)
+        }
+        // The phone's Ghibli saved four modules, unconfirmed, from its survey with the car partly
+        // on. They keep their catalog places; the airbag controller and engine stay catalog.
+        let ghibliPlan = try SurveyPlanner.plan(
+            catalog: catalog(), vehicle: try ghibli(), reachableBuses: [.highSpeed],
+            savedModules: [
+                ModuleChoice(target: try target(0x747, 0x4C7), label: "ABS", confirmed: false),
+                ModuleChoice(
+                    target: try target(0x620, 0x504), label: "Body computer (BCM)", confirmed: false
+                ),
+                ModuleChoice(
+                    target: try target(0x763, 0x4E3), label: "Steering column (SCCM)",
+                    confirmed: false),
+                ModuleChoice(
+                    target: try target(0x7E1, 0x7E9), label: "Transmission", confirmed: false),
+            ])
+        #expect(
+            ghibliPlan.candidates.prefix(6).map(\.target.request) == [
+                0x744, 0x747, 0x620, 0x763, 0x7E0, 0x7E1,
+            ])
+        #expect(
+            ghibliPlan.candidates.prefix(6).map { candidate -> Bool in
+                if case .saved = candidate.origin { return true }
+                return false
+            } == [false, true, true, true, false, true])
+        #expect(ghibliPlan.expected.map(\.request) == [0x744, 0x747, 0x620, 0x763, 0x7E0, 0x7E1])
+
+        // The CX-5 saved its transmission, which named itself; no catalog knows the car, so it
+        // comes before the legislated addresses, and the engine computer is expected too.
+        let cx5Plan = try SurveyPlanner.plan(
+            catalog: catalog(), vehicle: CatalogVehicle(make: "Mazda", model: "CX-5", year: 2014),
+            reachableBuses: [.highSpeed],
+            savedModules: [
+                ModuleChoice(
+                    target: try target(0x7E1, 0x7E9), label: "TCM-TransmisCtrl", confirmed: true)
+            ])
+        #expect(
+            cx5Plan.candidates.map(\.target.request) == [
+                0x7E1, 0x7E0, 0x7E2, 0x7E3, 0x7E4, 0x7E5, 0x7E6, 0x7E7,
+            ])
+        #expect(cx5Plan.expected.map(\.request) == [0x7E1, 0x7E0])
     }
     private func catalog() throws -> ModuleCatalog { try ModuleCatalog.bundled() }
 

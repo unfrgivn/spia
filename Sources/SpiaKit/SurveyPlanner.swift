@@ -170,7 +170,10 @@ public enum SurveyPlanner {
                 target: $0.target,
                 origin: .catalog(label: $0.label, provenance: $0.provenance, source: $0.source))
         }
-        let savedByTarget = Dictionary(uniqueKeysWithValues: savedModules.map { ($0.target, $0) })
+        // A module saved twice (the modules editor allows it) is still one module.
+        var seen = Set<ModuleTarget>()
+        let saved = savedModules.filter { seen.insert($0.target).inserted }
+        let savedByTarget = Dictionary(uniqueKeysWithValues: saved.map { ($0.target, $0) })
         var known = catalogCandidates.map { candidate in
             guard let saved = savedByTarget[candidate.target] else { return candidate }
             return SurveyCandidate(
@@ -178,7 +181,7 @@ public enum SurveyPlanner {
                 origin: .saved(label: saved.label, confirmed: saved.confirmed))
         }
         let catalogTargets = Set(catalogCandidates.map(\.target))
-        known += savedModules.filter { !catalogTargets.contains($0.target) }.map {
+        known += saved.filter { !catalogTargets.contains($0.target) }.map {
             SurveyCandidate(
                 target: $0.target, origin: .saved(label: $0.label, confirmed: $0.confirmed))
         }
@@ -201,23 +204,25 @@ public enum SurveyPlanner {
             catalogVersion: catalog.catalogVersion, vehicle: vehicle,
             platform: match?.name, candidates: candidates,
             unreachable: known.filter { !reachable.contains($0.target.bus) },
-            requiresVIN: vehicle != nil,
-            expected: expectedTargets(from: candidates, saved: savedModules),
+            requiresVIN: true,
+            expected: expectedTargets(from: candidates),
             detectsProtocol: true)
     }
 
-    private static func expectedTargets(
-        from candidates: [SurveyCandidate], saved: [ModuleChoice]
-    ) -> [ModuleTarget] {
-        var targets = saved.map(\.target)
-        targets += candidates.compactMap { candidate -> ModuleTarget? in
-            if case .catalog(_, .observed, _) = candidate.origin { return candidate.target }
-            return nil
+    /// The candidates the survey should hear from, in probe order: the car's saved modules,
+    /// catalog modules seen answering on this platform, and the engine computer every car has at
+    /// `7E0`. Unreachable modules are never probed, so they can't be missed either.
+    private static func expectedTargets(from candidates: [SurveyCandidate]) -> [ModuleTarget] {
+        candidates.compactMap { candidate in
+            let target = candidate.target
+            switch candidate.origin {
+            case .saved, .catalog(_, .observed, _):
+                return target
+            case .catalog, .legislated:
+                let engine =
+                    target.bus == .highSpeed && target.request == 0x7E0 && target.response == 0x7E8
+                return engine ? target : nil
+            }
         }
-        let engine =
-            candidates.first { $0.target.request == 0x7E0 && $0.target.response == 0x7E8 }?.target
-            ?? (try? ModuleTarget(bus: .highSpeed, request: 0x7E0, response: 0x7E8))
-        if let engine, !targets.contains(engine) { targets.append(engine) }
-        return targets
     }
 }
