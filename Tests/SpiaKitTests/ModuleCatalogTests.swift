@@ -36,7 +36,7 @@ struct ModuleCatalogTests {
         let catalog = try catalog()
         #expect(catalog.schemaVersion == 1)
         #expect(catalog.makes.count == 2)
-        #expect(catalog.makes.first { $0.make == "Volkswagen" }?.platforms[0].modules.count == 24)
+        #expect(catalog.makes.first { $0.make == "Volkswagen" }?.platforms[0].modules.count == 19)
         for make in catalog.makes {
             for platform in make.platforms {
                 #expect(platform.modules.allSatisfy { $0.target.request != 0x7DF })

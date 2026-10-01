@@ -94,7 +94,8 @@ struct SurveyPlannerTests {
             catalog: catalog,
             vehicle: CatalogVehicle(make: "Volkswagen", model: "Tiguan", year: 2018),
             reachableBuses: [])
-        #expect(tiguan.candidates.count == 30)
+        // The 19 modules that answered on a 2018 Tiguan, then 7E2-7E7 (7E0 and 7E1 are among them).
+        #expect(tiguan.candidates.count == 25)
         #expect(tiguan.platform == "MQB (second-generation Tiguan)")
     }
 

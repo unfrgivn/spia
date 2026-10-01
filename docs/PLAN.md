@@ -120,8 +120,8 @@ Make knowledge ships as bundled, versioned JSON in SpiaKit: makes, then platform
 
 Seeds:
 
-- Maserati M157, observed on the Ghibli: airbag `744` → `4C4`, ABS `747` → `4C7`, body computer `620` → `504`. Steering column `763` → `4E3` is from references and unverified.
-- VW MQB, 24 modules, reference only, from a public list extracted from ODIS ([vag-uds-ids](https://github.com/ConnorHowell/vag-uds-ids)): gateway `710` → `77A`, central electronics `70E` → `778`, steering assist `712` → `77C`, brakes `713` → `77D`, airbag `715` → `77F`.
+- Maserati M157, all six observed on the Ghibli: airbag `744` → `4C4`, ABS `747` → `4C7`, body computer `620` → `504`, steering column `763` → `4E3`, engine `7E0` → `7E8`, transmission `7E1` → `7E9`.
+- VW MQB, 19 modules, all observed on a 2018 Tiguan on 2026-09-30, each naming itself: gateway `710` → `77A`, central electronics `70E` → `778`, steering assist `712` → `77C`, brakes `713` → `77D`, airbag `715` → `77F`, and the rest. A public list extracted from ODIS ([vag-uds-ids](https://github.com/ConnorHowell/vag-uds-ids)) said where to look, but it has no license, so since 2026-10-01 the catalog keeps only what the car itself answered. The five addresses only that list knew (immobilizer, parking brake, second all-wheel-drive address, tire pressure, headlight range) are gone; recordings made before then still carry them in their saved plans.
 
 ### Testing
 
