@@ -199,11 +199,14 @@
             let airbag = try candidate(0x744)
             let abs = try candidate(0x747)
             let bcm = try candidate(0x620)
+            let steering = try candidate(0x763)
             let engine = try candidate(0x7E0)
             let transmission = try candidate(0x7E1)
-            // The names the Ghibli's engine and transmission computers gave to 09 0A on the car.
+            // What the Ghibli answered on the car over USB (2026-09-30): six modules, and the names
+            // and VIN its engine and transmission computers gave to 09.
             var ecm = ECUInfoReport(ecu: 0x7E8)
             ecm.name = .positive("ECM1-EngineControl1")
+            ecm.vin = .positive("ZAM57RTS4H1249941")
             var tcm = ECUInfoReport(ecu: 0x7E9)
             tcm.name = .positive("TCM\0-TransmisCtrl")
             let noCodes = SurveyCodes.outcome(.records(availability: 0xFF, []))
@@ -226,6 +229,16 @@
                             availability: 0xFB,
                             [ModuleDTCRecord(code: "100900", status: 0x2B)]))),
                 SurveyModule(
+                    candidate: steering, presence: .present, identification: [],
+                    codes: .outcome(
+                        .records(
+                            availability: 0x39,
+                            [
+                                ModuleDTCRecord(code: "059300", status: 0x29),
+                                ModuleDTCRecord(code: "058100", status: 0x29),
+                                ModuleDTCRecord(code: "D00800", status: 0x28),
+                            ]))),
+                SurveyModule(
                     candidate: engine, presence: .present, identification: [], codes: noCodes),
                 SurveyModule(
                     candidate: transmission, presence: .present, identification: [],
@@ -239,33 +252,20 @@
                 notProbed: [], stop: nil)
         }
 
+        /// The same Ghibli on the phone, surveyed as its ignition came on: only the engine answered
+        /// the opening requests, then it and the airbag controller stayed silent at their probes.
         private static func surveyReportMissing() throws -> SurveyReport {
             let report = try surveyReport()
-            let silent = report.modules.filter {
-                $0.candidate.target.request == 0x744 || $0.candidate.target.request == 0x7E0
-            }
-            let found = report.modules.filter {
-                $0.candidate.target.request != 0x744 && $0.candidate.target.request != 0x7E0
-            }
-            let steering = report.plan.candidates.first { $0.target.request == 0x763 }
-                .map {
-                    SurveyModule(
-                        candidate: $0, presence: .present, identification: [],
-                        codes: .outcome(
-                            .records(
-                                availability: 0x39,
-                                [
-                                    ModuleDTCRecord(code: "059300", status: 0x29),
-                                    ModuleDTCRecord(code: "058100", status: 0x29),
-                                    ModuleDTCRecord(code: "D00800", status: 0x28),
-                                ])))
-                }
+            let silent: Set<UInt32> = [0x744, 0x7E0]
             return SurveyReport(
-                plan: report.plan, voltage: report.voltage, vehicleInfo: report.vehicleInfo,
-                modules: found + (steering.map { [$0] } ?? []),
-                unanswered: report.unanswered.filter { $0.target.request != 0x763 }
-                    + silent.map(\.candidate),
-                notProbed: report.notProbed, stop: report.stop)
+                plan: report.plan, voltage: 11.8,
+                vehicleInfo: report.vehicleInfo.filter { $0.ecu == 0x7E8 },
+                modules: report.modules.filter { !silent.contains($0.candidate.target.request) },
+                unanswered: report.plan.candidates.filter { candidate in
+                    silent.contains(candidate.target.request)
+                        || report.unanswered.contains { $0.target == candidate.target }
+                },
+                notProbed: [], stop: nil)
         }
 
         /// A question about the airbag row and an answer, as if the owner had tapped Explain,
