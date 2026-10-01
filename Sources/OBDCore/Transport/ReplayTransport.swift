@@ -112,9 +112,7 @@ public actor ReplayTransport: Transport {
             throw ReplayError.exhausted
         }
         let event = events[cursor]
-        guard event.direction == .rx else {
-            throw ReplayError.unexpectedRead(pendingWrite: event.bytes)
-        }
+        guard event.direction == .rx else { return [] }
         cursor += 1
         return event.bytes
     }

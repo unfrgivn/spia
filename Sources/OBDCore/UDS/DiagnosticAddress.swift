@@ -79,6 +79,16 @@ public enum ReceiveFilter: Codable, Equatable, Hashable, Sendable {
     /// `600`-`7FF`.
     case window(mask: UInt32, pattern: UInt32)
 
+    public var mask: UInt32 {
+        if case .window(let mask, _) = self { return mask }
+        return 0x7FF
+    }
+
+    public var pattern: UInt32 {
+        if case .window(_, let pattern) = self { return pattern }
+        return 0
+    }
+
     /// The smallest aligned window covering `lowest`...`highest`.
     public static func window(covering lowest: UInt32, _ highest: UInt32) throws -> ReceiveFilter {
         guard lowest <= highest, highest <= 0x7FF else {

@@ -318,6 +318,7 @@ public actor ELM327Session {
     /// unsupported command. The caller sees that as a `.prompt` event.
     public func monitor(
         _ command: String = "ATMA",
+        for duration: Duration? = nil,
         handle: @Sendable (Duration, MonitorEvent) async -> Bool
     ) async throws {
         try beginOperation()
@@ -325,22 +326,35 @@ public actor ELM327Session {
         transportUnsynchronized = true
         try await transport.write(Array((command + "\r").utf8))
         let started = clock.now
+        let deadline = duration.map { started + $0 }
         var parser = MonitorStreamParser()
         var running = true
-        while running, !Task.isCancelled {
-            let chunk = try await transport.read(timeout: .milliseconds(250))
-            let elapsed = started.duration(to: clock.now)
-            for event in parser.feed(chunk) {
-                let wanted = await handle(elapsed, event)
-                if event == .prompt {
-                    transportUnsynchronized = false
-                    return
+        do {
+            while running, !Task.isCancelled {
+                if let deadline, clock.now >= deadline { break }
+                let readTimeout: Duration
+                if let deadline {
+                    readTimeout = min(.milliseconds(250), clock.now.duration(to: deadline))
+                } else {
+                    readTimeout = .milliseconds(250)
                 }
-                if !wanted {
-                    running = false
-                    break
+                let chunk = try await transport.read(timeout: readTimeout)
+                let elapsed = started.duration(to: clock.now)
+                for event in parser.feed(chunk) {
+                    let wanted = await handle(elapsed, event)
+                    if event == .prompt {
+                        transportUnsynchronized = false
+                        return
+                    }
+                    if !wanted {
+                        running = false
+                        break
+                    }
                 }
             }
+        } catch is CancellationError {
+            try await stopMonitoring()
+            throw CancellationError()
         }
         try await stopMonitoring()
     }
