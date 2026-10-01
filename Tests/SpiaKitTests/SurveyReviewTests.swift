@@ -134,29 +134,44 @@ struct SurveyReviewTests {
         let garbled = Self.module(
             Self.known("Steering column (SCCM)", try Self.target(0x763, 0x4E3)),
             codes: .unreadable("bad response"))
+        let selfNamed = Self.module(
+            SurveyCandidate(target: try Self.target(0x7E3, 0x7EB), origin: .legislated),
+            identification: [
+                SurveyIdentification(did: 0xF197, result: .value(Array("HPCM   ".utf8)))
+            ])
+        let obdNamed = Self.module(
+            SurveyCandidate(target: try Self.target(0x7E0, 0x7E8), origin: .legislated))
         let review = SurveyReview(
             report: Self.report(
-                vehicleInfo: [Self.ecu(0x7E9, named: "TCM\0-TransmisCtrl")],
-                modules: [named, transmission, abs, unnamed, silent, garbled]))
+                vehicleInfo: [
+                    Self.ecu(0x7E9, named: "TCM\0-TransmisCtrl"),
+                    Self.ecu(0x7E8, named: "ECM1-EngineControl1\0"),
+                ],
+                modules: [named, transmission, abs, unnamed, silent, garbled, selfNamed, obdNamed]))
 
         #expect(
             review.rows.map(\.proposedName) == [
                 "Airbag controller (ORC)", "Transmission", "ABS", "Module 7E2",
-                "Body computer (BCM)",
-                "Steering column (SCCM)",
+                "Body computer (BCM)", "Steering column (SCCM)", "HPCM", "ECM1-EngineControl1",
             ])
         #expect(
             review.rows.map(\.caption) == [
                 "Calls itself SRS ORC", "Calls itself TCM-TransmisCtrl",
                 "From references, unconfirmed", "No name found",
                 "From references, unconfirmed", "From references, unconfirmed",
+                "Named itself", "Named itself",
             ])
-        #expect(review.rows.map(\.ownName) == ["SRS ORC", "TCM-TransmisCtrl", nil, nil, nil, nil])
-        #expect(review.rows.map(\.confirmed) == [true, true, false, false, false, false])
+        #expect(
+            review.rows.map(\.ownName) == [
+                "SRS ORC", "TCM-TransmisCtrl", nil, nil, nil, nil, "HPCM", "ECM1-EngineControl1",
+            ])
+        #expect(
+            review.rows.map(\.confirmed) == [true, true, false, false, false, false, true, true])
         #expect(
             review.rows.map(\.codesSummary) == [
                 "2 codes", "1 code", "No codes", "Didn't give its codes",
-                "Didn't answer the code request", "Couldn't read its codes",
+                "Didn't answer the code request", "Couldn't read its codes", "No codes",
+                "No codes",
             ])
     }
 
