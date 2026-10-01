@@ -227,8 +227,10 @@ Slices, each verified with real recordings:
 2. Done: a car's saved modules become candidates (and expected) in every later survey; the survey reads the protocol (`ATDPN`) after the opening, and on non-CAN, 29-bit, or 250k cars reads the engine computers only and says why.
 3. Done: the opendbc import (see The catalog above).
 4. Built, not yet run on a car: the thorough search on 11-bit 500k CAN, opt-in (design below), tested on the Ghibli's bus capture and its survey recordings. The next car visit runs it on the Ghibli and the CX-5.
-5. 29-bit modules: `ModuleTarget` gains an explicit addressing field (the store migrates existing rows to 11-bit), then a 29-bit sweep of `18DA<target>F1` and the 29-bit opendbc rows (Honda). Live 29-bit runs stay off until a real 29-bit recording exists.
+5. 29-bit modules: a target's width follows its IDs (at or below `7FF` is 11-bit; `18DA..` is 29-bit), so saved modules, plans, and recordings need no migration; 29-bit targets stay on the 500k bus, where `ATSP7` reaches them, until `STP 54` is verified. The catalog then gains opendbc's 29-bit rows (Honda and Acura chassis modules at `18DA<target>F1` replying `18DAF1<target>`, and a 2022-on Jeep whose engine itself is 29-bit). Cars whose legislated OBD is 29-bit (protocol 7 or 9) still get their engine computers only until a real 29-bit recording shows the survey's physical probes there.
 6. The 125k bus: known modules first (`STP 53`), sweeping later. `STP 54` stays unverified.
+7. Toyota's sub-addressed modules (opendbc's 78 rows at `750` with a sub-address, among them the parking brake `2C`, telematics `C7`, gateway `5F`, body `40`, and the camera and radar on newer cars): the request goes to `750` with the sub-address as its first data byte, and the reply comes on `758` with the same first byte (opendbc's `uds.py` adds and strips it). ELM327 does this with `AT CEA hh` (insert the byte) and `AT CER hh` (expect it back), set after `AT CEA`. A target needs a field for the sub-address. Some of these modules speak KWP2000 (`1A 88`) rather than UDS, so they may answer TesterPresent and refuse `22` and `19`.
+8. GM: older GM (Global A, through about 2019) sends physical diagnostic requests at `0x24x` and answers at `+0x400` (`0x64x`; opendbc's `GM_RX_OFFSET`, its one GM address `0x24B` for the camera, and community captures of the BCM at `241` and the cluster at `24C`). It identifies modules with GM's own `1A` and reads codes with `A9` (GMW3110), not UDS `22` and `19`, so today's survey would find GM modules but read nothing from them. Sweeping `240`-`25F` is GM-only and needs its own listen, since that band carries ordinary traffic on other makes (the Ghibli's included). Newer GM (Global B, 2020 on) adds CAN FD, gateway isolation, and authentication. No public source gives a GM module table, so nothing here is built before a GM car is recorded.
 
 The thorough search, as designed:
 
@@ -238,7 +240,7 @@ The thorough search, as designed:
 - Sweep: requests `600` to `7FF`, minus `7DF`, `7E0`-`7E7`, known candidates, and IDs heard. Per ID, `ATSH` then `3E 00` under a short `ATST`. A reply counts only as a valid TesterPresent answer (`7E 00`, or `7F 3E` with any code but `78`). About 80 ms per ID over USB and 120 ms over Bluetooth, so roughly 40 and 60 seconds.
 - Confirm each pair with an exact `ATCRA` probe, then identify it and read its codes like any module. Found modules join the review as found by searching; saved, they join every later survey.
 - Replay: the search's parameters are fixed in the plan before it runs; what it heard and found is in the report, and a replay of its recording reproduces both.
-- Not covered by the default range: GM's physical requests sit near `241` with replies near `641` (unverified), and BMW uses extended addressing; both need per-make ranges as catalog data.
+- Not covered by the default range: GM's physical requests at `0x24x` (slice 8), and BMW's extended addressing; each needs per-make ranges and its own listen.
 
 ## The Ghibli's actual fault (why UDS comes first)
 
