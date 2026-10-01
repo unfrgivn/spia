@@ -62,14 +62,20 @@ struct SurveyPolicyReplayTests {
         try await connection.connect()
         let runner = JobRunner(connection: connection)
         var failure: JobFailure?
+        var steps: [String] = []
         for await event in await runner.run(.survey(plan)) {
             switch event {
             case .needsUser(let id, _): await runner.confirm(id)
+            case .step(let step): steps.append(step)
             case .failed(let value): failure = value
             default: break
             }
         }
         #expect(plan.expected.first?.request == 0x744)
+        // Every recorded probe matched, then the second look began, for the airbag controller and
+        // the engine, with the first command the recording doesn't have.
+        #expect(steps.contains("Looking for modules: 12 of 12"))
+        #expect(steps.last == "Looking again: 1 of 2")
         #expect(failure?.message.contains("ATSP6") == true)
     }
 
