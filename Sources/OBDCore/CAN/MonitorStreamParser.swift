@@ -32,7 +32,7 @@ public struct MonitorStreamParser: Sendable {
             if byte == 0x0D || byte == 0x0A {
                 let line = String(decoding: pending, as: UTF8.self)
                 pending.removeAll(keepingCapacity: true)
-                events.append(contentsOf: Self.events(for: line))
+                events.append(contentsOf: Self.events(forLine: line))
             } else {
                 pending.append(byte)
                 if pending.count > Self.maximumPendingBytes {
@@ -54,7 +54,7 @@ public struct MonitorStreamParser: Sendable {
     /// While monitoring, STN firmware prints raw broadcast frames whose first byte is not a valid
     /// ISO-TP PCI as `1028001122334455<DATA ERROR`. The frame is fine, it just is not a
     /// diagnostic message, so it must not be lost.
-    private static func events(for rawLine: String) -> [MonitorEvent] {
+    public static func events(forLine rawLine: String) -> [MonitorEvent] {
         let line = rawLine.trimmingCharacters(in: .whitespaces)
         if line.isEmpty {
             return []

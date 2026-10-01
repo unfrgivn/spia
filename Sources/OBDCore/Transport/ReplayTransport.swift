@@ -81,7 +81,7 @@ public actor ReplayTransport: Transport {
     }
 
     public func read(timeout: Duration) async throws -> [UInt8] {
-        guard timing == .recorded else { return try readImmediately() }
+        guard timing == .recorded else { return try await readImmediately(timeout: timeout) }
         let decision = Self.readDecision(
             events: events, cursor: cursor,
             lastWriteRecordedMilliseconds: lastWrite?.recordedMilliseconds,
@@ -107,12 +107,18 @@ public actor ReplayTransport: Transport {
         }
     }
 
-    private func readImmediately() throws -> [UInt8] {
+    /// The recording's next byte, at once. When the recording says we write next, there is
+    /// nothing to read yet: like a live adapter with no data, the read waits out its timeout and
+    /// returns empty, so a monitor running to a deadline idles instead of spinning.
+    private func readImmediately(timeout: Duration) async throws -> [UInt8] {
         guard cursor < events.count else {
             throw ReplayError.exhausted
         }
         let event = events[cursor]
-        guard event.direction == .rx else { return [] }
+        guard event.direction == .rx else {
+            try await Task.sleep(for: timeout)
+            return []
+        }
         cursor += 1
         return event.bytes
     }
