@@ -4,70 +4,135 @@ import OBDCore
 import SpiaKit
 import Testing
 
-/// The app's own recordings from the 2017 Ghibli S Q4 on 2026-09-30, made by onboarding the car
-/// in the Mac app over the USB vLinker FS with the ignition on: the survey, then vehicle
-/// information (which reset the adapter in place, because the survey had left it on a module),
-/// then the scan. Each replays through today's code to the result the app saved at the car.
-@Suite("Ghibli app recordings")
+/// The app's own recordings from the cars on 2026-09-30, copied verbatim from its libraries with
+/// the results it saved when it made them:
+///
+/// - `ghibli-app-*`: the 2017 Ghibli S Q4 onboarded in the Mac app over the USB vLinker FS. The
+///   survey (after an ignition prompt), vehicle information, and the scan.
+/// - `ghibli-app-ble-*`: the same car minutes later, onboarded on an iPhone over the Bluetooth
+///   vLinker FS while its ignition had only just come on. The survey, vehicle information (after
+///   an ignition prompt, because by then the car had gone quiet), the scan, and a body computer
+///   read.
+/// - `tiguan-app-*`: the 2018 Tiguan onboarded in the Mac app over USB. The survey, then vehicle
+///   information.
+@Suite("App recordings from the cars")
 struct CarSurveyReplayTests {
-    private static let vin = "ZAM57RTS4H1249941"
-    private let adapter = AdapterDescriptor(kind: .usbSerial, displayName: "vLinker FS")
+    struct Recording: Sendable, CustomTestStringConvertible {
+        let name: String
+        let adapter: ConnectionKind
+        /// What the app asked the owner during the check, in order.
+        let prompts: [UserAction]
 
-    private func fixture(_ name: String) -> URL {
+        var testDescription: String { name }
+    }
+
+    static let recordings = [
+        Recording(name: "ghibli-app-survey", adapter: .usbSerial, prompts: [.turnIgnitionOn]),
+        Recording(name: "ghibli-app-vehicle-info-after-survey", adapter: .usbSerial, prompts: []),
+        Recording(name: "ghibli-app-scan", adapter: .usbSerial, prompts: []),
+        Recording(name: "ghibli-app-ble-survey", adapter: .bluetooth, prompts: []),
+        Recording(
+            name: "ghibli-app-ble-vehicle-info-after-survey", adapter: .bluetooth,
+            prompts: [.turnIgnitionOn]),
+        Recording(name: "ghibli-app-ble-scan", adapter: .bluetooth, prompts: []),
+        Recording(name: "ghibli-app-ble-bcm-read", adapter: .bluetooth, prompts: []),
+        Recording(name: "tiguan-app-survey", adapter: .usbSerial, prompts: []),
+        Recording(name: "tiguan-app-vehicle-info-after-survey", adapter: .usbSerial, prompts: []),
+    ]
+
+    private static let ghibliVIN = "ZAM57RTS4H1249941"
+    private static let tiguanVIN = "3VV4B7AX3JM197049"
+
+    private static func fixture(_ name: String) -> URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Fixtures").appendingPathComponent(name)
     }
 
-    private func saved(_ name: String) throws -> JobResult {
-        try JSONDecoder().decode(JobResult.self, from: Data(contentsOf: fixture(name)))
+    private static func saved(_ name: String) throws -> JobResult {
+        try JSONDecoder().decode(
+            JobResult.self, from: Data(contentsOf: fixture("\(name).result.json")))
     }
 
-    /// Runs `job` over a fresh connection to the recording, confirming any ignition prompt.
-    private func replay(
-        _ job: DiagnosticJob, from recording: String
-    ) async throws -> (result: JobResult?, finished: Bool) {
-        let transport = try ReplayTransport(contentsOf: fixture(recording))
+    private static func transcript(_ name: String) throws -> [TranscriptEvent] {
+        try Transcript.decodeFile(String(contentsOf: fixture("\(name).txt"), encoding: .utf8))
+    }
+
+    private static func sent(_ name: String) throws -> [String] {
+        try transcript(name).filter { $0.direction == .tx }
+            .map { String(decoding: $0.bytes.dropLast(), as: UTF8.self) }
+    }
+
+    private static func survey(_ name: String) throws -> SurveyReport {
+        guard case .survey(let report) = try saved(name).payload else {
+            throw ReplayFailure("\(name) isn't a survey")
+        }
+        return report
+    }
+
+    private static func vehicleInfo(_ name: String) throws -> [ECUIdentity] {
+        guard case .vehicleInfo(let ecus) = try saved(name).payload else {
+            throw ReplayFailure("\(name) isn't vehicle information")
+        }
+        return ecus
+    }
+
+    private static func module(_ request: UInt32, in report: SurveyReport) throws -> SurveyModule {
+        try #require(report.modules.first { $0.candidate.target.request == request })
+    }
+
+    private static func records(_ module: SurveyModule) -> [ModuleDTCRecord] {
+        if case .outcome(.records(_, let records)) = module.codes { return records }
+        return []
+    }
+
+    private struct ReplayFailure: Error, CustomStringConvertible {
+        let description: String
+        init(_ description: String) { self.description = description }
+    }
+
+    @Test("each saved result names its recording by size and SHA-256", arguments: recordings)
+    func recordingMatchesResult(_ recording: Recording) throws {
+        let result = try Self.saved(recording.name)
+        let data = try Data(contentsOf: Self.fixture("\(recording.name).txt"))
+        #expect(result.source == .live)
+        #expect(result.transcript?.byteCount == data.count)
+        #expect(
+            result.transcript?.sha256
+                == SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined())
+    }
+
+    @Test(
+        "each recording replays to the result the app saved, asking what it asked",
+        arguments: recordings)
+    func replays(_ recording: Recording) async throws {
+        let saved = try Self.saved(recording.name)
+        let transport = try ReplayTransport(contentsOf: Self.fixture("\(recording.name).txt"))
+        let adapter = AdapterDescriptor(kind: recording.adapter, displayName: "vLinker FS")
         let connection = ConnectionManager(adapter: adapter) { transport }
         try await connection.connect()
         let runner = JobRunner(connection: connection)
         var result: JobResult?
-        for await event in await runner.run(job) {
+        var prompts: [UserAction] = []
+        for await event in await runner.run(saved.job) {
             switch event {
-            case .needsUser(let id, _): await runner.confirm(id)
+            case .needsUser(let id, let action):
+                prompts.append(action)
+                await runner.confirm(id)
             case .completed(let completed): result = completed
             default: break
             }
         }
-        return (result, await transport.isFinished)
+        #expect(result?.payload == saved.payload)
+        #expect(prompts == recording.prompts)
+        #expect(await transport.isFinished)
     }
 
-    @Test("each saved result names its recording by size and SHA-256")
-    func recordingsMatchResults() throws {
-        for name in [
-            "ghibli-app-survey", "ghibli-app-vehicle-info-after-survey", "ghibli-app-scan",
-        ] {
-            let result = try saved("\(name).result.json")
-            let data = try Data(contentsOf: fixture("\(name).txt"))
-            #expect(result.source == .live)
-            #expect(result.transcript?.byteCount == data.count)
-            #expect(
-                result.transcript?.sha256
-                    == SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined())
-        }
-    }
-
-    @Test("the survey replays to the report the app saved at the car")
-    func survey() async throws {
-        let saved = try saved("ghibli-app-survey.result.json")
-        guard case .survey(let plan) = saved.job, case .survey(let report) = saved.payload else {
-            Issue.record("the saved result isn't a survey")
-            return
-        }
-        let replayed = try await replay(.survey(plan), from: "ghibli-app-survey.txt")
-        #expect(replayed.result?.payload == saved.payload)
-        #expect(replayed.finished)
-
+    @Test(
+        "the Ghibli over USB: six modules, each giving the VIN, and only the engine computers named"
+    )
+    func ghibliSurvey() throws {
+        let report = try Self.survey("ghibli-app-survey")
         // Every module the catalog knows for M157 answered, and none of the other legislated IDs.
         #expect(
             report.modules.map(\.candidate.target.request) == [
@@ -80,13 +145,12 @@ struct CarSurveyReplayTests {
             let identification = Dictionary(
                 module.identification.map { ($0.did, $0.result) },
                 uniquingKeysWith: { first, _ in first })
-            #expect(identification[0xF190] == .value(Array(Self.vin.utf8)))
+            #expect(identification[0xF190] == .value(Array(Self.ghibliVIN.utf8)))
             #expect(identification[0xF197] == .refused(0x31))
         }
         // The steering column, read here for the first time: two codes failing now, one confirmed.
-        let steering = try #require(report.modules.first { $0.candidate.target.request == 0x763 })
         #expect(
-            steering.codes
+            try Self.module(0x763, in: report).codes
                 == .outcome(
                     .records(
                         availability: 0x39,
@@ -95,7 +159,7 @@ struct CarSurveyReplayTests {
                             ModuleDTCRecord(code: "058100", status: 0x29),
                             ModuleDTCRecord(code: "D00800", status: 0x28),
                         ])))
-        let airbag = try #require(report.modules.first { $0.candidate.target.request == 0x744 })
+        let airbag = try Self.module(0x744, in: report)
         #expect(
             airbag.codes
                 == .outcome(
@@ -108,30 +172,35 @@ struct CarSurveyReplayTests {
         #expect(
             airbag.identification.first { $0.did == 0xF187 }?.result
                 == .value(Array("670101610  ".utf8)))
+
+        // The FCA modules keep their reference labels, unconfirmed; the engine and transmission
+        // keep theirs too, confirmed by the names they gave over OBD.
+        let proposed = report.proposedModules()
+        #expect(
+            proposed.map(\.label) == [
+                "Airbag controller (ORC)", "ABS", "Body computer (BCM)", "Steering column (SCCM)",
+                "Engine", "Transmission",
+            ])
+        #expect(proposed.map(\.confirmed) == [false, false, false, false, true, true])
+        #expect(
+            SurveyReview(report: report).rows.map(\.caption) == [
+                "From references, unconfirmed", "From references, unconfirmed",
+                "From references, unconfirmed", "From references, unconfirmed",
+                "Calls itself ECM1-EngineControl1", "Calls itself TCM-TransmisCtrl",
+            ])
     }
 
-    @Test("vehicle information right after the survey reset the adapter in place and read the VIN")
-    func vehicleInfoAfterSurvey() async throws {
-        let saved = try saved("ghibli-app-vehicle-info-after-survey.result.json")
-        let replayed = try await replay(
-            .vehicleInfo, from: "ghibli-app-vehicle-info-after-survey.txt")
-        #expect(replayed.result?.payload == saved.payload)
-        #expect(replayed.finished)
-        guard case .vehicleInfo(let ecus) = saved.payload else {
-            Issue.record("the saved result isn't vehicle information")
-            return
-        }
+    @Test("vehicle information right after the Ghibli's USB survey reset the adapter in place")
+    func ghibliVehicleInfoAfterSurvey() throws {
+        let ecus = try Self.vehicleInfo("ghibli-app-vehicle-info-after-survey")
         #expect(ecus.map(\.ecu) == [0x7E8, 0x7E9])
-        #expect(ecus.compactMap(\.vin.value).contains(Self.vin))
+        #expect(ecus.compactMap(\.vin.value).contains(Self.ghibliVIN))
 
         // The reset happened on a connection already set up: the adapter didn't echo `ATZ`
         // because echo was still off, whereas the survey's connect, on an adapter fresh from
         // power-up, echoed it.
-        let reset = try Transcript.decodeFile(
-            String(contentsOf: fixture("ghibli-app-vehicle-info-after-survey.txt"), encoding: .utf8)
-        )
-        let connect = try Transcript.decodeFile(
-            String(contentsOf: fixture("ghibli-app-survey.txt"), encoding: .utf8))
+        let reset = try Self.transcript("ghibli-app-vehicle-info-after-survey")
+        let connect = try Self.transcript("ghibli-app-survey")
         #expect(reset.first?.bytes == Array("ATZ\r".utf8))
         #expect(!String(decoding: reset[1].bytes, as: UTF8.self).contains("ATZ"))
         #expect(connect.first?.bytes == Array("ATZ\r".utf8))
@@ -139,11 +208,118 @@ struct CarSurveyReplayTests {
             String(decoding: connect[1].bytes + connect[2].bytes, as: UTF8.self).hasPrefix("ATZ"))
     }
 
-    @Test("the scan after it replays to the result the app saved")
-    func scan() async throws {
-        let saved = try saved("ghibli-app-scan.result.json")
-        let replayed = try await replay(.genericScan, from: "ghibli-app-scan.txt")
-        #expect(replayed.result?.payload == saved.payload)
-        #expect(replayed.finished)
+    @Test("the Ghibli over Bluetooth, surveyed as its ignition came on: four modules answered")
+    func ghibliBluetoothSurvey() throws {
+        let report = try Self.survey("ghibli-app-ble-survey")
+        // The airbag controller and the engine, which answered over USB minutes earlier, stayed
+        // silent: the car's power was changing during this survey, not the adapter dropping
+        // replies, as the next three checks show.
+        #expect(report.modules.map(\.candidate.target.request) == [0x747, 0x620, 0x763, 0x7E1])
+        #expect(
+            report.unanswered.map(\.target.request) == [0x744, 0x7E0] + Array(0x7E2...0x7E7))
+        // Only the engine answered the opening requests. The transmission was still starting up,
+        // and answered its own address seven seconds later.
+        #expect(report.vehicleInfo.map(\.ecu) == [0x7E8])
+        // The body computer's code says its operation cycle had only just begun: test not
+        // completed this cycle (0x40), and not yet failed this cycle (0x02). Over USB, and again
+        // over Bluetooth a minute later, the same code reads 0x2B.
+        #expect(
+            try Self.module(0x620, in: report).codes
+                == .outcome(
+                    .records(availability: 0xFB, [ModuleDTCRecord(code: "100900", status: 0x69)])))
+        #expect(
+            Self.records(try Self.module(0x763, in: report)) == [
+                ModuleDTCRecord(code: "059300", status: 0x29),
+                ModuleDTCRecord(code: "058100", status: 0x29),
+                ModuleDTCRecord(code: "D00800", status: 0x28),
+            ])
+    }
+
+    @Test("over Bluetooth, the reset after the survey worked and the car had gone quiet")
+    func ghibliBluetoothAfterSurvey() throws {
+        // The survey left the adapter listening for `7EF` only, the last address it asked. The
+        // next check reset it first, so the engine computers' replies on `7E8` and `7E9` got
+        // through: but only after an ignition prompt, because nothing answered at first.
+        #expect(
+            try Self.sent("ghibli-app-ble-survey").last { $0.hasPrefix("ATCRA") } == "ATCRA 7EF")
+        let sent = try Self.sent("ghibli-app-ble-vehicle-info-after-survey")
+        #expect(sent.first == "ATZ")
+        #expect(sent.filter { $0 == "0900" }.count == 2)
+        let ecus = try Self.vehicleInfo("ghibli-app-ble-vehicle-info-after-survey")
+        #expect(ecus.map(\.ecu) == [0x7E8, 0x7E9])
+        #expect(ecus.compactMap(\.vin.value).contains(Self.ghibliVIN))
+
+        // A minute after the survey, the body computer's code had failed this cycle.
+        guard case .moduleDTCs(let read) = try Self.saved("ghibli-app-ble-bcm-read").payload else {
+            Issue.record("the saved result isn't a module read")
+            return
+        }
+        #expect(read.target.request == 0x620)
+        #expect(
+            read.outcome
+                == .records(availability: 0xFB, [ModuleDTCRecord(code: "100900", status: 0x2B)]))
+    }
+
+    @Test("the Tiguan: 19 modules answered, and every one named itself")
+    func tiguanSurvey() throws {
+        let report = try Self.survey("tiguan-app-survey")
+        #expect(
+            report.modules.map(\.candidate.target.request) == [
+                0x7E0, 0x7E1, 0x710, 0x70E, 0x713, 0x715, 0x712, 0x70C, 0x714, 0x746, 0x70F, 0x757,
+                0x74A, 0x74B, 0x70A, 0x773, 0x732, 0x769, 0x74F,
+            ])
+        // The immobilizer, parking brake, second all-wheel-drive address, tire pressure, and
+        // headlight range are only references, and this car didn't answer at them.
+        #expect(
+            report.unanswered.map(\.target.request)
+                == [0x711, 0x752, 0x71D, 0x70B, 0x754] + Array(0x7E2...0x7E7))
+        #expect(report.stop == nil)
+        #expect(
+            report.vehicleInfo.first { $0.ecu == 0x7E8 }.flatMap(\.vin.value) == Self.tiguanVIN)
+
+        // Readable labels first, each confirmed by the name the module gave, which arrives padded
+        // with spaces or NULs.
+        let ownNames = [
+            "R4 2.0l TFSI", "AISIN AQ8", "GW MQB High", "BCM PQ37BOSCH", "ESC", "AirbagVW21",
+            "MQB_PP_APA", "Lenks. Modul", "KOMBI", "AC Automat", "Haldex4Motion", "ACCCONTIMQB",
+            "TSG FS", "TSG BFS", "PDC 8 Kanal", "MU-S-NS-US", "VWKESSYMQB", "Areaview 2",
+            "MQB_B_MFK",
+        ]
+        #expect(report.modules.map { report.ownName(of: $0)?.text } == ownNames)
+        let selfNamed = report.modules.filter { report.ownName(of: $0)?.source == .module }
+        #expect(selfNamed.count == report.modules.count)
+        let proposed = report.proposedModules()
+        #expect(
+            proposed.map(\.label) == [
+                "Engine", "Transmission", "Gateway", "Central electronics (BCM)", "Brakes (ABS)",
+                "Airbag", "Steering assist", "Steering column electronics", "Instrument cluster",
+                "Climate control", "All-wheel drive", "Adaptive cruise control", "Driver door",
+                "Passenger door", "Parking assist", "Information electronics",
+                "Access and start (Kessy)", "Rear-view camera", "Front driver-assistance sensors",
+            ])
+        #expect(proposed.filter(\.confirmed).count == proposed.count)
+        #expect(
+            SurveyReview(report: report).rows.map(\.caption)
+                == ownNames.map { "Calls itself \($0)" })
+
+        let coded = report.modules.filter { !Self.records($0).isEmpty }
+        #expect(coded.map(\.candidate.target.request) == [0x70E, 0x746, 0x757, 0x74A, 0x773])
+        #expect(
+            coded.map(Self.records) == [
+                [ModuleDTCRecord(code: "086614", status: 0x09)],
+                [ModuleDTCRecord(code: "040501", status: 0x08)],
+                [ModuleDTCRecord(code: "0004D4", status: 0x08)],
+                [ModuleDTCRecord(code: "010003", status: 0x09)],
+                [ModuleDTCRecord(code: "000014", status: 0x09)],
+            ])
+    }
+
+    @Test("vehicle information right after the Tiguan's survey reset the adapter and read the VIN")
+    func tiguanVehicleInfoAfterSurvey() throws {
+        #expect(try Self.sent("tiguan-app-survey").last { $0.hasPrefix("ATCRA") } == "ATCRA 7EF")
+        #expect(try Self.sent("tiguan-app-vehicle-info-after-survey").first == "ATZ")
+        let ecus = try Self.vehicleInfo("tiguan-app-vehicle-info-after-survey")
+        #expect(ecus.map(\.ecu) == [0x7E8, 0x7E9])
+        #expect(ecus.first { $0.ecu == 0x7E8 }?.vin.value == Self.tiguanVIN)
     }
 }
