@@ -33,11 +33,11 @@ public enum UDSReadError: Error, Equatable, Sendable, CustomStringConvertible {
     public var description: String {
         switch self {
         case .invalidHeader(let header):
-            return String(format: "UDS read requires an 11-bit CAN header: %03X", header)
+            return String(format: "UDS read requires a valid CAN header: %X", header)
         case .invalidLength:
             return "UDS response had an invalid length"
         case .unexpectedECU(let ecu):
-            return String(format: "UDS read received an unexpected ECU: %03X", ecu)
+            return String(format: "UDS read received an unexpected ECU: %X", ecu)
         case .pendingWithoutFinalResponse:
             return "ECU returned response pending, but the adapter stopped before a final response"
         case .noFrames:

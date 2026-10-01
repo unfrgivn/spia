@@ -162,7 +162,9 @@ public actor ELM327Session {
     private func readUDSResponse(
         responseHeader: UInt32, request: String, service: UInt8, timeout: Duration
     ) async throws -> [UInt8] {
-        guard responseHeader <= 0x7FF else { throw UDSReadError.invalidHeader(responseHeader) }
+        guard responseHeader <= 0x1FFF_FFFF else {
+            throw UDSReadError.invalidHeader(responseHeader)
+        }
         guard timeout > .zero, timeout <= .seconds(120) else {
             throw ELM327Error.invalidTimeout
         }
