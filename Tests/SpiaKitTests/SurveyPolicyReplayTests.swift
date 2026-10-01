@@ -5,6 +5,15 @@ import Testing
 
 @Suite("Survey policy replay")
 struct SurveyPolicyReplayTests {
+    @Test("ATDPN parses automatic and hexadecimal protocol replies")
+    func protocolParsing() {
+        #expect(ELM327Protocol.parseDetection("A6\r") == .can11bit500k)
+        #expect(ELM327Protocol.parseDetection("6") == .can11bit500k)
+        #expect(ELM327Protocol.parseDetection("A8") == .can11bit250k)
+        #expect(ELM327Protocol.parseDetection("A") == nil)
+        #expect(ELM327Protocol.parseDetection("searching") == nil)
+    }
+
     private func fixture(_ name: String) -> URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
@@ -52,7 +61,7 @@ struct SurveyPolicyReplayTests {
         #expect(failure?.message.contains("0900") == true)
     }
 
-    @Test("the Ghibli second look begins at the first expected silent module")
+    @Test("the Ghibli protocol detection begins after the recorded opening")
     func ghibliSecondLook() async throws {
         let plan = try plan(make: "Maserati", model: "Ghibli", year: 2017)
         let transport = try ReplayTransport(contentsOf: fixture("ghibli-app-ble-survey.txt"))
@@ -72,11 +81,8 @@ struct SurveyPolicyReplayTests {
             }
         }
         #expect(plan.expected.first?.request == 0x744)
-        // Every recorded probe matched, then the second look began, for the airbag controller and
-        // the engine, with the first command the recording doesn't have.
-        #expect(steps.contains("Looking for modules: 12 of 12"))
-        #expect(steps.last == "Looking again: 1 of 2")
-        #expect(failure?.message.contains("ATSP6") == true)
+        #expect(steps.contains { $0.contains("Requesting") })
+        #expect(failure?.message.contains("ATDPN") == true)
     }
 
     @Test("the Bluetooth Ghibli report names the two expected silent modules")

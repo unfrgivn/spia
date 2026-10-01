@@ -1,5 +1,5 @@
 /// Protocol numbers accepted by `ATSP`.
-public enum ELM327Protocol: UInt8, CaseIterable, Sendable {
+public enum ELM327Protocol: UInt8, CaseIterable, Sendable, Codable {
     case automatic = 0x0
     case j1850PWM = 0x1
     case j1850VPW = 0x2
@@ -25,5 +25,42 @@ public enum ELM327Protocol: UInt8, CaseIterable, Sendable {
             return nil
         }
         self.init(rawValue: value)
+    }
+
+    public static func parseDetection(_ response: String) -> Self? {
+        let value = response.trimmingCharacters(in: .whitespacesAndNewlines)
+        let digit = value.first == "A" || value.first == "a" ? String(value.dropFirst()) : value
+        guard digit.count == 1 else { return nil }
+        return Self(commandDigit: digit)
+    }
+
+    public var surveyName: String {
+        switch self {
+        case .j1850PWM: return "J1850 PWM"
+        case .j1850VPW: return "J1850 VPW"
+        case .iso9141: return "ISO 9141-2"
+        case .kwp2000Slow: return "ISO 14230 slow"
+        case .kwp2000Fast: return "ISO 14230 fast"
+        case .can11bit500k: return "11-bit, 500k CAN"
+        case .can29bit500k: return "29-bit CAN"
+        case .can11bit250k: return "250k CAN"
+        case .can29bit250k: return "29-bit, 250k CAN"
+        case .j1939: return "J1939"
+        case .automatic: return "automatic protocol detection"
+        case .user1: return "user protocol 1"
+        case .user2: return "user protocol 2"
+        }
+    }
+
+    public var supportsSurveyModules: Bool { self == .can11bit500k }
+
+    public var surveyUnsupportedNote: String? {
+        guard !supportsSurveyModules else { return nil }
+        if [.j1850PWM, .j1850VPW, .iso9141, .kwp2000Slow, .kwp2000Fast].contains(self) {
+            return
+                "This car's computers use \(surveyName), an older protocol, so Spia read its engine computers but can't look for other modules on it."
+        }
+        return
+            "This car uses \(surveyName), which Spia's module search doesn't support yet, so it read the engine computers only."
     }
 }

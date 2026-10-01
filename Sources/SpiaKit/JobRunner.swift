@@ -227,6 +227,22 @@ public actor JobRunner {
             emit(.warning("No computer gave the VIN."))
         }
 
+        let detectedProtocol: ELM327Protocol?
+        if plan.detectsProtocol, !vehicleInfo.isEmpty {
+            let response = try await connection.withSession { session in
+                try await session.protocolNumber()
+            }
+            detectedProtocol = ELM327Protocol.parseDetection(response)
+        } else {
+            detectedProtocol = nil
+        }
+        if let detectedProtocol, !detectedProtocol.supportsSurveyModules {
+            return SurveyReport(
+                plan: plan, voltage: voltage, vehicleInfo: vehicleInfo, modules: [],
+                unanswered: [], notProbed: plan.candidates, stop: nil,
+                detectedProtocol: detectedProtocol)
+        }
+
         var modules: [SurveyModule] = []
         var unanswered: [SurveyCandidate] = []
         var notProbed: [SurveyCandidate] = []
@@ -291,7 +307,8 @@ public actor JobRunner {
 
         return SurveyReport(
             plan: plan, voltage: voltage, vehicleInfo: vehicleInfo, modules: modules,
-            unanswered: unanswered, notProbed: notProbed, stop: stop)
+            unanswered: unanswered, notProbed: notProbed, stop: stop,
+            detectedProtocol: detectedProtocol)
     }
 
     private func performSurveyCandidate(
@@ -372,6 +389,7 @@ public actor JobRunner {
 
     private func candidateLabel(_ candidate: SurveyCandidate) -> String {
         if case .catalog(let label, _, _) = candidate.origin { return label }
+        if case .saved(let label, _) = candidate.origin { return label }
         return String(format: "Module %03X", candidate.target.request)
     }
 
