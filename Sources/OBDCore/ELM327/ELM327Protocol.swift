@@ -52,15 +52,19 @@ public enum ELM327Protocol: UInt8, CaseIterable, Sendable, Codable {
         }
     }
 
-    public var supportsSurveyModules: Bool { self == .can11bit500k }
-
+    /// Why the survey can't look for modules on a car that talks this protocol, or nil when it
+    /// can (11-bit 500k CAN) or when the answer doesn't settle the bus (automatic, user
+    /// protocols), in which case the survey probes as it always has.
     public var surveyUnsupportedNote: String? {
-        guard !supportsSurveyModules else { return nil }
-        if [.j1850PWM, .j1850VPW, .iso9141, .kwp2000Slow, .kwp2000Fast].contains(self) {
+        switch self {
+        case .j1850PWM, .j1850VPW, .iso9141, .kwp2000Slow, .kwp2000Fast:
             return
                 "This car's computers use \(surveyName), an older protocol, so Spia read its engine computers but can't look for other modules on it."
+        case .can29bit500k, .can11bit250k, .can29bit250k, .j1939:
+            return
+                "This car uses \(surveyName), which Spia's module search doesn't support yet, so it read the engine computers only."
+        case .can11bit500k, .automatic, .user1, .user2:
+            return nil
         }
-        return
-            "This car uses \(surveyName), which Spia's module search doesn't support yet, so it read the engine computers only."
     }
 }

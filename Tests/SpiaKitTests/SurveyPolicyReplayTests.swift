@@ -61,10 +61,12 @@ struct SurveyPolicyReplayTests {
         #expect(failure?.message.contains("0900") == true)
     }
 
-    @Test("the Ghibli protocol detection begins after the recorded opening")
-    func ghibliSecondLook() async throws {
-        let plan = try plan(make: "Maserati", model: "Ghibli", year: 2017)
-        let transport = try ReplayTransport(contentsOf: fixture("ghibli-app-ble-survey.txt"))
+    /// Runs `plan` against a real recording, confirming each prompt, and returns its steps and
+    /// how it ended.
+    private func replay(_ plan: SurveyPlan, against recording: String) async throws -> (
+        steps: [String], failure: JobFailure?
+    ) {
+        let transport = try ReplayTransport(contentsOf: fixture(recording))
         let connection = ConnectionManager(
             adapter: AdapterDescriptor(kind: .bluetooth, displayName: "vLinker FS")
         ) { transport }
@@ -80,9 +82,45 @@ struct SurveyPolicyReplayTests {
             default: break
             }
         }
+        return (steps, failure)
+    }
+
+    @Test("the Ghibli survey asks the protocol right after the recorded opening, before any probe")
+    func ghibliProtocolDetection() async throws {
+        let plan = try plan(make: "Maserati", model: "Ghibli", year: 2017)
+        #expect(plan.detectsProtocol)
+        let run = try await replay(plan, against: "ghibli-app-ble-survey.txt")
+        #expect(!run.steps.contains { $0.hasPrefix("Looking for modules") })
+        #expect(run.failure?.message.contains("ATDPN") == true)
+    }
+
+    @Test("the Ghibli second look begins at the first expected silent module")
+    func ghibliSecondLook() async throws {
+        // The same plan without protocol detection, which the recording predates, so the replay
+        // reaches the end of the pass.
+        let current = try plan(make: "Maserati", model: "Ghibli", year: 2017)
+        let plan = SurveyPlan(
+            catalogVersion: current.catalogVersion, vehicle: current.vehicle,
+            platform: current.platform, candidates: current.candidates,
+            unreachable: current.unreachable, requiresVIN: current.requiresVIN,
+            expected: current.expected, detectsProtocol: false)
         #expect(plan.expected.first?.request == 0x744)
-        #expect(steps.contains { $0.contains("Requesting") })
-        #expect(failure?.message.contains("ATDPN") == true)
+        let run = try await replay(plan, against: "ghibli-app-ble-survey.txt")
+        // Every recorded probe matched, then the second look began, for the airbag controller and
+        // the engine, with the first command the recording doesn't have.
+        #expect(run.steps.contains("Looking for modules: 12 of 12"))
+        #expect(run.steps.last == "Looking again: 1 of 2")
+        #expect(run.failure?.message.contains("ATSP6") == true)
+    }
+
+    @Test("only protocols the survey can't probe stop it; an undecided answer probes as before")
+    func protocolSupport() {
+        #expect(ELM327Protocol.parseDetection("A0") == .automatic)
+        #expect(ELM327Protocol.can11bit500k.surveyUnsupportedNote == nil)
+        #expect(ELM327Protocol.automatic.surveyUnsupportedNote == nil)
+        #expect(ELM327Protocol.iso9141.surveyUnsupportedNote?.contains("ISO 9141-2") == true)
+        #expect(ELM327Protocol.j1850VPW.surveyUnsupportedNote?.contains("older protocol") == true)
+        #expect(ELM327Protocol.can29bit500k.surveyUnsupportedNote?.contains("29-bit") == true)
     }
 
     @Test("the Bluetooth Ghibli report names the two expected silent modules")

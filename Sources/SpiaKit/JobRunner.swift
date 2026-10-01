@@ -236,7 +236,7 @@ public actor JobRunner {
         } else {
             detectedProtocol = nil
         }
-        if let detectedProtocol, !detectedProtocol.supportsSurveyModules {
+        if let detectedProtocol, detectedProtocol.surveyUnsupportedNote != nil {
             return SurveyReport(
                 plan: plan, voltage: voltage, vehicleInfo: vehicleInfo, modules: [],
                 unanswered: [], notProbed: plan.candidates, stop: nil,
