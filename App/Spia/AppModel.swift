@@ -31,6 +31,7 @@ final class AppModel {
     @ObservationIgnored private var surveyCatalog: ModuleCatalog?
     @ObservationIgnored private var surveyCatalogError: String?
     private var pendingSurveySessions: Set<UUID> = []
+    private var pendingThoroughSurveySessions: Set<UUID> = []
     private let savedChecksProvider: (() -> [SavedCheck])?
 
     init(
@@ -126,7 +127,9 @@ final class AppModel {
         return references
     }
 
-    func surveyPlan(for vehicle: Vehicle, workbench: Workbench) throws -> SurveyPlan {
+    func surveyPlan(
+        for vehicle: Vehicle, workbench: Workbench, search: Bool = false
+    ) throws -> SurveyPlan {
         let catalog: ModuleCatalog
         if let surveyCatalog {
             catalog = surveyCatalog
@@ -151,11 +154,13 @@ final class AppModel {
                 module.target.map {
                     ModuleChoice(target: $0, label: module.label, confirmed: module.confirmed)
                 }
-            })
+            },
+            search: search ? ModuleSearch.standard(over: workbench.adapter.kind) : nil)
     }
 
-    func requestSurvey(for session: DiagnosticSession) {
+    func requestSurvey(for session: DiagnosticSession, search: Bool = false) {
         pendingSurveySessions.insert(session.id)
+        if search { pendingThoroughSurveySessions.insert(session.id) }
     }
 
     func consumeSurveyRequest(for session: DiagnosticSession) -> Bool {
@@ -168,6 +173,11 @@ final class AppModel {
 
     func cancelSurveyRequest(for session: DiagnosticSession) {
         pendingSurveySessions.remove(session.id)
+        pendingThoroughSurveySessions.remove(session.id)
+    }
+
+    func consumeThoroughSurveyRequest(for session: DiagnosticSession) -> Bool {
+        pendingThoroughSurveySessions.remove(session.id) != nil
     }
 
     func delete(_ session: DiagnosticSession) throws {

@@ -78,6 +78,18 @@ public struct ModuleSearch: Codable, Sendable, Equatable, Hashable {
             .union(candidates.map { $0.target.request }).union(heardIDs)
         return requestRange.filter { !excluded.contains($0) }
     }
+
+    /// The plain-language warning shown before the owner starts a thorough search.
+    public func confirmationMessage(
+        connection: ConnectionKind, candidates: [SurveyCandidate], heardIDs: Set<UInt32> = []
+    ) -> String {
+        let addresses = sweepRequests(candidates: candidates, heardIDs: heardIDs).count
+        let milliseconds = estimateMilliseconds(candidates: candidates, heardIDs: heardIDs)
+        let seconds = (milliseconds + 999) / 1_000
+        let connectionName = connection == .bluetooth ? "Bluetooth" : "USB"
+        return
+            "Spia will send a 'tester present' message, which changes nothing, to about \(addresses) addresses this car doesn't use, to find modules no list knows about.\nIt takes about \(seconds) seconds over \(connectionName).\nLeave the ignition on with the engine off, and don't drive."
+    }
 }
 
 public struct SurveyPlan: Codable, Sendable, Equatable, Hashable {

@@ -64,9 +64,14 @@ struct SessionView: View {
                 if let report = reviewReport, let vehicle = reviewVehicle {
                     SurveyResultsView(
                         report: report, vehicle: vehicle,
+                        searchMessage: thoroughSearchMessage(for: report),
                         tryAgain: {
                             reviewReport = nil
                             requestSurveyInSession()
+                        },
+                        searchMoreThoroughly: {
+                            reviewReport = nil
+                            requestSurveyInSession(search: true)
                         })
                 }
             }
@@ -172,7 +177,7 @@ struct SessionView: View {
                     }) {
                         explain(row)
                     }
-                case .surveyResults, .surveyResultsMissing:
+                case .surveyResults, .surveyResultsMissing, .surveyResultsSearched:
                     try? await Task.sleep(for: .milliseconds(500))
                     if let entry = session.timeline.last,
                         case .survey(let report) = entry.result?.payload,
@@ -252,7 +257,7 @@ struct SessionView: View {
     @ViewBuilder private func moduleDiscoveryCard(compact: Bool) -> some View {
         FindModulesCard(
             compact: compact, disabled: workbench?.activity != nil,
-            action: requestSurveyInSession)
+            action: { requestSurveyInSession() })
     }
 
     /// Reads a board row's missing reading; nil while a check runs.
@@ -350,19 +355,19 @@ struct SessionView: View {
         return { runSurvey(workbench) }
     }
 
-    private func runSurvey(_ workbench: Workbench) {
+    private func runSurvey(_ workbench: Workbench, search: Bool = false) {
         guard let vehicle = session.vehicle else { return }
         do {
-            let plan = try model.surveyPlan(for: vehicle, workbench: workbench)
+            let plan = try model.surveyPlan(for: vehicle, workbench: workbench, search: search)
             run(.survey(plan))
         } catch {
             workbench.lastError = error.readable
         }
     }
 
-    private func requestSurveyInSession() {
+    private func requestSurveyInSession(search: Bool = false) {
         guard let workbench, session.vehicle != nil else { return }
-        model.requestSurvey(for: session)
+        model.requestSurvey(for: session, search: search)
         if workbench.connection.status == nil {
             showConnection = true
         } else {
@@ -375,7 +380,17 @@ struct SessionView: View {
             model.consumeSurveyRequest(for: session)
         else { return }
         showConnection = false
-        runSurvey(workbench)
+        runSurvey(workbench, search: model.consumeThoroughSurveyRequest(for: session))
+    }
+
+    private func thoroughSearchMessage(for report: SurveyReport) -> String? {
+        guard report.plan.search == nil, let vehicle = session.vehicle, !vehicle.isDemo,
+            let workbench, workbench.connection.status != nil,
+            report.detectedProtocol == nil || report.detectedProtocol == .can11bit500k
+        else { return nil }
+        let search = ModuleSearch.standard(over: workbench.adapter.kind)
+        return search.confirmationMessage(
+            connection: workbench.adapter.kind, candidates: report.plan.candidates)
     }
 
     private func run(_ job: DiagnosticJob) {

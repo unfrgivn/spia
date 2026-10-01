@@ -5,6 +5,19 @@ import Testing
 
 @Suite("Survey planner")
 struct SurveyPlannerTests {
+    @Test("thorough search warning calculates its address count and rounded duration")
+    func thoroughSearchWarning() throws {
+        let target = try ModuleTarget(bus: .highSpeed, request: 0x744, response: 0x4C4)
+        let candidate = SurveyCandidate(target: target, origin: .legislated)
+        let search = ModuleSearch(
+            requestRange: 0x600...0x603, listenMilliseconds: 1_001, perAddressMilliseconds: 80)
+        #expect(
+            search.confirmationMessage(
+                connection: .bluetooth, candidates: [candidate])
+                == "Spia will send a 'tester present' message, which changes nothing, to about 4 addresses this car doesn't use, to find modules no list knows about.\nIt takes about 2 seconds over Bluetooth.\nLeave the ignition on with the engine off, and don't drive."
+        )
+    }
+
     @Test("adapter firmware determines whether the medium-speed bus is reachable")
     func reachableBuses() {
         #expect(SurveyPlanner.reachableBuses(for: nil) == [.highSpeed])

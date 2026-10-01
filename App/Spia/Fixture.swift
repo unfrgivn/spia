@@ -23,6 +23,7 @@
             case onboardingSession = "onboarding-session"
             case surveyResults = "survey-results"
             case surveyResultsMissing = "survey-results-missing"
+            case surveyResultsSearched = "survey-results-searched"
             /// References, on the bulletins or the complaints.
             case bulletins, complaints
             /// The garage before any vehicle is added.
@@ -69,12 +70,20 @@
                 let vehicle = try model.garage.addVehicle(
                     name: "2017 Maserati Ghibli S Q4", vin: DemoGarage.vin)
                 _ = try model.garage.addSession(to: vehicle, title: "First session")
-            } else if screen == .surveyResults || screen == .surveyResultsMissing {
+            } else if screen == .surveyResults || screen == .surveyResultsMissing
+                || screen == .surveyResultsSearched
+            {
                 let vehicle = try model.garage.addVehicle(
                     name: DemoGarage.vehicleName, vin: DemoGarage.vin)
                 let session = try model.garage.addSession(
                     to: vehicle, title: "Finding this car's modules")
-                let report = try screen == .surveyResults ? surveyReport() : surveyReportMissing()
+                let report: SurveyReport
+                switch screen {
+                case .surveyResults: report = try surveyReport()
+                case .surveyResultsMissing: report = try surveyReportMissing()
+                case .surveyResultsSearched: report = try surveyReportSearched()
+                default: throw CocoaError(.coderInvalidValue)
+                }
                 try model.garage.record(
                     JobResult(
                         job: .survey(report.plan), payload: .survey(report), source: .live,
@@ -136,6 +145,8 @@
             case .surveyResults:
                 vehicle.orderedSessions.first.map { .session($0.id) }
             case .surveyResultsMissing:
+                vehicle.orderedSessions.first.map { .session($0.id) }
+            case .surveyResultsSearched:
                 vehicle.orderedSessions.first.map { .session($0.id) }
             }
         }
@@ -266,6 +277,33 @@
                         || report.unanswered.contains { $0.target == candidate.target }
                 },
                 notProbed: [], stop: nil)
+        }
+
+        private static func surveyReportSearched() throws -> SurveyReport {
+            let base = try surveyReport()
+            let search = ModuleSearch.standard(over: .demo)
+            let plan = try SurveyPlanner.plan(
+                catalog: try ModuleCatalog.bundled(),
+                vehicle: CatalogVehicle(make: "Maserati", model: "Ghibli", year: 2017),
+                reachableBuses: [.highSpeed, .mediumSpeed], search: search)
+            let target = try ModuleTarget(bus: .highSpeed, request: 0x600, response: 0x608)
+            let discovered = SurveyModule(
+                candidate: SurveyCandidate(target: target, origin: .discovered),
+                presence: .present,
+                identification: [
+                    SurveyIdentification(did: 0xF197, result: .value(Array("F197".utf8)))
+                ], codes: .outcome(.records(availability: 0xFF, [])))
+            return SurveyReport(
+                plan: plan, voltage: base.voltage, vehicleInfo: base.vehicleInfo,
+                modules: base.modules + [discovered], unanswered: base.unanswered,
+                notProbed: base.notProbed, stop: nil, detectedProtocol: .can11bit500k,
+                search: SearchOutcome(
+                    heardIDs: [],
+                    sweptCount: search.sweepRequests(
+                        candidates: plan.candidates, heardIDs: []
+                    ).count,
+                    confirmed: [target], unconfirmed: [], engineRunning: false,
+                    stopReason: nil))
         }
 
         /// A question about the airbag row and an answer, as if the owner had tapped Explain,

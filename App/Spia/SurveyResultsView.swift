@@ -7,17 +7,25 @@ struct SurveyResultsView: View {
     @Environment(\.dismiss) private var dismiss
     let report: SurveyReport
     let vehicle: Vehicle
+    let searchMessage: String?
     let tryAgain: () -> Void
+    let searchMoreThoroughly: () -> Void
     @State private var names: [ModuleTarget: String]
     @State private var kept: Set<ModuleTarget>
     @State private var error: String?
+    @State private var showSearchConfirmation = false
 
     private let review: SurveyReview
 
-    init(report: SurveyReport, vehicle: Vehicle, tryAgain: @escaping () -> Void = {}) {
+    init(
+        report: SurveyReport, vehicle: Vehicle, searchMessage: String? = nil,
+        tryAgain: @escaping () -> Void = {}, searchMoreThoroughly: @escaping () -> Void = {}
+    ) {
         self.report = report
         self.vehicle = vehicle
+        self.searchMessage = searchMessage
         self.tryAgain = tryAgain
+        self.searchMoreThoroughly = searchMoreThoroughly
         let review = SurveyReview(report: report)
         self.review = review
         _names = State(
@@ -46,6 +54,10 @@ struct SurveyResultsView: View {
                         Button("Try Again", action: tryAgain)
                             .buttonStyle(.borderedProminent)
                     }
+                }
+                if searchMessage != nil {
+                    Button("Search More Thoroughly") { showSearchConfirmation = true }
+                        .buttonStyle(.borderedProminent)
                 }
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(review.rows.enumerated()), id: \.element.id) { index, row in
@@ -81,6 +93,15 @@ struct SurveyResultsView: View {
         .background(Palette.base)
         .platformSheetFrame(width: 760, idealWidth: 820, minHeight: 620, idealHeight: 760)
         .errorAlert($error)
+        .confirmationDialog(
+            "Search More Thoroughly?", isPresented: $showSearchConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Search") { searchMoreThoroughly() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if let searchMessage { Text(searchMessage) }
+        }
     }
 
     private func moduleRow(_ row: SurveyReview.Row) -> some View {

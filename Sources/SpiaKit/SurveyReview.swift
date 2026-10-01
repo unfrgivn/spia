@@ -54,7 +54,12 @@ public struct SurveyReview: Sendable, Equatable {
             case .obd?: source = .obd
             case .catalog?: source = .catalog
             case .saved?: source = .saved
-            case nil: source = .fallback
+            case nil:
+                if case .discovered = module.candidate.origin {
+                    source = .discovered
+                } else {
+                    source = .fallback
+                }
             }
             return Row(
                 target: choice.target, proposedName: choice.label, nameSource: source,
@@ -105,7 +110,7 @@ public struct SurveyReview: Sendable, Equatable {
                 notes.append(reason)
             } else {
                 notes.append(
-                    "Searched \(search.sweptCount) addresses and found \(search.confirmed.count) modules."
+                    "Searched \(search.sweptCount) addresses and found \(search.confirmed.count) module\(search.confirmed.count == 1 ? "" : "s")."
                 )
             }
         }

@@ -186,6 +186,41 @@ struct SurveyReviewTests {
             ])
     }
 
+    @Test("searched modules are named and marked by their provenance")
+    func searchedRows() throws {
+        let named = SurveyModule(
+            candidate: SurveyCandidate(
+                target: try Self.target(0x600, 0x608), origin: .discovered),
+            presence: .present,
+            identification: [
+                SurveyIdentification(did: 0xF197, result: .value(Array("F197".utf8)))
+            ], codes: .noAnswer)
+        let unnamed = Self.module(
+            SurveyCandidate(target: try Self.target(0x601, 0x609), origin: .discovered))
+        let review = SurveyReview(report: Self.report(modules: [named, unnamed]))
+        #expect(review.rows.map(\.proposedName) == ["F197", "Module 601"])
+        #expect(review.rows.map(\.caption) == ["Named itself", "Found by searching"])
+        #expect(review.rows.map(\.confirmed) == [true, false])
+    }
+
+    @Test("search notes use singular grammar")
+    func searchNoteGrammar() throws {
+        let target = try Self.target(0x600, 0x608)
+        let plan = SurveyPlan(
+            catalogVersion: "test", vehicle: Self.ghibli, platform: "M157", candidates: [],
+            unreachable: [], search: ModuleSearch(listenMilliseconds: 1_000))
+        let report = SurveyReport(
+            plan: plan, voltage: nil, vehicleInfo: [], modules: [], unanswered: [], notProbed: [],
+            stop: nil,
+            search: SearchOutcome(
+                heardIDs: [], sweptCount: 1, confirmed: [target], unconfirmed: [],
+                engineRunning: false, stopReason: nil))
+        #expect(
+            SurveyReview(report: report).notes == [
+                "The engine computers didn't answer.", "Searched 1 addresses and found 1 module.",
+            ])
+    }
+
     @Test("saved modules show their saved label and self-identification caption")
     func savedCaptions() throws {
         let saved = SurveyCandidate(
