@@ -35,7 +35,10 @@ struct ModuleCatalogTests {
     func bundledCatalog() throws {
         let catalog = try catalog()
         #expect(catalog.schemaVersion == 1)
-        #expect(catalog.makes.count == 2)
+        #expect(catalog.catalogVersion == "2026.10.01+opendbc-f1e707b")
+        // Spia's Maserati and Volkswagen, then opendbc's 25 makes, Volkswagen among them.
+        #expect(catalog.makes.count == 26)
+        #expect(catalog.makes.prefix(2).map(\.make) == ["Maserati", "Volkswagen"])
         #expect(catalog.makes.first { $0.make == "Volkswagen" }?.platforms[0].modules.count == 19)
         for make in catalog.makes {
             for platform in make.platforms {
@@ -105,7 +108,7 @@ struct ModuleCatalogTests {
         }
     }
 
-    @Test("a make listed twice, or one model in overlapping platforms, is refused, not shadowed")
+    @Test("a make listed twice is refused, not shadowed; platforms that overlap merge")
     func shadowedEntries() throws {
         let platform = Self.platformJSON(first: 2018, last: 2024)
         #expect(throws: ModuleCatalogError.duplicateMake("x")) {
@@ -121,14 +124,25 @@ struct ModuleCatalogTests {
                         + Self.makeJSON(
                             "VW Group", aliases: #"["Volkswagen"]"#, platforms: platform)))
         }
-        #expect(throws: ModuleCatalogError.overlappingPlatforms("M")) {
-            try ModuleCatalog(
-                data: Self.catalogJSON(
-                    Self.makeJSON(
-                        "X",
-                        platforms: Self.platformJSON(first: 2018, last: 2022) + ","
-                            + Self.platformJSON(first: 2020, last: 2024))))
-        }
+        // Two platforms claim the model in 2020-2022: a car of those years gets both, in order,
+        // each target once.
+        let overlapping = try ModuleCatalog(
+            data: Self.catalogJSON(
+                Self.makeJSON(
+                    "X",
+                    platforms: Self.platformJSON(first: 2018, last: 2022) + ","
+                        + Self.platformJSON(first: 2020, last: 2024, request: "745", reply: "4C5")
+                        + "," + Self.platformJSON(first: 2020, last: 2024, label: "Again"))))
+        let merged = try #require(
+            overlapping.match(CatalogVehicle(make: "X", model: "M", year: 2021)))
+        #expect(merged.modules.map(\.label) == ["Module", "Module"])
+        #expect(merged.modules.map(\.target.request) == [0x744, 0x745])
+        #expect(
+            overlapping.match(CatalogVehicle(make: "X", model: "M", year: 2019))?.modules.map(
+                \.target.request) == [0x744])
+        #expect(
+            overlapping.match(CatalogVehicle(make: "X", model: "M", year: 2024))?.modules.map(
+                \.target.request) == [0x745, 0x744])
         #expect(throws: ModuleCatalogError.emptyField("make")) {
             try ModuleCatalog(data: Self.catalogJSON(Self.makeJSON("--", platforms: platform)))
         }
@@ -152,9 +166,12 @@ struct ModuleCatalogTests {
         #"{"make":"\#(make)","aliases":\#(aliases),"platforms":[\#(platforms)]}"#
     }
 
-    private static func platformJSON(first: Int, last: Int) -> String {
+    private static func platformJSON(
+        first: Int, last: Int, request: String = "744", reply: String = "4C4",
+        label: String = "Module"
+    ) -> String {
         #"{"name":"P","models":["M"],"years":{"first":\#(first),"last":\#(last)},"modules":["#
-            + #"{"label":"Module","bus":"hs","request":"744","reply":"4C4","#
+            + #"{"label":"\#(label)","bus":"hs","request":"\#(request)","reply":"\#(reply)","#
             + #""provenance":"observed","source":"x"}]}"#
     }
 
