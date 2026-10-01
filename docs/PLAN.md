@@ -137,7 +137,7 @@ Pure tests cover the catalog, the matcher, the planner (deterministic; a catalog
 6. Store and board: `SurveyReport.proposedModules()` creates confirmed names from module or OBD answers, while catalog and fallback labels remain unconfirmed until `Garage.apply` saves them. The board maps survey code outcomes through the same module-read rules.
 7. Onboarding UI is done: the Overview card starts a survey, the results sheet reviews and saves modules, it reopens from the case file, and owner-edited names are confirmed.
 8. The first car visit, on the owner's path: done 2026-09-30, on the Ghibli and the Tiguan.
-9. The thorough search: per-platform sweep ranges as catalog data, listen first, sweep, and confirm each pair (item 6 above). It handles `BUFFER FULL` in `monitor` and waits until the standard survey works end to end.
+9. The thorough search: listen first, sweep, and confirm each pair (item 6 above), now designed in detail under "Reading any car" below, with its window chosen from a real capture.
 
 Sources for these rules: Caring Caribou's [UDS discovery](https://github.com/CaringCaribou/caringcaribou/blob/master/documentation/uds.md) (listen first, blacklist, verify each pair), the [OBDLink family reference](https://www.scantool.net/scantool/downloads/678/obdlink_frpm_e.pdf) (filters, flow control, `STP 53`; filters must be set again after `STP`), and the Linux [can327 notes](https://kernel.org/doc/html/next/networking/device_drivers/can/can327.html) (ELM327 monitoring ends in `BUFFER FULL` and drops frames).
 
@@ -154,7 +154,7 @@ Sources for these rules: Caring Caribou's [UDS discovery](https://github.com/Car
 | 7 (#2) | `spia clear` | Codes clear, CEL off, re-scan clean | pending |
 | 8 (#3) | `spia live` with CSV logging | RPM/coolant/etc. track reality at idle | pending |
 | iOS (#6) | `BLETransport` (CoreBluetooth), SwiftUI shell | Bluetooth FS on iPhone | `BLETransport` and `spia --ble` verified on the Ghibli; the iOS app onboarded the Ghibli over Bluetooth on an iPhone, and its recordings replay in tests (2026-09-30) |
-| Survey | In-app onboarding: find, identify, name, and read a car's modules | Bench capture replays through the survey; first car visit on the owner's path | steps 1-8 done; verified on the Ghibli and the Tiguan over USB and the Ghibli over Bluetooth (2026-09-30); thorough search (step 9) next |
+| Survey | In-app onboarding: find, identify, name, and read a car's modules | Bench capture replays through the survey; first car visit on the owner's path | steps 1-8 done; verified on the Ghibli and the Tiguan over USB and the Ghibli and a CX-5 over Bluetooth; reading any car in slices (see "Reading any car") |
 
 Reordered 2026-09-26: the fault that started this project is not an emissions code (Mode 03/07/0A are clean), so UDS access to body modules moves ahead of the generic-OBD polish.
 
@@ -209,7 +209,34 @@ On the Ghibli minutes later, through the iPhone app over the Bluetooth vLinker F
 - The survey found four modules, not six: the airbag controller and the engine stayed silent. The car's power was changing; the adapter wasn't dropping replies. Only the engine answered the opening requests while the transmission was still starting up. The body computer's code showed an operation cycle that had only just begun (status `69`: test not completed this cycle). And twenty seconds after the survey nothing answered until the owner switched the ignition on again.
 - So the survey takes one engine answer to mean the ignition is on, and one silent 100 ms probe to mean a module isn't there. An engine computer still winding down after the ignition goes off, or modules still starting up, defeat both. Open: how the survey should notice.
 
-Getting recordings off a phone: the iOS library isn't synced, but a build installed from Xcode can be copied off a paired iPhone, over Wi-Fi or a cable. `xcrun devicectl list devices` gives its identifier, then `xcrun devicectl device copy from --device <id> --domain-type appDataContainer --domain-identifier com.unfrgivn.spia --source "Library/Application Support/Spia/<item>" --destination <dir>/<item>` for `Library.store`, `Library.store-wal`, `Library.store-shm`, and `Transcripts`. Each result is `ZTIMELINEENTRY.ZRESULTDATA` after Core Data's one-byte inline marker. TestFlight and App Store builds don't allow this.
+Getting recordings off a phone: the iOS library isn't synced, but a build installed from Xcode can be copied off a paired iPhone, over Wi-Fi or a cable. `scripts/pull-phone-library.sh` does it: it finds the phone, copies `Library.store`, `Library.store-wal`, `Library.store-shm`, and `Transcripts` out of the app's container with `xcrun devicectl device copy from`, retries while a sleeping phone wakes, writes each saved result next to its transcript as `<entry>.result.json` (the JSON after Core Data's one-byte inline marker), and lists the cars and checks. TestFlight and App Store builds don't allow this.
+
+## Reading any car (2026-10-01)
+
+Three phone onboardings and the research behind them settled the direction:
+
+- Two of the three phone onboardings missed modules because the car wasn't fully on (the Ghibli as its ignition came on; the CX-5 in accessory, where the transmission answered and the engine computer didn't). The survey now requires a VIN before probing, looks again at expected modules that stayed silent, and names any still missing with a Try Again.
+- There is no trustworthy open module map for most cars. [opendbc](https://github.com/commaai/opendbc) (MIT) lists addresses seen on real cars, per model, for about fifteen makes, mostly 2017 on; some are queried on openpilot's camera harness rather than the OBD port, which is being checked row by row. OBDb is signals, not module maps. vag-uds-ids has no license and left the catalog. Caring Caribou (GPL) is methodology only. For a 2014 CX-5, nothing beyond the engine and transmission is documented.
+- So catalogs give speed and names where they exist, and the thorough search finds the rest.
+
+Slices, each verified with real recordings:
+
+1. Done: the VIN gate, the second look, Try Again, and the catalog's licensing.
+2. In progress: a car's saved modules become candidates (and expected) in every later survey; the survey reads the protocol (`ATDPN`) after the opening, and on non-CAN, 29-bit, or 250k cars reads the engine computers only and says why.
+3. The opendbc import: a generator pinned to a commit, OBD-port-reachable rows only, `reference` provenance citing opendbc, and its MIT notice.
+4. The thorough search on 11-bit 500k CAN, opt-in (design below).
+5. 29-bit modules: `ModuleTarget` gains an explicit addressing field (the store migrates existing rows to 11-bit), then a 29-bit sweep of `18DA<target>F1` and the 29-bit opendbc rows (Honda). Live 29-bit runs stay off until a real 29-bit recording exists.
+6. The 125k bus: known modules first (`STP 53`), sweeping later. `STP 54` stays unverified.
+
+The thorough search, as designed:
+
+- Gate: ignition on and engine off. RPM (`01 0C`) must read zero; when nothing answers it, the owner confirms the engine is off. The warning says what's sent (TesterPresent, to addresses the car doesn't use), to how many, and roughly how long it takes.
+- Window: replies are accepted between `400` and `7FF` (`ATCM 400`, `ATCF 400`). In the Ghibli's ignition-on capture (`ghibli-ignition-on-capture-2s.txt`), about 1,300 frames a second came from 78 IDs below `400`, one frame (`44A`) fell between `400` and `5FF`, and nothing came above `600`; every diagnostic reply seen so far (FCA `4C4`, `504`, `4E3`; VW `77x` to `7Dx`; Mazda request + 8) lands inside. A wide-open filter would bury each probe's answer in that traffic and overflow the adapter, over Bluetooth especially.
+- Listen: `ATMA` through the window, 2 s over USB and 1 s over Bluetooth. `BUFFER FULL` or a bus error cancels the search. IDs heard are never probed; if the window carries more than a few frames a second, the search narrows to `700`-`7FF` or stops and says why.
+- Sweep: requests `600` to `7FF`, minus `7DF`, `7E0`-`7E7`, known candidates, and IDs heard. Per ID, `ATSH` then `3E 00` under a short `ATST`. A reply counts only as a valid TesterPresent answer (`7E 00`, or `7F 3E` with any code but `78`). About 80 ms per ID over USB and 120 ms over Bluetooth, so roughly 40 and 60 seconds.
+- Confirm each pair with an exact `ATCRA` probe, then identify it and read its codes like any module. Found modules join the review as found by searching; saved, they join every later survey.
+- Replay: the search's parameters are fixed in the plan before it runs; what it heard and found is in the report, and a replay of its recording reproduces both.
+- Not covered by the default range: GM's physical requests sit near `241` with replies near `641` (unverified), and BMW uses extended addressing; both need per-make ranges as catalog data.
 
 ## The Ghibli's actual fault (why UDS comes first)
 
