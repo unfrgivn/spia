@@ -71,7 +71,7 @@ public enum CANBus: String, CaseIterable, Codable, Sendable {
 }
 
 /// Which incoming frames the adapter passes back after a request.
-public enum ReceiveFilter: Equatable, Sendable {
+public enum ReceiveFilter: Codable, Equatable, Hashable, Sendable {
     /// Only the conventional reply ID (request + 8, or `18DA <tester> <target>`).
     case expectedReply
     /// Any ID in an aligned range, for cars whose reply IDs do not follow the convention.
