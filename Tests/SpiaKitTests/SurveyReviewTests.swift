@@ -141,14 +141,17 @@ struct SurveyReviewTests {
 
         #expect(
             review.rows.map(\.proposedName) == [
-                "SRS ORC", "TCM-TransmisCtrl", "ABS", "Module 7E2", "Body computer (BCM)",
+                "Airbag controller (ORC)", "Transmission", "ABS", "Module 7E2",
+                "Body computer (BCM)",
                 "Steering column (SCCM)",
             ])
         #expect(
-            review.rows.map(\.nameSource.caption) == [
-                "Named itself", "Named itself", "From references, unconfirmed", "No name found",
+            review.rows.map(\.caption) == [
+                "Calls itself SRS ORC", "Calls itself TCM-TransmisCtrl",
+                "From references, unconfirmed", "No name found",
                 "From references, unconfirmed", "From references, unconfirmed",
             ])
+        #expect(review.rows.map(\.ownName) == ["SRS ORC", "TCM-TransmisCtrl", nil, nil, nil, nil])
         #expect(review.rows.map(\.confirmed) == [true, true, false, false, false, false])
         #expect(
             review.rows.map(\.codesSummary) == [
@@ -189,7 +192,7 @@ struct SurveyReviewTests {
             review.choices(names: [:], kept: all) == [
                 ModuleChoice(target: airbag, label: "Airbag controller (ORC)", confirmed: false),
                 ModuleChoice(target: abs, label: "ABS", confirmed: false),
-                ModuleChoice(target: engine, label: "ECM1-EngineControl1", confirmed: true),
+                ModuleChoice(target: engine, label: "Engine", confirmed: true),
                 ModuleChoice(target: unnamed, label: "Module 7E2", confirmed: false),
             ])
         // Edited, trimmed; blank and space-only edits fall back; typing the proposal back keeps
@@ -204,7 +207,7 @@ struct SurveyReviewTests {
             ) == [
                 ModuleChoice(target: airbag, label: "Driver airbag module", confirmed: true),
                 ModuleChoice(target: abs, label: "ABS", confirmed: false),
-                ModuleChoice(target: engine, label: "ECM1-EngineControl1", confirmed: true),
+                ModuleChoice(target: engine, label: "Engine", confirmed: true),
                 ModuleChoice(target: unnamed, label: "Module 7E2", confirmed: false),
             ])
         #expect(

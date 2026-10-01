@@ -66,12 +66,15 @@ struct SurveyReportTests {
             candidate: catalog, presence: .present,
             identification: [SurveyIdentification(did: 0xF197, result: .value(Array("ECM".utf8)))],
             codes: .noAnswer)
-        #expect(report(module).name(of: module) == SurveyName(text: "ECM", source: .module))
+        #expect(report(module).ownName(of: module) == SurveyName(text: "ECM", source: .module))
+        #expect(
+            report(module).name(of: module)
+                == SurveyName(text: "Engine controller", source: .catalog))
 
         let withoutModuleName = SurveyModule(
             candidate: catalog, presence: .present, identification: [], codes: .noAnswer)
         #expect(
-            report(withoutModuleName).name(of: withoutModuleName)
+            report(withoutModuleName).ownName(of: withoutModuleName)
                 == SurveyName(text: "Engine", source: .obd))
         #expect(
             report(withoutModuleName, vehicleInfo: []).name(of: withoutModuleName)
@@ -88,6 +91,8 @@ struct SurveyReportTests {
             ModuleTarget(bus: .highSpeed, request: 0x701, response: 0x709),
             ModuleTarget(bus: .highSpeed, request: 0x702, response: 0x70A),
             ModuleTarget(bus: .highSpeed, request: 0x703, response: 0x70B),
+            ModuleTarget(bus: .highSpeed, request: 0x704, response: 0x70C),
+            ModuleTarget(bus: .highSpeed, request: 0x705, response: 0x70D),
         ]
         let candidates = [
             SurveyCandidate(
@@ -100,9 +105,13 @@ struct SurveyReportTests {
                 target: targets[2],
                 origin: .catalog(label: "Third reference", provenance: .reference, source: "test")),
             SurveyCandidate(target: targets[3], origin: .legislated),
+            SurveyCandidate(target: targets[4], origin: .legislated),
+            SurveyCandidate(target: targets[5], origin: .legislated),
         ]
         var engine = ECUInfoReport(ecu: targets[1].response)
         engine.name = .positive("OBD engine")
+        var other = ECUInfoReport(ecu: targets[5].response)
+        other.name = .positive("OBD other")
         let modules = [
             SurveyModule(
                 candidate: candidates[0], presence: .present,
@@ -115,20 +124,30 @@ struct SurveyReportTests {
                 candidate: candidates[2], presence: .present, identification: [], codes: .noAnswer),
             SurveyModule(
                 candidate: candidates[3], presence: .present, identification: [], codes: .noAnswer),
+            SurveyModule(
+                candidate: candidates[4], presence: .present,
+                identification: [
+                    SurveyIdentification(did: 0xF197, result: .value(Array("Own module".utf8)))
+                ], codes: .noAnswer),
+            SurveyModule(
+                candidate: candidates[5], presence: .present, identification: [], codes: .noAnswer),
         ]
         let plan = SurveyPlan(
             catalogVersion: "test", vehicle: nil, platform: nil, candidates: candidates,
             unreachable: [])
         let report = SurveyReport(
-            plan: plan, voltage: nil, vehicleInfo: [ECUIdentity(engine)], modules: modules,
+            plan: plan, voltage: nil, vehicleInfo: [ECUIdentity(engine), ECUIdentity(other)],
+            modules: modules,
             unanswered: [], notProbed: [], stop: nil)
         #expect(
             report.proposedModules()
                 == [
-                    ModuleChoice(target: targets[0], label: "Own module", confirmed: true),
-                    ModuleChoice(target: targets[1], label: "OBD engine", confirmed: true),
+                    ModuleChoice(target: targets[0], label: "First reference", confirmed: true),
+                    ModuleChoice(target: targets[1], label: "Second reference", confirmed: true),
                     ModuleChoice(target: targets[2], label: "Third reference", confirmed: false),
                     ModuleChoice(target: targets[3], label: "Module 703", confirmed: false),
+                    ModuleChoice(target: targets[4], label: "Own module", confirmed: true),
+                    ModuleChoice(target: targets[5], label: "OBD other", confirmed: true),
                 ])
     }
 

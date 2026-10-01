@@ -20,10 +20,18 @@ public struct SurveyReview: Sendable, Equatable {
         public let target: ModuleTarget
         public let proposedName: String
         public let nameSource: NameSource
+        public let ownName: String?
         public let confirmed: Bool
         public let codesSummary: String
 
         public var id: ModuleTarget { target }
+
+        public var caption: String {
+            if nameSource == .catalog, let ownName {
+                return "Calls itself \(ownName)"
+            }
+            return nameSource.caption
+        }
     }
 
     public let headline: String
@@ -44,7 +52,8 @@ public struct SurveyReview: Sendable, Equatable {
             }
             return Row(
                 target: choice.target, proposedName: choice.label, nameSource: source,
-                confirmed: choice.confirmed, codesSummary: Self.codesSummary(module.codes))
+                ownName: report.ownName(of: module)?.text, confirmed: choice.confirmed,
+                codesSummary: Self.codesSummary(module.codes))
         }
         headline =
             report.modules.isEmpty

@@ -91,10 +91,11 @@ struct SurveyResultsView: View {
             VStack(alignment: .leading, spacing: 5) {
                 TextField("Module name", text: nameBinding(for: row))
                     .textFieldStyle(.roundedBorder)
-                Text(row.nameSource.caption)
+                Text(row.caption)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(
-                        row.nameSource == .catalog ? Palette.caution : Palette.secondary)
+                        !row.confirmed && row.nameSource == .catalog
+                            ? Palette.caution : Palette.secondary)
                 Text(row.codesSummary)
                     .font(.callout)
                     .foregroundStyle(Palette.primary)

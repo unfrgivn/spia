@@ -117,7 +117,7 @@ public struct SurveyReport: Codable, Sendable, Equatable {
         self.stop = stop
     }
 
-    public func name(of module: SurveyModule) -> SurveyName? {
+    public func ownName(of module: SurveyModule) -> SurveyName? {
         if let identification = module.identification.first(where: { $0.did == 0xF197 }),
             case .value(let bytes) = identification.result,
             let text = IdentificationReading.value(bytes).text
@@ -130,18 +130,26 @@ public struct SurveyReport: Codable, Sendable, Equatable {
         {
             return SurveyName(text: name, source: .obd)
         }
+        return nil
+    }
+
+    public func name(of module: SurveyModule) -> SurveyName? {
         if case .catalog(let label, _, _) = module.candidate.origin {
             return SurveyName(text: label, source: .catalog)
         }
-        return nil
+        return ownName(of: module)
     }
 
     public func proposedModules() -> [ModuleChoice] {
         modules.map { module in
-            if let name = name(of: module) {
+            if case .catalog(let label, _, _) = module.candidate.origin {
                 return ModuleChoice(
-                    target: module.candidate.target, label: name.text,
-                    confirmed: name.source == .module || name.source == .obd)
+                    target: module.candidate.target, label: label,
+                    confirmed: ownName(of: module) != nil)
+            }
+            if let name = ownName(of: module) {
+                return ModuleChoice(
+                    target: module.candidate.target, label: name.text, confirmed: true)
             }
             return ModuleChoice(
                 target: module.candidate.target,
