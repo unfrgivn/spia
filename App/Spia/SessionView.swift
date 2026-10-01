@@ -25,151 +25,166 @@ struct SessionView: View {
     #endif
 
     var body: some View {
+        sessionScreen
+    }
+
+    private var sessionScreen: some View {
         let layout = BoardLayout(width: width)
         let wide = layout == .wide
-        ScrollViewReader { scroller in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    BoardHeader(
-                        session: session, board: board, layout: layout,
-                        connectionKind: workbench?.adapter.kind)
-                    if let vehicle = session.vehicle, !vehicle.isDemo, vehicle.modules.isEmpty {
-                        FindModulesCard(
-                            compact: !wide, disabled: workbench?.activity != nil,
-                            action: requestSurveyInSession
-                        )
-                        .padding(.top, 18)
-                    }
-                    // A check waiting for the owner, or one with no row, gets the panel; the rest
-                    // show on their row.
-                    if let workbench, let activity = workbench.activity,
-                        activity.sessionID == session.id,
-                        activity.prompt != nil || SessionBoard.Subject(job: activity.job) == nil
-                    {
-                        ActivityPanel(activity: activity, workbench: workbench)
-                            .padding(.top, 24)
-                    }
-                    SessionBoardView(
-                        board: board, layout: layout, read: reader, reading: reading,
-                        checking: checking, unreadable: unreadable(board), notes: notes,
-                        explain: { explain($0) }, openAssistant: { showAssistant = true }
-                    )
-                    .padding(.top, wide ? 32 : 22)
-                    CaseFile(
-                        session: session, layout: layout, showTranscript: { transcript = $0 },
-                        reviewSurvey: {
-                            reviewReport = $0
-                            reviewVehicle = session.vehicle
-                        }
-                    )
-                    .padding(.top, wide ? 40 : 30)
-                    .id(Self.timelineID)
-                    NoteComposer(note: $note, add: addNote)
-                        .padding(.top, 16)
-                }
-                .padding(.horizontal, wide ? 56 : 20)
-                .padding(.vertical, wide ? 38 : 16)
-                .frame(maxWidth: 1_180, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        return sessionChrome(layout: layout, wide: wide)
+            .inspector(isPresented: $showAssistant) {
+                AssistantPanel(
+                    conversation: model.conversation(for: session),
+                    connect: { showConnection = true },
+                    question: $question
+                )
+                .inspectorColumnWidth(min: 300, ideal: 360, max: 520)
             }
-            .readingWidth($width)
-            #if DEBUG
-                .task {
-                    switch Fixture.screen {
-                    case .timeline, .replayTimeline:
-                        // After the fixture's checks have added their results.
-                        try? await Task.sleep(for: .seconds(3))
-                        scroller.scrollTo(Self.timelineID, anchor: .top)
-                    case .explain:
-                        // After the checks and the fixture's answered question.
-                        try? await Task.sleep(for: .seconds(6))
-                        let notes = notes
-                        if let row = board.rows.first(where: {
-                            $0.question != nil && notes[$0.subject] == nil
-                        }) {
-                            explain(row)
-                        }
-                    case .surveyResults:
-                        try? await Task.sleep(for: .milliseconds(500))
-                        if let entry = session.timeline.last,
-                            case .survey(let report) = entry.result?.payload,
-                            let vehicle = session.vehicle
-                        {
-                            reviewReport = report
-                            reviewVehicle = vehicle
-                        }
-                    default:
-                        break
+            .sheet(isPresented: $showConnection) {
+                if let workbench, let vehicle = session.vehicle {
+                    ConnectionAssistant(
+                        vehicle: vehicle, workbench: workbench,
+                        purpose: model.hasSurveyRequest(for: session)
+                            ? "Connect the adapter, and Spia will find this car's modules." : nil
+                    ) { refreshed in
+                        self.workbench = refreshed
                     }
                 }
-            #endif
-        }
-        .background(Palette.base)
-        .navigationTitle($session.title)
-        .platformSubtitle(subtitle)
-        .platformInlineTitle()
-        .toolbar { sessionToolbar }
-        .inspector(isPresented: $showAssistant) {
-            AssistantPanel(
-                conversation: model.conversation(for: session), connect: { showConnection = true },
-                question: $question
-            )
-            .inspectorColumnWidth(min: 300, ideal: 360, max: 520)
-        }
-        .sheet(isPresented: $showConnection) {
-            if let workbench, let vehicle = session.vehicle {
-                ConnectionAssistant(
-                    vehicle: vehicle, workbench: workbench,
-                    purpose: model.hasSurveyRequest(for: session)
-                        ? "Connect the adapter, and Spia will find this car's modules." : nil
-                ) { refreshed in
-                    self.workbench = refreshed
+            }
+            .sheet(isPresented: $editingModules) {
+                if let vehicle = session.vehicle { ModulesEditor(vehicle: vehicle) }
+            }
+            .sheet(item: $transcript) { entry in
+                TranscriptView(entry: entry)
+            }
+            .sheet(
+                isPresented: Binding(
+                    get: { reviewReport != nil }, set: { if !$0 { reviewReport = nil } })
+            ) {
+                if let report = reviewReport, let vehicle = reviewVehicle {
+                    SurveyResultsView(
+                        report: report, vehicle: vehicle,
+                        tryAgain: {
+                            reviewReport = nil
+                            requestSurveyInSession()
+                        })
                 }
             }
-        }
-        .sheet(isPresented: $editingModules) {
-            if let vehicle = session.vehicle { ModulesEditor(vehicle: vehicle) }
-        }
-        .sheet(item: $transcript) { entry in
-            TranscriptView(entry: entry)
-        }
-        .sheet(
-            isPresented: Binding(
-                get: { reviewReport != nil }, set: { if !$0 { reviewReport = nil } })
-        ) {
-            if let reviewReport, let reviewVehicle {
-                SurveyResultsView(report: reviewReport, vehicle: reviewVehicle)
-            }
-        }
-        .task(id: session.vehicle?.id) {
-            if let vehicle = session.vehicle { workbench = model.workbench(for: vehicle) }
-            startPendingSurveyIfReady()
-            if let workbench, workbench.connection.status == nil,
-                model.hasSurveyRequest(for: session)
-            {
-                showConnection = true
-            }
-            #if DEBUG
-                if Fixture.screen == .recordings {
-                    try? await Task.sleep(for: .milliseconds(500))
+            .task(id: session.vehicle?.id) {
+                if let vehicle = session.vehicle { workbench = model.workbench(for: vehicle) }
+                startPendingSurveyIfReady()
+                if let workbench, workbench.connection.status == nil,
+                    model.hasSurveyRequest(for: session)
+                {
                     showConnection = true
                 }
-            #endif
-        }
-        .onChange(of: workbench?.connection) { _, state in
-            if case .ready = state { startPendingSurveyIfReady() }
-        }
-        .onChange(of: showConnection) { wasShown, isShown in
-            if wasShown && !isShown && workbench?.connection.status == nil {
-                model.cancelSurveyRequest(for: session)
+                #if DEBUG
+                    if Fixture.screen == .recordings {
+                        try? await Task.sleep(for: .milliseconds(500))
+                        showConnection = true
+                    }
+                #endif
             }
+            .onChange(of: workbench?.connection) { _, state in
+                if case .ready = state { startPendingSurveyIfReady() }
+            }
+            .onChange(of: showConnection) { wasShown, isShown in
+                if wasShown && !isShown && workbench?.connection.status == nil {
+                    model.cancelSurveyRequest(for: session)
+                }
+            }
+            .onChange(of: workbench.map(ObjectIdentifier.init), initial: true) {
+                model.conversation(for: session).workbench = workbench
+            }
+            .errorAlert($error)
+            .modifier(
+                BulbCheck(link: link, subjects: board.rows.map(\.subject), checking: $checking)
+            )
+            .focusedSceneValue(\.session, actions)
+    }
+
+    private func sessionChrome(layout: BoardLayout, wide: Bool) -> AnyView {
+        AnyView(
+            baseSessionView(layout: layout, wide: wide)
+                .background(Palette.base)
+                .navigationTitle($session.title)
+                .platformSubtitle(subtitle)
+                .platformInlineTitle()
+                .toolbar { sessionToolbar })
+    }
+
+    private func baseSessionView(layout: BoardLayout, wide: Bool) -> AnyView {
+        AnyView(
+            ScrollViewReader { scroller in
+                sessionScroll(layout: layout, wide: wide, scroller: scroller)
+            })
+    }
+
+    private func sessionScroll(
+        layout: BoardLayout, wide: Bool, scroller: ScrollViewProxy
+    ) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                BoardHeader(
+                    session: session, board: board, layout: layout,
+                    connectionKind: workbench?.adapter.kind)
+                if showModuleDiscoveryCard { moduleDiscoveryCard(compact: !wide).padding(.top, 18) }
+                if let workbench, let activity = workbench.activity,
+                    activity.sessionID == session.id,
+                    activity.prompt != nil || SessionBoard.Subject(job: activity.job) == nil
+                {
+                    ActivityPanel(activity: activity, workbench: workbench).padding(.top, 24)
+                }
+                SessionBoardView(
+                    board: board, layout: layout, read: reader, reading: reading,
+                    checking: checking, unreadable: unreadable(board), notes: notes,
+                    explain: { explain($0) }, openAssistant: { showAssistant = true }
+                )
+                .padding(.top, wide ? 32 : 22)
+                CaseFile(
+                    session: session, layout: layout, showTranscript: { transcript = $0 },
+                    reviewSurvey: {
+                        reviewReport = $0
+                        reviewVehicle = session.vehicle
+                    }
+                )
+                .padding(.top, wide ? 40 : 30)
+                .id(Self.timelineID)
+                NoteComposer(note: $note, add: addNote).padding(.top, 16)
+            }
+            .padding(.horizontal, wide ? 56 : 20)
+            .padding(.vertical, wide ? 38 : 16)
+            .frame(maxWidth: 1_180, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .onChange(of: workbench.map(ObjectIdentifier.init), initial: true) {
-            model.conversation(for: session).workbench = workbench
-        }
-        .errorAlert($error)
-        .modifier(BulbCheck(link: link, subjects: board.rows.map(\.subject), checking: $checking))
-        .focusedSceneValue(\.session, actions)
+        .readingWidth($width)
+        #if DEBUG
+            .task {
+                switch Fixture.screen {
+                case .timeline, .replayTimeline:
+                    try? await Task.sleep(for: .seconds(3))
+                    scroller.scrollTo(Self.timelineID, anchor: .top)
+                case .explain:
+                    try? await Task.sleep(for: .seconds(6))
+                    let notes = notes
+                    if let row = board.rows.first(where: {
+                        $0.question != nil && notes[$0.subject] == nil
+                    }) {
+                        explain(row)
+                    }
+                case .surveyResults, .surveyResultsMissing:
+                    try? await Task.sleep(for: .milliseconds(500))
+                    if let entry = session.timeline.last,
+                        case .survey(let report) = entry.result?.payload,
+                        let vehicle = session.vehicle
+                    {
+                        reviewReport = report
+                        reviewVehicle = vehicle
+                    }
+                default: break
+                }
+            }
+        #endif
     }
 
     private static let timelineID = "timeline"
@@ -227,6 +242,17 @@ struct SessionView: View {
         if vehicle.isDemo { return "\(vehicle.name) · Demo" }
         if workbench?.adapter.kind == .replay { return "\(vehicle.name) · Recordings" }
         return vehicle.name
+    }
+
+    private var showModuleDiscoveryCard: Bool {
+        guard let vehicle = session.vehicle else { return false }
+        return !vehicle.isDemo && vehicle.modules.isEmpty
+    }
+
+    @ViewBuilder private func moduleDiscoveryCard(compact: Bool) -> some View {
+        FindModulesCard(
+            compact: compact, disabled: workbench?.activity != nil,
+            action: requestSurveyInSession)
     }
 
     /// Reads a board row's missing reading; nil while a check runs.

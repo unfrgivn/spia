@@ -22,6 +22,7 @@
             case onboarding
             case onboardingSession = "onboarding-session"
             case surveyResults = "survey-results"
+            case surveyResultsMissing = "survey-results-missing"
             /// References, on the bulletins or the complaints.
             case bulletins, complaints
             /// The garage before any vehicle is added.
@@ -68,12 +69,12 @@
                 let vehicle = try model.garage.addVehicle(
                     name: "2017 Maserati Ghibli S Q4", vin: DemoGarage.vin)
                 _ = try model.garage.addSession(to: vehicle, title: "First session")
-            } else if screen == .surveyResults {
+            } else if screen == .surveyResults || screen == .surveyResultsMissing {
                 let vehicle = try model.garage.addVehicle(
                     name: DemoGarage.vehicleName, vin: DemoGarage.vin)
                 let session = try model.garage.addSession(
                     to: vehicle, title: "Finding this car's modules")
-                let report = try surveyReport()
+                let report = try screen == .surveyResults ? surveyReport() : surveyReportMissing()
                 try model.garage.record(
                     JobResult(
                         job: .survey(report.plan), payload: .survey(report), source: .live,
@@ -133,6 +134,8 @@
             case .onboardingSession:
                 vehicle.orderedSessions.first.map { .session($0.id) }
             case .surveyResults:
+                vehicle.orderedSessions.first.map { .session($0.id) }
+            case .surveyResultsMissing:
                 vehicle.orderedSessions.first.map { .session($0.id) }
             }
         }
@@ -234,6 +237,35 @@
                 modules: modules,
                 unanswered: plan.candidates.filter { !answered.contains($0.target) },
                 notProbed: [], stop: nil)
+        }
+
+        private static func surveyReportMissing() throws -> SurveyReport {
+            let report = try surveyReport()
+            let silent = report.modules.filter {
+                $0.candidate.target.request == 0x744 || $0.candidate.target.request == 0x7E0
+            }
+            let found = report.modules.filter {
+                $0.candidate.target.request != 0x744 && $0.candidate.target.request != 0x7E0
+            }
+            let steering = report.plan.candidates.first { $0.target.request == 0x763 }
+                .map {
+                    SurveyModule(
+                        candidate: $0, presence: .present, identification: [],
+                        codes: .outcome(
+                            .records(
+                                availability: 0x39,
+                                [
+                                    ModuleDTCRecord(code: "059300", status: 0x29),
+                                    ModuleDTCRecord(code: "058100", status: 0x29),
+                                    ModuleDTCRecord(code: "D00800", status: 0x28),
+                                ])))
+                }
+            return SurveyReport(
+                plan: report.plan, voltage: report.voltage, vehicleInfo: report.vehicleInfo,
+                modules: found + (steering.map { [$0] } ?? []),
+                unanswered: report.unanswered.filter { $0.target.request != 0x763 }
+                    + silent.map(\.candidate),
+                notProbed: report.notProbed, stop: report.stop)
         }
 
         /// A question about the airbag row and an answer, as if the owner had tapped Explain,

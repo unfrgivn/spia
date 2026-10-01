@@ -7,15 +7,17 @@ struct SurveyResultsView: View {
     @Environment(\.dismiss) private var dismiss
     let report: SurveyReport
     let vehicle: Vehicle
+    let tryAgain: () -> Void
     @State private var names: [ModuleTarget: String]
     @State private var kept: Set<ModuleTarget>
     @State private var error: String?
 
     private let review: SurveyReview
 
-    init(report: SurveyReport, vehicle: Vehicle) {
+    init(report: SurveyReport, vehicle: Vehicle, tryAgain: @escaping () -> Void = {}) {
         self.report = report
         self.vehicle = vehicle
+        self.tryAgain = tryAgain
         let review = SurveyReview(report: report)
         self.review = review
         _names = State(
@@ -40,6 +42,10 @@ struct SurveyResultsView: View {
                         }
                     }
                     .card(tint: Palette.caution)
+                    if review.canTryAgain {
+                        Button("Try Again", action: tryAgain)
+                            .buttonStyle(.borderedProminent)
+                    }
                 }
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(review.rows.enumerated()), id: \.element.id) { index, row in
