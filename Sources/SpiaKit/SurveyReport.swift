@@ -18,9 +18,87 @@ public enum SurveyPresence: Codable, Sendable, Equatable {
 }
 
 /// Classifies the complete payload of a TesterPresent response during a broad sweep.
+/// Whether one frame heard during the search is a module answering TesterPresent (`3E 00`): a
+/// single ISO-TP frame carrying `7E 00`, or a negative answer to `3E` other than "pending".
+/// Anything else in the window, including frames that aren't ISO-TP at all, is not.
 public enum SearchReplyClassifier {
-    public static func isTesterPresent(_ payload: [UInt8]) -> Bool {
-        TesterPresentReply(payload: payload).isModule
+    public static func isTesterPresentReply(_ frame: CANFrame) -> Bool {
+        guard let response = try? ISOTPReassembler.reassemble([frame]).first else { return false }
+        return TesterPresentReply(payload: response.payload).isModule
+    }
+
+    /// No answer, or a frame the adapter flagged `<DATA ERROR` because its first byte isn't an
+    /// ISO-TP length: ordinary traffic, so neither is trouble. The Ghibli's bus flags about one
+    /// frame in three.
+    static func isBenign(_ message: ELM327AdapterMessage) -> Bool {
+        message == .noData || message == .dataError || message == .ok
+    }
+}
+
+/// What the search makes of the listen before the sweep: every ID heard through the reply
+/// window, and why the sweep mustn't run, if it mustn't.
+public struct SearchListen: Sendable, Equatable {
+    public let maxFrames: Int
+    public private(set) var heard: Set<UInt32> = []
+    public private(set) var frames = 0
+    public private(set) var reason: String?
+
+    public init(maxFrames: Int) {
+        self.maxFrames = maxFrames
+    }
+
+    /// Takes one monitor event; returns false when listening should stop.
+    public mutating func receive(_ event: MonitorEvent) -> Bool {
+        switch event {
+        case .frame(let frame):
+            heard.insert(frame.header)
+            frames += 1
+            guard frames <= maxFrames else {
+                reason = "The bus is busy where module replies would come, so Spia didn't search."
+                return false
+            }
+            return true
+        case .unparsable:
+            return true
+        case .message(let message):
+            guard !SearchReplyClassifier.isBenign(message) else { return true }
+            reason =
+                "The adapter reported \(message.description) while listening, so Spia didn't search."
+            return false
+        case .prompt:
+            reason = "The adapter stopped listening on its own, so Spia didn't search."
+            return false
+        }
+    }
+}
+
+/// One probe's reply during the sweep, read line by line the way the monitor reads its stream,
+/// since traffic in the window arrives with it.
+public struct SearchReply: Sendable, Equatable {
+    public let frames: [CANFrame]
+    /// An adapter message that means the bus or the adapter is in trouble.
+    public let trouble: ELM327AdapterMessage?
+
+    public init(_ text: String) {
+        let events = text.split(whereSeparator: \.isNewline).flatMap {
+            MonitorStreamParser.events(forLine: String($0))
+        }
+        frames = events.compactMap { event in
+            if case .frame(let frame) = event { return frame }
+            return nil
+        }
+        trouble =
+            events.compactMap { event -> ELM327AdapterMessage? in
+                guard case .message(let message) = event,
+                    !SearchReplyClassifier.isBenign(message)
+                else { return nil }
+                return message
+            }.first
+    }
+
+    /// The reply IDs of the modules that answered TesterPresent.
+    public var testerPresentReplies: [UInt32] {
+        frames.filter(SearchReplyClassifier.isTesterPresentReply).map(\.header)
     }
 }
 

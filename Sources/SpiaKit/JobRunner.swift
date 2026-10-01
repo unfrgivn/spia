@@ -65,28 +65,16 @@ public actor JobRunner {
         let modules: [SurveyModule]
     }
 
+    /// Holds the search's listen across the monitor's callbacks.
     private actor SearchListenState {
-        var heard = Set<UInt32>()
-        var frameCount = 0
-        var reason: String?
+        var listen: SearchListen
 
-        func receive(_ event: MonitorEvent, limit: Int) -> Bool {
-            switch event {
-            case .frame(let frame):
-                heard.insert(frame.header)
-                frameCount += 1
-                return frameCount <= limit
-            case .message(let message):
-                if message != .noData {
-                    reason = message.description
-                    return false
-                }
-                return true
-            case .prompt:
-                return false
-            case .unparsable:
-                return true
-            }
+        init(maxFrames: Int) {
+            listen = SearchListen(maxFrames: maxFrames)
+        }
+
+        func receive(_ event: MonitorEvent) -> Bool {
+            listen.receive(event)
         }
     }
 
@@ -263,7 +251,7 @@ public actor JobRunner {
         }
 
         var searchOutcome: SearchOutcome?
-        if plan.search != nil, Self.searchProtocol(detected: nil) {
+        if plan.search != nil {
             let engineOff = try await engineIsOff(emit: emit)
             if engineOff == false {
                 searchOutcome = SearchOutcome(
@@ -419,12 +407,23 @@ public actor JobRunner {
         var modules: [SurveyModule] = []
         for pair in result.confirmed {
             let candidate = SurveyCandidate(target: pair, origin: .discovered)
-            emit(.step(String(format: "Reading discovered module %03X", pair.request)))
-            let attempt = try await connection.withSession { session in
-                try await self.performSurveyCandidate(
-                    candidate, plan: plan, session: session, emit: emit)
+            emit(.step(String(format: "Found a module at %03X; asking what it is", pair.request)))
+            do {
+                let attempt = try await connection.withSession { session in
+                    try await self.performSurveyCandidate(
+                        candidate, plan: plan, session: session, emit: emit)
+                }
+                if case .module(let module) = attempt { modules.append(module) }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                if ConnectionManager.desynchronizes(error) { throw error }
+                emit(
+                    .warning(
+                        String(
+                            format: "The module at %03X answered the search but not ", pair.request)
+                            + "the reads that followed: \(error.readable)"))
             }
-            if case .module(let module) = attempt { modules.append(module) }
         }
         return SearchRun(
             outcome: SearchOutcome(
@@ -441,82 +440,82 @@ public actor JobRunner {
         let stopReason: String?
     }
 
+    /// Listens through the plan's reply window, sweeps the request range with TesterPresent, and
+    /// asks each answering pair again on its exact reply ID. Adapter and bus trouble ends the
+    /// search with a reason; only a desynchronized line or cancellation ends the survey.
     private func listenAndSweep(
         _ search: ModuleSearch, session: ELM327Session, existingCandidates: [SurveyCandidate],
         emit: @escaping @Sendable (JobEvent) -> Void
     ) async throws -> SearchProbeResult {
-        try await sendSearchCommand("ATCRA", session: session)
-        try await configureSearchWindow(search.replyWindow, session: session)
-        let listenState = SearchListenState()
+        var heard = Set<UInt32>()
+        var swept = 0
+        var pairs: [ModuleTarget] = []
         do {
+            // `ATCRA` alone drops the last module's exact filter, so the window below applies.
+            try await sendSearchCommand("ATCRA", session: session)
+            try await configureSearchWindow(search.replyWindow, session: session)
+            let state = SearchListenState(maxFrames: search.maxListenFrames)
             try await session.monitor(for: .milliseconds(Int64(search.listenMilliseconds))) {
                 _, event in
-                await listenState.receive(event, limit: search.busyLimitPerSecond)
+                await state.receive(event)
+            }
+            let listen = await state.listen
+            heard = listen.heard
+            if let reason = listen.reason {
+                return SearchProbeResult(
+                    heardIDs: heard, sweptCount: 0, confirmed: [], unconfirmed: [],
+                    stopReason: reason)
+            }
+            let requests = search.sweepRequests(candidates: existingCandidates, heardIDs: heard)
+            try await sendSearchCommand(search.replyTimeoutCommand, session: session)
+            for request in requests {
+                try Task.checkCancellation()
+                swept += 1
+                emit(.step("Searching: \(swept) of \(requests.count)"))
+                try await sendSearchCommand(String(format: "ATSH %03X", request), session: session)
+                let reply = SearchReply(try await session.send("3E00"))
+                if let trouble = reply.trouble {
+                    return SearchProbeResult(
+                        heardIDs: heard, sweptCount: swept, confirmed: [], unconfirmed: pairs,
+                        stopReason:
+                            "The adapter reported \(trouble.description), so the search stopped.")
+                }
+                for response in reply.testerPresentReplies {
+                    let pair = try ModuleTarget(
+                        bus: .highSpeed, request: request, response: response)
+                    if !pairs.contains(pair) { pairs.append(pair) }
+                }
             }
         } catch is CancellationError {
             throw CancellationError()
         } catch {
+            if ConnectionManager.desynchronizes(error) { throw error }
             return SearchProbeResult(
-                heardIDs: await listenState.heard, sweptCount: 0, confirmed: [], unconfirmed: [],
-                stopReason: "The adapter stopped listening: \(error.readable)")
+                heardIDs: heard, sweptCount: swept, confirmed: [], unconfirmed: pairs,
+                stopReason: "The search stopped: \(error.readable)")
         }
-        let heard = await listenState.heard
-        let frameCount = await listenState.frameCount
-        var adapterReason = await listenState.reason
-        if frameCount > search.busyLimitPerSecond {
-            adapterReason = "The bus is too busy to search safely."
-        }
-        if let adapterReason {
-            return SearchProbeResult(
-                heardIDs: heard, sweptCount: 0, confirmed: [], unconfirmed: [],
-                stopReason: adapterReason)
-        }
-        let requests = search.sweepRequests(candidates: existingCandidates, heardIDs: heard)
-        var pairs: [ModuleTarget] = []
-        for (index, request) in requests.enumerated() {
-            try Task.checkCancellation()
-            emit(.step("Searching: \(index + 1) of \(requests.count)"))
-            _ = try await session.send(String(format: "ATSH %03X", request))
-            do {
-                let raw = try await session.send(
-                    "3E00", timeout: .milliseconds(Int64(search.replyTimeoutMilliseconds)))
-                let parsed = try ELM327ResponseParser.parse(raw)
-                for frame in parsed.frames where SearchReplyClassifier.isTesterPresent(frame.data) {
-                    let target = try ModuleTarget(
-                        bus: .highSpeed, request: request, response: frame.header)
-                    pairs.append(target)
-                }
-            } catch ELM327Error.adapter(let message) where message == .noData {
-                continue
-            } catch {
-                return SearchProbeResult(
-                    heardIDs: heard, sweptCount: index + 1, confirmed: [], unconfirmed: pairs,
-                    stopReason: "The adapter stopped the search: \(error.readable)")
-            }
-        }
+
         var confirmed: [ModuleTarget] = []
         var unconfirmed: [ModuleTarget] = []
         for pair in pairs {
-            try await sendSearchCommand(
-                String(format: "ATCRA %03X", pair.response), session: session)
-            try await sendSearchCommand(String(format: "ATSH %03X", pair.request), session: session)
             do {
-                let raw = try await session.send(
-                    "3E00", timeout: .milliseconds(Int64(search.replyTimeoutMilliseconds)))
-                let parsed = try ELM327ResponseParser.parse(raw)
-                if parsed.frames.contains(where: { SearchReplyClassifier.isTesterPresent($0.data) })
-                {
-                    if !confirmed.contains(pair) { confirmed.append(pair) }
-                } else if !unconfirmed.contains(pair) {
-                    unconfirmed.append(pair)
-                }
+                try await sendSearchCommand(
+                    String(format: "ATCRA %03X", pair.response), session: session)
+                try await sendSearchCommand(
+                    String(format: "ATSH %03X", pair.request), session: session)
+                let answered = SearchReply(try await session.send("3E00")).testerPresentReplies
+                    .contains(pair.response)
+                if answered { confirmed.append(pair) } else { unconfirmed.append(pair) }
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
-                if !unconfirmed.contains(pair) { unconfirmed.append(pair) }
+                if ConnectionManager.desynchronizes(error) { throw error }
+                unconfirmed.append(pair)
             }
         }
         return SearchProbeResult(
-            heardIDs: heard, sweptCount: requests.count, confirmed: confirmed,
-            unconfirmed: unconfirmed, stopReason: nil)
+            heardIDs: heard, sweptCount: swept, confirmed: confirmed, unconfirmed: unconfirmed,
+            stopReason: nil)
     }
 
     private func configureSearchWindow(_ filter: ReceiveFilter, session: ELM327Session) async throws

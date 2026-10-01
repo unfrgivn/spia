@@ -26,17 +26,12 @@ public struct ModuleSearch: Codable, Sendable, Equatable, Hashable {
     public let busyLimitPerSecond: Int
     public let perAddressMilliseconds: UInt64
 
-    private enum CodingKeys: String, CodingKey {
-        case requestRange, replyWindow, listenMilliseconds, replyTimeoutMilliseconds
-        case busyLimitPerSecond, perAddressMilliseconds
-    }
-
     public init(
         requestRange: ClosedRange<UInt32> = 0x600...0x7FF,
         replyWindow: ReceiveFilter = .window(mask: 0x400, pattern: 0x400),
         listenMilliseconds: UInt64,
         replyTimeoutMilliseconds: UInt64 = 48,
-        busyLimitPerSecond: Int = 5,
+        busyLimitPerSecond: Int = 20,
         perAddressMilliseconds: UInt64 = 80
     ) {
         self.requestRange = requestRange
@@ -45,18 +40,6 @@ public struct ModuleSearch: Codable, Sendable, Equatable, Hashable {
         self.replyTimeoutMilliseconds = replyTimeoutMilliseconds
         self.busyLimitPerSecond = busyLimitPerSecond
         self.perAddressMilliseconds = perAddressMilliseconds
-    }
-
-    public init(from decoder: Decoder) throws {
-        let values = try decoder.container(keyedBy: CodingKeys.self)
-        requestRange = try values.decode(ClosedRange<UInt32>.self, forKey: .requestRange)
-        replyWindow = try values.decode(ReceiveFilter.self, forKey: .replyWindow)
-        listenMilliseconds = try values.decode(UInt64.self, forKey: .listenMilliseconds)
-        replyTimeoutMilliseconds = try values.decode(UInt64.self, forKey: .replyTimeoutMilliseconds)
-        busyLimitPerSecond = try values.decode(Int.self, forKey: .busyLimitPerSecond)
-        perAddressMilliseconds =
-            try values.decodeIfPresent(UInt64.self, forKey: .perAddressMilliseconds)
-            ?? (listenMilliseconds == 1_000 ? 120 : 80)
     }
 
     public static func standard(over connection: ConnectionKind) -> ModuleSearch {
@@ -75,6 +58,14 @@ public struct ModuleSearch: Codable, Sendable, Equatable, Hashable {
         return listenMilliseconds + UInt64(count) * perAddressMilliseconds
     }
 
+    /// The most frames the listen may hear through the window before the bus counts as too busy
+    /// to search: the per-second limit over the whole listen.
+    public var maxListenFrames: Int {
+        max(1, busyLimitPerSecond * Int(listenMilliseconds) / 1_000)
+    }
+
+    /// The adapter's own wait for each answer during the sweep (`ATST`, in 4 ms units). Modules
+    /// answer TesterPresent within a few milliseconds, so it stays short.
     public var replyTimeoutCommand: String {
         let value = min(max(replyTimeoutMilliseconds / 4, 1), 255)
         return String(format: "ATST %02X", value)
@@ -153,11 +144,13 @@ public struct SurveyPlan: Codable, Sendable, Equatable, Hashable {
 
     public var plannedRequests: [String] {
         let info = OBDInfoPlan.standard.requests.map(\.hex)
+        // The search asks the engine's RPM, then sends only TesterPresent.
+        let searchRequests = search == nil ? [] : ["010C", "3E00"]
         return info
             + candidates.flatMap { candidate in
                 let commands = commands(for: candidate)
                 return [commands.probe] + commands.identification + [commands.codes]
-            }
+            } + searchRequests
     }
 
     public var plannedCommands: [String] {
@@ -250,7 +243,7 @@ public enum SurveyPlanner {
 
     public static func plan(
         catalog: ModuleCatalog, vehicle: CatalogVehicle?, reachableBuses: Set<CANBus>,
-        savedModules: [ModuleChoice] = []
+        savedModules: [ModuleChoice] = [], search: ModuleSearch? = nil
     ) throws -> SurveyPlan {
         var reachable = reachableBuses
         reachable.insert(.highSpeed)
@@ -296,7 +289,7 @@ public enum SurveyPlanner {
             unreachable: known.filter { !reachable.contains($0.target.bus) },
             requiresVIN: true,
             expected: expectedTargets(from: candidates),
-            detectsProtocol: true)
+            detectsProtocol: true, search: search)
     }
 
     /// The candidates the survey should hear from, in probe order: the car's saved modules,
