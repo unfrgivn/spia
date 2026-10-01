@@ -21,11 +21,11 @@ struct OpenDBCCatalogTests {
     func generatedModules() throws {
         let catalog = try Self.generated()
         #expect(catalog.catalogVersion == "opendbc-f1e707b")
-        #expect(catalog.makes.count == 25)
+        #expect(catalog.makes.count == 27)
         let platforms = catalog.makes.flatMap(\.platforms)
-        #expect(platforms.count == 241)
+        #expect(platforms.count == 280)
         let modules = platforms.flatMap(\.modules)
-        #expect(modules.count == 938)
+        #expect(modules.count == 1_150)
         for module in modules {
             #expect(module.provenance == .reference)
             #expect(module.source.hasPrefix("opendbc f1e707b: "))
@@ -103,6 +103,25 @@ struct OpenDBCCatalogTests {
         #expect(ghibli.modules.count == 6)
     }
 
+    @Test("a 2019 Civic gets Honda's 29-bit modules, each replying with its address bytes swapped")
+    func honda() throws {
+        let civic = try #require(
+            try ModuleCatalog.bundled().match(
+                CatalogVehicle(make: "HONDA", model: "Civic", year: 2019)))
+        #expect(civic.name == "Honda Civic 2017-2021 (opendbc HONDA_CIVIC_BOSCH)")
+        #expect(
+            civic.modules.map(\.label) == [
+                "Transmission", "Stability control", "Brake booster", "Power steering", "Airbag",
+                "Front radar", "Front camera", "Gateway",
+            ])
+        for module in civic.modules {
+            #expect(module.target.isExtended)
+            let target = (module.target.request >> 8) & 0xFF
+            #expect(module.target.request == 0x18DA_00F1 | target << 8)
+            #expect(module.target.response == 0x18DA_F100 | target)
+        }
+    }
+
     @Test("a 2021 Sonata gets its gas and hybrid platforms' modules, each once")
     func overlappingPlatforms() throws {
         let sonata = try #require(
@@ -135,8 +154,8 @@ struct OpenDBCCatalogTests {
                 }
             }
         }
-        // Every model and year of every platform, Spia's two and opendbc's 241.
-        #expect(plans == 813)
+        // Every model and year of every platform, Spia's two and opendbc's 280.
+        #expect(plans == 944)
     }
 
     @Test("each make's platforms are pinned, so a regenerated catalog's changes show up here")
@@ -147,8 +166,9 @@ struct OpenDBCCatalogTests {
             })
         #expect(
             counts == [
-                "Audi": 6, "Chrysler": 4, "CUPRA": 2, "Dodge": 1, "Ford": 12, "Genesis": 10,
-                "Hyundai": 38, "Jeep": 2, "Kia": 27, "Lexus": 15, "Lincoln": 1, "MAN": 2,
+                "Acura": 9, "Audi": 6, "Chrysler": 4, "CUPRA": 2, "Dodge": 1, "Ford": 12,
+                "Genesis": 10, "Honda": 29, "Hyundai": 38, "Jeep": 3, "Kia": 27, "Lexus": 15,
+                "Lincoln": 1, "MAN": 2,
                 "Maserati": 1, "Mazda": 6, "MG": 1, "Nissan": 3, "Peugeot": 1, "Porsche": 1,
                 "Ram": 3, "Rivian": 2, "SEAT": 3, "Subaru": 19, "Tesla": 3, "Toyota": 29,
                 "Volkswagen": 42, "Škoda": 9,

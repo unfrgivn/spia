@@ -23,12 +23,14 @@ marked `logging` only collect data, so they never produced a fingerprint and don
                               OBD port unless a gateway sits in between, so kept, and labelled so.
     anything else             harness-only buses (bus 1 without multiplexing, bus 2): left out.
 
-A module's reply is its request plus the `rx_offset` of the requests that read it. When those
-disagree (Chrysler reads ABS at both -0x280 and +8; Nissan reads everything at +8 and +0x20), the
-legislated 7E0-7E7 answer at +8 and every other module at the make's own offset.
+An 11-bit module's reply is its request plus the `rx_offset` of the requests that read it. When
+those disagree (Chrysler reads ABS at both -0x280 and +8; Nissan reads everything at +8 and +0x20),
+the legislated 7E0-7E7 answer at +8 and every other module at the make's own offset. A 29-bit
+module (`18DA<target>F1`, Honda's and some Chrysler and Nissan modules) replies with the last two
+bytes swapped (`18DAF1<target>`), as opendbc's uds.get_rx_addr_for_tx_addr computes it.
 
-Left out for now, and counted: 29-bit addresses (Honda, some Chrysler) and ISO-TP extended
-addressing (Toyota's sub-addressed modules), which Spia can't send yet.
+Left out for now, and counted: ISO-TP extended addressing (Toyota's sub-addressed modules), which
+Spia can't send yet.
 
 Model names are matched against what NHTSA's vPIC decodes from a VIN, so the generator strips
 what vPIC keeps out of the model (powertrain words, notes in parentheses) and maps the few names
@@ -142,6 +144,20 @@ def route(requests, ecu) -> tuple[str, list[int]] | None:
     return None
 
 
+def physical_29_bit(address: int) -> bool:
+    """ISO 15765-4 normal fixed addressing to one module from the tester at F1."""
+    target = (address >> 8) & 0xFF
+    return address >> 16 == 0x18DA and address & 0xFF == 0xF1 and target != 0xF1
+
+
+def swapped(address: int) -> int:
+    return (address & 0xFFFF0000) | ((address << 8) & 0xFF00) | ((address >> 8) & 0xFF)
+
+
+def hex_id(value: int) -> str:
+    return f"{value:03X}" if value <= 0x7FF else f"{value:08X}"
+
+
 def reply_offset(address: int, offsets: list[int]) -> int | None:
     if len(offsets) == 1:
         return offsets[0]
@@ -179,18 +195,22 @@ def main() -> None:
                     why = f"{name} ECU"
                 elif sub is not None:
                     why = "ISO-TP extended addressing"
-                elif address > 0x7FF:
-                    why = "29-bit"
+                elif address > 0x7FF and not physical_29_bit(address):
+                    why = "29-bit, not a physical 18DA..F1 request"
                 way = route(requests, ecu) if why is None else None
                 if why is None and way is None:
                     why = "read only on harness buses"
-                offset = reply_offset(address, way[1]) if way else None
-                if why is None and offset is None:
-                    why = "ambiguous reply offset"
-                reply = address + offset if offset is not None else 0
-                if why is None and not (0 < reply <= 0x7FF and reply != address
-                                        and address != 0x7DF):
-                    why = "reply outside 11-bit"
+                reply = 0
+                if why is None and address > 0x7FF:
+                    reply = swapped(address)
+                elif why is None:
+                    offset = reply_offset(address, way[1])
+                    if offset is None:
+                        why = "ambiguous reply offset"
+                    else:
+                        reply = address + offset
+                        if not (0 < reply <= 0x7FF and reply != address and address != 0x7DF):
+                            why = "reply outside 11-bit"
                 if why is not None:
                     skipped[f"{brand}: {why}"] += 1
                     continue
@@ -206,7 +226,7 @@ def main() -> None:
                     continue
                 modules[key] = {
                     "label": LABELS[name], "bus": "hs",
-                    "request": f"{address:03X}", "reply": f"{reply:03X}",
+                    "request": hex_id(address), "reply": hex_id(reply),
                     "provenance": "reference",
                     "source": f"opendbc {short}: {platform.name} {name}, "
                               f"opendbc/car/{brand}/fingerprints.py:{line}; {asked}",

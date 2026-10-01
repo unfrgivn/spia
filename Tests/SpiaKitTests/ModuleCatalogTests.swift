@@ -36,8 +36,8 @@ struct ModuleCatalogTests {
         let catalog = try catalog()
         #expect(catalog.schemaVersion == 1)
         #expect(catalog.catalogVersion == "2026.10.01+opendbc-f1e707b")
-        // Spia's Maserati and Volkswagen, then opendbc's 25 makes, Volkswagen among them.
-        #expect(catalog.makes.count == 26)
+        // Spia's Maserati and Volkswagen, then opendbc's 27 makes, Volkswagen among them.
+        #expect(catalog.makes.count == 28)
         #expect(catalog.makes.prefix(2).map(\.make) == ["Maserati", "Volkswagen"])
         #expect(catalog.makes.first { $0.make == "Volkswagen" }?.platforms[0].modules.count == 19)
         for make in catalog.makes {

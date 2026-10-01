@@ -5,6 +5,123 @@
   "license": "MIT, Copyright (c) 2020 Comma.ai, Inc.; see NOTICE",
   "makes": [
     {
+      "make": "Acura",
+      "aliases": [],
+      "platforms": [
+        {
+          "name": "Acura ADX 2025-2026 (opendbc ACURA_ADX)",
+          "models": ["ADX"],
+          "years": {"first": 2025, "last": 2026},
+          "source": "opendbc f1e707b: ACURA_ADX, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Transmission", "bus": "hs", "request": "18DA1EF1", "reply": "18DAF11E", "provenance": "reference", "source": "opendbc f1e707b: ACURA_ADX transmission, opendbc/car/honda/fingerprints.py:1259; asked through the OBD port"},
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: ACURA_ADX vsa, opendbc/car/honda/fingerprints.py:1262; asked through the OBD port"},
+            {"label": "Brake booster", "bus": "hs", "request": "18DA2BF1", "reply": "18DAF12B", "provenance": "reference", "source": "opendbc f1e707b: ACURA_ADX electricBrakeBooster, opendbc/car/honda/fingerprints.py:1265; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: ACURA_ADX eps, opendbc/car/honda/fingerprints.py:1268; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: ACURA_ADX srs, opendbc/car/honda/fingerprints.py:1271; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: ACURA_ADX fwdRadar, opendbc/car/honda/fingerprints.py:1252; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: ACURA_ADX gateway, opendbc/car/honda/fingerprints.py:1256; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Acura ILX 2016-2019 (opendbc ACURA_ILX)",
+          "models": ["ILX"],
+          "years": {"first": 2016, "last": 2019},
+          "source": "opendbc f1e707b: ACURA_ILX, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: ACURA_ILX srs, opendbc/car/honda/fingerprints.py:1001; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: ACURA_ILX fwdRadar, opendbc/car/honda/fingerprints.py:995; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: ACURA_ILX gateway, opendbc/car/honda/fingerprints.py:992; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Acura MDX 2022-2024 (opendbc ACURA_MDX_4G)",
+          "models": ["MDX"],
+          "years": {"first": 2022, "last": 2024},
+          "source": "opendbc f1e707b: ACURA_MDX_4G, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Shift-by-wire", "bus": "hs", "request": "18DA0BF1", "reply": "18DAF10B", "provenance": "reference", "source": "opendbc f1e707b: ACURA_MDX_4G shiftByWire, opendbc/car/honda/fingerprints.py:567; asked through the OBD port"},
+            {"label": "Transmission", "bus": "hs", "request": "18DA1EF1", "reply": "18DAF11E", "provenance": "reference", "source": "opendbc f1e707b: ACURA_MDX_4G transmission, opendbc/car/honda/fingerprints.py:557; asked through the OBD port"},
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: ACURA_MDX_4G vsa, opendbc/car/honda/fingerprints.py:562; asked through the OBD port"},
+            {"label": "Brake booster", "bus": "hs", "request": "18DA2BF1", "reply": "18DAF12B", "provenance": "reference", "source": "opendbc f1e707b: ACURA_MDX_4G electricBrakeBooster, opendbc/car/honda/fingerprints.py:570; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: ACURA_MDX_4G eps, opendbc/car/honda/fingerprints.py:538; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: ACURA_MDX_4G srs, opendbc/car/honda/fingerprints.py:543; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: ACURA_MDX_4G fwdRadar, opendbc/car/honda/fingerprints.py:553; asked through the OBD port"},
+            {"label": "Front camera", "bus": "hs", "request": "18DAB5F1", "reply": "18DAF1B5", "provenance": "reference", "source": "opendbc f1e707b: ACURA_MDX_4G fwdCamera, opendbc/car/honda/fingerprints.py:548; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: ACURA_MDX_4G gateway, opendbc/car/honda/fingerprints.py:533; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Acura MDX 2025-2026 (opendbc ACURA_MDX_4G_MMR)",
+          "models": ["MDX"],
+          "years": {"first": 2025, "last": 2026},
+          "source": "opendbc f1e707b: ACURA_MDX_4G_MMR, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: ACURA_MDX_4G_MMR fwdRadar, opendbc/car/honda/fingerprints.py:579; asked through the OBD port"},
+            {"label": "Front camera", "bus": "hs", "request": "18DAB5F1", "reply": "18DAF1B5", "provenance": "reference", "source": "opendbc f1e707b: ACURA_MDX_4G_MMR fwdCamera, opendbc/car/honda/fingerprints.py:576; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Acura RDX 2016-2018 (opendbc ACURA_RDX)",
+          "models": ["RDX"],
+          "years": {"first": 2016, "last": 2018},
+          "source": "opendbc f1e707b: ACURA_RDX, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: ACURA_RDX vsa, opendbc/car/honda/fingerprints.py:788; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: ACURA_RDX srs, opendbc/car/honda/fingerprints.py:796; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: ACURA_RDX fwdRadar, opendbc/car/honda/fingerprints.py:792; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Acura RDX 2019-2021 (opendbc ACURA_RDX_3G)",
+          "models": ["RDX"],
+          "years": {"first": 2019, "last": 2021},
+          "source": "opendbc f1e707b: ACURA_RDX_3G, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Shift-by-wire", "bus": "hs", "request": "18DA0BF1", "reply": "18DAF10B", "provenance": "reference", "source": "opendbc f1e707b: ACURA_RDX_3G shiftByWire, opendbc/car/honda/fingerprints.py:814; asked through the OBD port"},
+            {"label": "Transmission", "bus": "hs", "request": "18DA1EF1", "reply": "18DAF11E", "provenance": "reference", "source": "opendbc f1e707b: ACURA_RDX_3G transmission, opendbc/car/honda/fingerprints.py:817; asked through the OBD port"},
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: ACURA_RDX_3G vsa, opendbc/car/honda/fingerprints.py:803; asked through the OBD port"},
+            {"label": "Brake booster", "bus": "hs", "request": "18DA2BF1", "reply": "18DAF12B", "provenance": "reference", "source": "opendbc f1e707b: ACURA_RDX_3G electricBrakeBooster, opendbc/car/honda/fingerprints.py:831; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: ACURA_RDX_3G eps, opendbc/car/honda/fingerprints.py:841; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: ACURA_RDX_3G srs, opendbc/car/honda/fingerprints.py:827; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: ACURA_RDX_3G fwdRadar, opendbc/car/honda/fingerprints.py:807; asked through the OBD port"},
+            {"label": "Front camera", "bus": "hs", "request": "18DAB5F1", "reply": "18DAF1B5", "provenance": "reference", "source": "opendbc f1e707b: ACURA_RDX_3G fwdCamera, opendbc/car/honda/fingerprints.py:811; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: ACURA_RDX_3G gateway, opendbc/car/honda/fingerprints.py:836; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Acura RDX 2022-2024 (opendbc ACURA_RDX_3G_MMR)",
+          "models": ["RDX"],
+          "years": {"first": 2022, "last": 2024},
+          "source": "opendbc f1e707b: ACURA_RDX_3G_MMR, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: ACURA_RDX_3G_MMR fwdRadar, opendbc/car/honda/fingerprints.py:849; asked through the OBD port"},
+            {"label": "Front camera", "bus": "hs", "request": "18DAB5F1", "reply": "18DAF1B5", "provenance": "reference", "source": "opendbc f1e707b: ACURA_RDX_3G_MMR fwdCamera, opendbc/car/honda/fingerprints.py:852; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Acura TLX 2021-2022 (opendbc ACURA_TLX_2G)",
+          "models": ["TLX"],
+          "years": {"first": 2021, "last": 2022},
+          "source": "opendbc f1e707b: ACURA_TLX_2G, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: ACURA_TLX_2G fwdRadar, opendbc/car/honda/fingerprints.py:1233; asked through the OBD port"},
+            {"label": "Front camera", "bus": "hs", "request": "18DAB5F1", "reply": "18DAF1B5", "provenance": "reference", "source": "opendbc f1e707b: ACURA_TLX_2G fwdCamera, opendbc/car/honda/fingerprints.py:1237; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Acura TLX 2025 (opendbc ACURA_TLX_2G_MMR)",
+          "models": ["TLX"],
+          "years": {"first": 2025, "last": 2025},
+          "source": "opendbc f1e707b: ACURA_TLX_2G_MMR, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: ACURA_TLX_2G_MMR fwdRadar, opendbc/car/honda/fingerprints.py:1244; asked through the OBD port"},
+            {"label": "Front camera", "bus": "hs", "request": "18DAB5F1", "reply": "18DAF1B5", "provenance": "reference", "source": "opendbc f1e707b: ACURA_TLX_2G_MMR fwdCamera, opendbc/car/honda/fingerprints.py:1247; asked through the OBD port"}
+          ]
+        }
+      ]
+    },
+    {
       "make": "Audi",
       "aliases": [],
       "platforms": [
@@ -460,6 +577,408 @@
       ]
     },
     {
+      "make": "Honda",
+      "aliases": [],
+      "platforms": [
+        {
+          "name": "Honda Accord 2018-2022 (opendbc HONDA_ACCORD)",
+          "models": ["Accord"],
+          "years": {"first": 2018, "last": 2022},
+          "source": "opendbc f1e707b: HONDA_ACCORD, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Shift-by-wire", "bus": "hs", "request": "18DA0BF1", "reply": "18DAF10B", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD shiftByWire, opendbc/car/honda/fingerprints.py:32; asked through the OBD port"},
+            {"label": "Transmission", "bus": "hs", "request": "18DA1EF1", "reply": "18DAF11E", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD transmission, opendbc/car/honda/fingerprints.py:36; asked through the OBD port"},
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD vsa, opendbc/car/honda/fingerprints.py:66; asked through the OBD port"},
+            {"label": "Brake booster", "bus": "hs", "request": "18DA2BF1", "reply": "18DAF12B", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD electricBrakeBooster, opendbc/car/honda/fingerprints.py:56; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD eps, opendbc/car/honda/fingerprints.py:85; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD srs, opendbc/car/honda/fingerprints.py:96; asked through the OBD port"},
+            {"label": "Head-up display", "bus": "hs", "request": "18DA61F1", "reply": "18DAF161", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD hud, opendbc/car/honda/fingerprints.py:107; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD fwdRadar, opendbc/car/honda/fingerprints.py:111; asked through the OBD port"},
+            {"label": "Front camera", "bus": "hs", "request": "18DAB5F1", "reply": "18DAF1B5", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD fwdCamera, opendbc/car/honda/fingerprints.py:127; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD gateway, opendbc/car/honda/fingerprints.py:137; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda Accord 2023-2026 (opendbc HONDA_ACCORD_11G)",
+          "models": ["Accord"],
+          "years": {"first": 2023, "last": 2026},
+          "source": "opendbc f1e707b: HONDA_ACCORD_11G, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD_11G fwdRadar, opendbc/car/honda/fingerprints.py:1151; asked through the OBD port"},
+            {"label": "Front camera", "bus": "hs", "request": "18DAB5F1", "reply": "18DAF1B5", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD_11G fwdCamera, opendbc/car/honda/fingerprints.py:1154; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda City 2023 (opendbc HONDA_CITY_7G)",
+          "models": ["City"],
+          "years": {"first": 2023, "last": 2023},
+          "source": "opendbc f1e707b: HONDA_CITY_7G, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Transmission", "bus": "hs", "request": "18DA1EF1", "reply": "18DAF11E", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CITY_7G transmission, opendbc/car/honda/fingerprints.py:1200; asked through the OBD port"},
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CITY_7G vsa, opendbc/car/honda/fingerprints.py:1197; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CITY_7G eps, opendbc/car/honda/fingerprints.py:1185; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CITY_7G srs, opendbc/car/honda/fingerprints.py:1191; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CITY_7G fwdRadar, opendbc/car/honda/fingerprints.py:1194; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CITY_7G gateway, opendbc/car/honda/fingerprints.py:1188; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda Civic 2016-2018 (opendbc HONDA_CIVIC)",
+          "models": ["Civic"],
+          "years": {"first": 2016, "last": 2018},
+          "source": "opendbc f1e707b: HONDA_CIVIC, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Transmission", "bus": "hs", "request": "18DA1EF1", "reply": "18DAF11E", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CIVIC transmission, opendbc/car/honda/fingerprints.py:147; asked through the OBD port"},
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CIVIC vsa, opendbc/car/honda/fingerprints.py:159; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CIVIC eps, opendbc/car/honda/fingerprints.py:166; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CIVIC srs, opendbc/car/honda/fingerprints.py:172; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CIVIC fwdRadar, opendbc/car/honda/fingerprints.py:179; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CIVIC gateway, opendbc/car/honda/fingerprints.py:189; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda Civic 2017-2021 (opendbc HONDA_CIVIC_BOSCH)",
+          "models": ["Civic"],
+          "years": {"first": 2017, "last": 2021},
+          "source": "opendbc f1e707b: HONDA_CIVIC_BOSCH, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Transmission", "bus": "hs", "request": "18DA1EF1", "reply": "18DAF11E", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CIVIC_BOSCH transmission, opendbc/car/honda/fingerprints.py:195; asked through the OBD port"},
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CIVIC_BOSCH vsa, opendbc/car/honda/fingerprints.py:219; asked through the OBD port"},
+            {"label": "Brake booster", "bus": "hs", "request": "18DA2BF1", "reply": "18DAF12B", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CIVIC_BOSCH electricBrakeBooster, opendbc/car/honda/fingerprints.py:307; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CIVIC_BOSCH eps, opendbc/car/honda/fingerprints.py:236; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CIVIC_BOSCH srs, opendbc/car/honda/fingerprints.py:251; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CIVIC_BOSCH fwdRadar, opendbc/car/honda/fingerprints.py:267; asked through the OBD port"},
+            {"label": "Front camera", "bus": "hs", "request": "18DAB5F1", "reply": "18DAF1B5", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CIVIC_BOSCH fwdCamera, opendbc/car/honda/fingerprints.py:283; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CIVIC_BOSCH gateway, opendbc/car/honda/fingerprints.py:302; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda Civic 2022-2026 (opendbc HONDA_CIVIC_2022)",
+          "models": ["Civic"],
+          "years": {"first": 2022, "last": 2026},
+          "source": "opendbc f1e707b: HONDA_CIVIC_2022, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Transmission", "bus": "hs", "request": "18DA1EF1", "reply": "18DAF11E", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CIVIC_2022 transmission, opendbc/car/honda/fingerprints.py:1123; asked through the OBD port"},
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CIVIC_2022 vsa, opendbc/car/honda/fingerprints.py:1110; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CIVIC_2022 eps, opendbc/car/honda/fingerprints.py:1039; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CIVIC_2022 srs, opendbc/car/honda/fingerprints.py:1069; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CIVIC_2022 fwdRadar, opendbc/car/honda/fingerprints.py:1085; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CIVIC_2022 gateway, opendbc/car/honda/fingerprints.py:1052; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda CR-V 2015-2016 (opendbc HONDA_CRV)",
+          "models": ["CR-V"],
+          "years": {"first": 2015, "last": 2016},
+          "source": "opendbc f1e707b: HONDA_CRV, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CRV vsa, opendbc/car/honda/fingerprints.py:342; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CRV srs, opendbc/car/honda/fingerprints.py:348; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CRV fwdRadar, opendbc/car/honda/fingerprints.py:351; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda CR-V 2017-2022 (opendbc HONDA_CRV_5G)",
+          "models": ["CR-V"],
+          "years": {"first": 2017, "last": 2022},
+          "source": "opendbc f1e707b: HONDA_CRV_5G, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Transmission", "bus": "hs", "request": "18DA1EF1", "reply": "18DAF11E", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CRV_5G transmission, opendbc/car/honda/fingerprints.py:358; asked through the OBD port"},
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CRV_5G vsa, opendbc/car/honda/fingerprints.py:373; asked through the OBD port"},
+            {"label": "Brake booster", "bus": "hs", "request": "18DA2BF1", "reply": "18DAF12B", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CRV_5G electricBrakeBooster, opendbc/car/honda/fingerprints.py:389; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CRV_5G eps, opendbc/car/honda/fingerprints.py:381; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CRV_5G srs, opendbc/car/honda/fingerprints.py:421; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CRV_5G fwdRadar, opendbc/car/honda/fingerprints.py:400; asked through the OBD port"},
+            {"label": "Front camera", "bus": "hs", "request": "18DAB5F1", "reply": "18DAF1B5", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CRV_5G fwdCamera, opendbc/car/honda/fingerprints.py:410; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CRV_5G gateway, opendbc/car/honda/fingerprints.py:395; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda CR-V 2017-2022 (opendbc HONDA_CRV_HYBRID)",
+          "models": ["CR-V"],
+          "years": {"first": 2017, "last": 2022},
+          "source": "opendbc f1e707b: HONDA_CRV_HYBRID, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Shift-by-wire", "bus": "hs", "request": "18DA0BF1", "reply": "18DAF10B", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CRV_HYBRID shiftByWire, opendbc/car/honda/fingerprints.py:466; asked through the OBD port"},
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CRV_HYBRID vsa, opendbc/car/honda/fingerprints.py:451; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CRV_HYBRID eps, opendbc/car/honda/fingerprints.py:456; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CRV_HYBRID srs, opendbc/car/honda/fingerprints.py:483; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CRV_HYBRID fwdRadar, opendbc/car/honda/fingerprints.py:478; asked through the OBD port"},
+            {"label": "Front camera", "bus": "hs", "request": "18DAB5F1", "reply": "18DAF1B5", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CRV_HYBRID fwdCamera, opendbc/car/honda/fingerprints.py:470; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CRV_HYBRID gateway, opendbc/car/honda/fingerprints.py:461; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda CR-V 2023-2026 (opendbc HONDA_CRV_6G)",
+          "models": ["CR-V"],
+          "years": {"first": 2023, "last": 2026},
+          "source": "opendbc f1e707b: HONDA_CRV_6G, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CRV_6G fwdRadar, opendbc/car/honda/fingerprints.py:1162; asked through the OBD port"},
+            {"label": "Front camera", "bus": "hs", "request": "18DAB5F1", "reply": "18DAF1B5", "provenance": "reference", "source": "opendbc f1e707b: HONDA_CRV_6G fwdCamera, opendbc/car/honda/fingerprints.py:1169; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda e 2020 (opendbc HONDA_E)",
+          "models": ["e"],
+          "years": {"first": 2020, "last": 2020},
+          "source": "opendbc f1e707b: HONDA_E, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Shift-by-wire", "bus": "hs", "request": "18DA0BF1", "reply": "18DAF10B", "provenance": "reference", "source": "opendbc f1e707b: HONDA_E shiftByWire, opendbc/car/honda/fingerprints.py:1014; asked through the OBD port"},
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_E vsa, opendbc/car/honda/fingerprints.py:1026; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_E eps, opendbc/car/honda/fingerprints.py:1008; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_E srs, opendbc/car/honda/fingerprints.py:1017; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_E fwdRadar, opendbc/car/honda/fingerprints.py:1020; asked through the OBD port"},
+            {"label": "Front camera", "bus": "hs", "request": "18DAB5F1", "reply": "18DAF1B5", "provenance": "reference", "source": "opendbc f1e707b: HONDA_E fwdCamera, opendbc/car/honda/fingerprints.py:1023; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_E gateway, opendbc/car/honda/fingerprints.py:1011; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda Fit 2018-2020 (opendbc HONDA_FIT)",
+          "models": ["Fit"],
+          "years": {"first": 2018, "last": 2020},
+          "source": "opendbc f1e707b: HONDA_FIT, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_FIT vsa, opendbc/car/honda/fingerprints.py:492; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_FIT eps, opendbc/car/honda/fingerprints.py:497; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_FIT srs, opendbc/car/honda/fingerprints.py:510; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_FIT fwdRadar, opendbc/car/honda/fingerprints.py:504; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_FIT gateway, opendbc/car/honda/fingerprints.py:501; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda Freed 2020 (opendbc HONDA_FREED)",
+          "models": ["Freed"],
+          "years": {"first": 2020, "last": 2020},
+          "source": "opendbc f1e707b: HONDA_FREED, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_FREED vsa, opendbc/car/honda/fingerprints.py:522; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_FREED eps, opendbc/car/honda/fingerprints.py:518; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_FREED fwdRadar, opendbc/car/honda/fingerprints.py:526; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_FREED gateway, opendbc/car/honda/fingerprints.py:515; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda HR-V 2019-2022 (opendbc HONDA_HRV)",
+          "models": ["HR-V"],
+          "years": {"first": 2019, "last": 2022},
+          "source": "opendbc f1e707b: HONDA_HRV, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_HRV eps, opendbc/car/honda/fingerprints.py:920; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_HRV srs, opendbc/car/honda/fingerprints.py:929; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_HRV fwdRadar, opendbc/car/honda/fingerprints.py:923; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_HRV gateway, opendbc/car/honda/fingerprints.py:916; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda HR-V 2023-2027 (opendbc HONDA_HRV_3G)",
+          "models": ["HR-V"],
+          "years": {"first": 2023, "last": 2027},
+          "source": "opendbc f1e707b: HONDA_HRV_3G, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Transmission", "bus": "hs", "request": "18DA1EF1", "reply": "18DAF11E", "provenance": "reference", "source": "opendbc f1e707b: HONDA_HRV_3G transmission, opendbc/car/honda/fingerprints.py:975; asked through the OBD port"},
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_HRV_3G vsa, opendbc/car/honda/fingerprints.py:969; asked through the OBD port"},
+            {"label": "Brake booster", "bus": "hs", "request": "18DA2BF1", "reply": "18DAF12B", "provenance": "reference", "source": "opendbc f1e707b: HONDA_HRV_3G electricBrakeBooster, opendbc/car/honda/fingerprints.py:983; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_HRV_3G eps, opendbc/car/honda/fingerprints.py:934; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_HRV_3G srs, opendbc/car/honda/fingerprints.py:949; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_HRV_3G fwdRadar, opendbc/car/honda/fingerprints.py:957; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_HRV_3G gateway, opendbc/car/honda/fingerprints.py:941; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda Insight 2019-2022 (opendbc HONDA_INSIGHT)",
+          "models": ["Insight"],
+          "years": {"first": 2019, "last": 2022},
+          "source": "opendbc f1e707b: HONDA_INSIGHT, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Shift-by-wire", "bus": "hs", "request": "18DA0BF1", "reply": "18DAF10B", "provenance": "reference", "source": "opendbc f1e707b: HONDA_INSIGHT shiftByWire, opendbc/car/honda/fingerprints.py:908; asked through the OBD port"},
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_INSIGHT vsa, opendbc/car/honda/fingerprints.py:904; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_INSIGHT eps, opendbc/car/honda/fingerprints.py:890; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_INSIGHT srs, opendbc/car/honda/fingerprints.py:901; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_INSIGHT fwdRadar, opendbc/car/honda/fingerprints.py:893; asked through the OBD port"},
+            {"label": "Front camera", "bus": "hs", "request": "18DAB5F1", "reply": "18DAF1B5", "provenance": "reference", "source": "opendbc f1e707b: HONDA_INSIGHT fwdCamera, opendbc/car/honda/fingerprints.py:897; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_INSIGHT gateway, opendbc/car/honda/fingerprints.py:911; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda Inspire 2018 (opendbc HONDA_ACCORD)",
+          "models": ["Inspire"],
+          "years": {"first": 2018, "last": 2018},
+          "source": "opendbc f1e707b: HONDA_ACCORD, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Shift-by-wire", "bus": "hs", "request": "18DA0BF1", "reply": "18DAF10B", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD shiftByWire, opendbc/car/honda/fingerprints.py:32; asked through the OBD port"},
+            {"label": "Transmission", "bus": "hs", "request": "18DA1EF1", "reply": "18DAF11E", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD transmission, opendbc/car/honda/fingerprints.py:36; asked through the OBD port"},
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD vsa, opendbc/car/honda/fingerprints.py:66; asked through the OBD port"},
+            {"label": "Brake booster", "bus": "hs", "request": "18DA2BF1", "reply": "18DAF12B", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD electricBrakeBooster, opendbc/car/honda/fingerprints.py:56; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD eps, opendbc/car/honda/fingerprints.py:85; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD srs, opendbc/car/honda/fingerprints.py:96; asked through the OBD port"},
+            {"label": "Head-up display", "bus": "hs", "request": "18DA61F1", "reply": "18DAF161", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD hud, opendbc/car/honda/fingerprints.py:107; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD fwdRadar, opendbc/car/honda/fingerprints.py:111; asked through the OBD port"},
+            {"label": "Front camera", "bus": "hs", "request": "18DAB5F1", "reply": "18DAF1B5", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD fwdCamera, opendbc/car/honda/fingerprints.py:127; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ACCORD gateway, opendbc/car/honda/fingerprints.py:137; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda N-Box 2018 (opendbc HONDA_NBOX_2G)",
+          "models": ["N-Box"],
+          "years": {"first": 2018, "last": 2018},
+          "source": "opendbc f1e707b: HONDA_NBOX_2G, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_NBOX_2G vsa, opendbc/car/honda/fingerprints.py:15; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_NBOX_2G eps, opendbc/car/honda/fingerprints.py:18; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_NBOX_2G srs, opendbc/car/honda/fingerprints.py:21; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_NBOX_2G fwdRadar, opendbc/car/honda/fingerprints.py:24; asked through the OBD port"},
+            {"label": "Front camera", "bus": "hs", "request": "18DAB5F1", "reply": "18DAF1B5", "provenance": "reference", "source": "opendbc f1e707b: HONDA_NBOX_2G fwdCamera, opendbc/car/honda/fingerprints.py:27; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda Odyssey 2018-2019 (opendbc HONDA_ODYSSEY_TWN)",
+          "models": ["Odyssey"],
+          "years": {"first": 2018, "last": 2019},
+          "source": "opendbc f1e707b: HONDA_ODYSSEY_TWN, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Transmission", "bus": "hs", "request": "18DA1EF1", "reply": "18DAF11E", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY_TWN transmission, opendbc/car/honda/fingerprints.py:653; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY_TWN eps, opendbc/car/honda/fingerprints.py:638; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY_TWN srs, opendbc/car/honda/fingerprints.py:642; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY_TWN fwdRadar, opendbc/car/honda/fingerprints.py:646; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY_TWN gateway, opendbc/car/honda/fingerprints.py:650; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda Odyssey 2018-2020 (opendbc HONDA_ODYSSEY)",
+          "models": ["Odyssey"],
+          "years": {"first": 2018, "last": 2020},
+          "source": "opendbc f1e707b: HONDA_ODYSSEY, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Shift-by-wire", "bus": "hs", "request": "18DA0BF1", "reply": "18DAF10B", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY shiftByWire, opendbc/car/honda/fingerprints.py:633; asked through the OBD port"},
+            {"label": "Transmission", "bus": "hs", "request": "18DA1EF1", "reply": "18DAF11E", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY transmission, opendbc/car/honda/fingerprints.py:609; asked through the OBD port"},
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY vsa, opendbc/car/honda/fingerprints.py:629; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY eps, opendbc/car/honda/fingerprints.py:588; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY srs, opendbc/car/honda/fingerprints.py:592; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY fwdRadar, opendbc/car/honda/fingerprints.py:597; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY gateway, opendbc/car/honda/fingerprints.py:584; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda Odyssey 2021 (opendbc HONDA_ODYSSEY_TWN)",
+          "models": ["Odyssey"],
+          "years": {"first": 2021, "last": 2021},
+          "source": "opendbc f1e707b: HONDA_ODYSSEY_TWN, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Transmission", "bus": "hs", "request": "18DA1EF1", "reply": "18DAF11E", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY_TWN transmission, opendbc/car/honda/fingerprints.py:653; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY_TWN eps, opendbc/car/honda/fingerprints.py:638; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY_TWN srs, opendbc/car/honda/fingerprints.py:642; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY_TWN fwdRadar, opendbc/car/honda/fingerprints.py:646; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY_TWN gateway, opendbc/car/honda/fingerprints.py:650; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda Odyssey 2021-2026 (opendbc HONDA_ODYSSEY_5G_MMR)",
+          "models": ["Odyssey"],
+          "years": {"first": 2021, "last": 2026},
+          "source": "opendbc f1e707b: HONDA_ODYSSEY_5G_MMR, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Shift-by-wire", "bus": "hs", "request": "18DA0BF1", "reply": "18DAF10B", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY_5G_MMR shiftByWire, opendbc/car/honda/fingerprints.py:669; asked through the OBD port"},
+            {"label": "Transmission", "bus": "hs", "request": "18DA1EF1", "reply": "18DAF11E", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY_5G_MMR transmission, opendbc/car/honda/fingerprints.py:672; asked through the OBD port"},
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY_5G_MMR vsa, opendbc/car/honda/fingerprints.py:658; asked through the OBD port"},
+            {"label": "Brake booster", "bus": "hs", "request": "18DA2BF1", "reply": "18DAF12B", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY_5G_MMR electricBrakeBooster, opendbc/car/honda/fingerprints.py:682; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY_5G_MMR eps, opendbc/car/honda/fingerprints.py:692; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY_5G_MMR srs, opendbc/car/honda/fingerprints.py:677; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY_5G_MMR fwdRadar, opendbc/car/honda/fingerprints.py:662; asked through the OBD port"},
+            {"label": "Front camera", "bus": "hs", "request": "18DAB5F1", "reply": "18DAF1B5", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY_5G_MMR fwdCamera, opendbc/car/honda/fingerprints.py:665; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_ODYSSEY_5G_MMR gateway, opendbc/car/honda/fingerprints.py:687; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda Passport 2019-2025 (opendbc HONDA_PILOT)",
+          "models": ["Passport"],
+          "years": {"first": 2019, "last": 2025},
+          "source": "opendbc f1e707b: HONDA_PILOT, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Shift-by-wire", "bus": "hs", "request": "18DA0BF1", "reply": "18DAF10B", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PILOT shiftByWire, opendbc/car/honda/fingerprints.py:698; asked through the OBD port"},
+            {"label": "Transmission", "bus": "hs", "request": "18DA1EF1", "reply": "18DAF11E", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PILOT transmission, opendbc/car/honda/fingerprints.py:703; asked through the OBD port"},
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PILOT vsa, opendbc/car/honda/fingerprints.py:770; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PILOT eps, opendbc/car/honda/fingerprints.py:729; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PILOT srs, opendbc/car/honda/fingerprints.py:762; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PILOT fwdRadar, opendbc/car/honda/fingerprints.py:738; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PILOT gateway, opendbc/car/honda/fingerprints.py:723; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda Passport 2026 (opendbc HONDA_PASSPORT_4G)",
+          "models": ["Passport"],
+          "years": {"first": 2026, "last": 2026},
+          "source": "opendbc f1e707b: HONDA_PASSPORT_4G, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PASSPORT_4G fwdRadar, opendbc/car/honda/fingerprints.py:1205; asked through the OBD port"},
+            {"label": "Front camera", "bus": "hs", "request": "18DAB5F1", "reply": "18DAF1B5", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PASSPORT_4G fwdCamera, opendbc/car/honda/fingerprints.py:1208; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda Pilot 2016-2022 (opendbc HONDA_PILOT)",
+          "models": ["Pilot"],
+          "years": {"first": 2016, "last": 2022},
+          "source": "opendbc f1e707b: HONDA_PILOT, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Shift-by-wire", "bus": "hs", "request": "18DA0BF1", "reply": "18DAF10B", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PILOT shiftByWire, opendbc/car/honda/fingerprints.py:698; asked through the OBD port"},
+            {"label": "Transmission", "bus": "hs", "request": "18DA1EF1", "reply": "18DAF11E", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PILOT transmission, opendbc/car/honda/fingerprints.py:703; asked through the OBD port"},
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PILOT vsa, opendbc/car/honda/fingerprints.py:770; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PILOT eps, opendbc/car/honda/fingerprints.py:729; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PILOT srs, opendbc/car/honda/fingerprints.py:762; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PILOT fwdRadar, opendbc/car/honda/fingerprints.py:738; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PILOT gateway, opendbc/car/honda/fingerprints.py:723; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda Pilot 2023-2025 (opendbc HONDA_PILOT_4G)",
+          "models": ["Pilot"],
+          "years": {"first": 2023, "last": 2025},
+          "source": "opendbc f1e707b: HONDA_PILOT_4G, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PILOT_4G fwdRadar, opendbc/car/honda/fingerprints.py:1138; asked through the OBD port"},
+            {"label": "Front camera", "bus": "hs", "request": "18DAB5F1", "reply": "18DAF1B5", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PILOT_4G fwdCamera, opendbc/car/honda/fingerprints.py:1133; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda Pilot 2026 (opendbc HONDA_PILOT_4G_MMR)",
+          "models": ["Pilot"],
+          "years": {"first": 2026, "last": 2026},
+          "source": "opendbc f1e707b: HONDA_PILOT_4G_MMR, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PILOT_4G_MMR fwdRadar, opendbc/car/honda/fingerprints.py:1146; asked through the OBD port"},
+            {"label": "Front camera", "bus": "hs", "request": "18DAB5F1", "reply": "18DAF1B5", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PILOT_4G_MMR fwdCamera, opendbc/car/honda/fingerprints.py:1143; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda Prelude 2026 (opendbc HONDA_PRELUDE_6G)",
+          "models": ["Prelude"],
+          "years": {"first": 2026, "last": 2026},
+          "source": "opendbc f1e707b: HONDA_PRELUDE_6G, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Shift-by-wire", "bus": "hs", "request": "18DA0BF1", "reply": "18DAF10B", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PRELUDE_6G shiftByWire, opendbc/car/honda/fingerprints.py:1228; asked through the OBD port"},
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PRELUDE_6G vsa, opendbc/car/honda/fingerprints.py:1225; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PRELUDE_6G eps, opendbc/car/honda/fingerprints.py:1213; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PRELUDE_6G srs, opendbc/car/honda/fingerprints.py:1219; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PRELUDE_6G fwdRadar, opendbc/car/honda/fingerprints.py:1222; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_PRELUDE_6G gateway, opendbc/car/honda/fingerprints.py:1216; asked through the OBD port"}
+          ]
+        },
+        {
+          "name": "Honda Ridgeline 2017-2026 (opendbc HONDA_RIDGELINE)",
+          "models": ["Ridgeline"],
+          "years": {"first": 2017, "last": 2026},
+          "source": "opendbc f1e707b: HONDA_RIDGELINE, opendbc/car/honda/values.py",
+          "modules": [
+            {"label": "Stability control", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: HONDA_RIDGELINE vsa, opendbc/car/honda/fingerprints.py:881; asked through the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: HONDA_RIDGELINE eps, opendbc/car/honda/fingerprints.py:857; asked through the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DA53F1", "reply": "18DAF153", "provenance": "reference", "source": "opendbc f1e707b: HONDA_RIDGELINE srs, opendbc/car/honda/fingerprints.py:877; asked through the OBD port"},
+            {"label": "Front radar", "bus": "hs", "request": "18DAB0F1", "reply": "18DAF1B0", "provenance": "reference", "source": "opendbc f1e707b: HONDA_RIDGELINE fwdRadar, opendbc/car/honda/fingerprints.py:863; asked through the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAEFF1", "reply": "18DAF1EF", "provenance": "reference", "source": "opendbc f1e707b: HONDA_RIDGELINE gateway, opendbc/car/honda/fingerprints.py:873; asked through the OBD port"}
+          ]
+        }
+      ]
+    },
+    {
       "make": "Hyundai",
       "aliases": [],
       "platforms": [
@@ -890,6 +1409,20 @@
       "make": "Jeep",
       "aliases": [],
       "platforms": [
+        {
+          "name": "Jeep Cherokee 2019-2023 (opendbc JEEP_CHEROKEE_5TH_GEN)",
+          "models": ["Cherokee"],
+          "years": {"first": 2019, "last": 2023},
+          "source": "opendbc f1e707b: JEEP_CHEROKEE_5TH_GEN, opendbc/car/chrysler/values.py",
+          "modules": [
+            {"label": "Engine", "bus": "hs", "request": "18DA10F1", "reply": "18DAF110", "provenance": "reference", "source": "opendbc f1e707b: JEEP_CHEROKEE_5TH_GEN engine, opendbc/car/chrysler/fingerprints.py:294; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"},
+            {"label": "Transmission", "bus": "hs", "request": "18DA18F1", "reply": "18DAF118", "provenance": "reference", "source": "opendbc f1e707b: JEEP_CHEROKEE_5TH_GEN transmission, opendbc/car/chrysler/fingerprints.py:297; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"},
+            {"label": "ABS", "bus": "hs", "request": "18DA28F1", "reply": "18DAF128", "provenance": "reference", "source": "opendbc f1e707b: JEEP_CHEROKEE_5TH_GEN abs, opendbc/car/chrysler/fingerprints.py:288; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"},
+            {"label": "Power steering", "bus": "hs", "request": "18DA30F1", "reply": "18DAF130", "provenance": "reference", "source": "opendbc f1e707b: JEEP_CHEROKEE_5TH_GEN eps, opendbc/car/chrysler/fingerprints.py:291; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"},
+            {"label": "Instrument cluster", "bus": "hs", "request": "18DA60F1", "reply": "18DAF160", "provenance": "reference", "source": "opendbc f1e707b: JEEP_CHEROKEE_5TH_GEN combinationMeter, opendbc/car/chrysler/fingerprints.py:282; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"},
+            {"label": "Airbag", "bus": "hs", "request": "18DAC0F1", "reply": "18DAF1C0", "provenance": "reference", "source": "opendbc f1e707b: JEEP_CHEROKEE_5TH_GEN srs, opendbc/car/chrysler/fingerprints.py:285; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"}
+          ]
+        },
         {
           "name": "Jeep Grand Cherokee 2016-2018 (opendbc JEEP_GRAND_CHEROKEE)",
           "models": ["Grand Cherokee"],
@@ -1571,7 +2104,8 @@
           "modules": [
             {"label": "Front camera", "bus": "hs", "request": "707", "reply": "727", "provenance": "reference", "source": "opendbc f1e707b: NISSAN_ALTIMA fwdCamera, opendbc/car/nissan/fingerprints.py:9; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"},
             {"label": "Power steering", "bus": "hs", "request": "742", "reply": "762", "provenance": "reference", "source": "opendbc f1e707b: NISSAN_ALTIMA eps, opendbc/car/nissan/fingerprints.py:12; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"},
-            {"label": "Engine", "bus": "hs", "request": "7E0", "reply": "7E8", "provenance": "reference", "source": "opendbc f1e707b: NISSAN_ALTIMA engine, opendbc/car/nissan/fingerprints.py:16; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"}
+            {"label": "Engine", "bus": "hs", "request": "7E0", "reply": "7E8", "provenance": "reference", "source": "opendbc f1e707b: NISSAN_ALTIMA engine, opendbc/car/nissan/fingerprints.py:16; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAD0F1", "reply": "18DAF1D0", "provenance": "reference", "source": "opendbc f1e707b: NISSAN_ALTIMA gateway, opendbc/car/nissan/fingerprints.py:21; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"}
           ]
         },
         {
@@ -1582,7 +2116,8 @@
           "modules": [
             {"label": "Front camera", "bus": "hs", "request": "707", "reply": "727", "provenance": "reference", "source": "opendbc f1e707b: NISSAN_LEAF fwdCamera, opendbc/car/nissan/fingerprints.py:40; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"},
             {"label": "ABS", "bus": "hs", "request": "740", "reply": "760", "provenance": "reference", "source": "opendbc f1e707b: NISSAN_LEAF abs, opendbc/car/nissan/fingerprints.py:27; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"},
-            {"label": "Power steering", "bus": "hs", "request": "742", "reply": "762", "provenance": "reference", "source": "opendbc f1e707b: NISSAN_LEAF eps, opendbc/car/nissan/fingerprints.py:34; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"}
+            {"label": "Power steering", "bus": "hs", "request": "742", "reply": "762", "provenance": "reference", "source": "opendbc f1e707b: NISSAN_LEAF eps, opendbc/car/nissan/fingerprints.py:34; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAD0F1", "reply": "18DAF1D0", "provenance": "reference", "source": "opendbc f1e707b: NISSAN_LEAF gateway, opendbc/car/nissan/fingerprints.py:47; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"}
           ]
         },
         {
@@ -1595,7 +2130,8 @@
             {"label": "ABS", "bus": "hs", "request": "740", "reply": "760", "provenance": "reference", "source": "opendbc f1e707b: NISSAN_XTRAIL abs, opendbc/car/nissan/fingerprints.py:91; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"},
             {"label": "Power steering", "bus": "hs", "request": "742", "reply": "762", "provenance": "reference", "source": "opendbc f1e707b: NISSAN_XTRAIL eps, opendbc/car/nissan/fingerprints.py:95; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"},
             {"label": "Instrument cluster", "bus": "hs", "request": "743", "reply": "763", "provenance": "reference", "source": "opendbc f1e707b: NISSAN_XTRAIL combinationMeter, opendbc/car/nissan/fingerprints.py:98; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"},
-            {"label": "Engine", "bus": "hs", "request": "7E0", "reply": "7E8", "provenance": "reference", "source": "opendbc f1e707b: NISSAN_XTRAIL engine, opendbc/car/nissan/fingerprints.py:101; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"}
+            {"label": "Engine", "bus": "hs", "request": "7E0", "reply": "7E8", "provenance": "reference", "source": "opendbc f1e707b: NISSAN_XTRAIL engine, opendbc/car/nissan/fingerprints.py:101; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"},
+            {"label": "Gateway", "bus": "hs", "request": "18DAD0F1", "reply": "18DAF1D0", "provenance": "reference", "source": "opendbc f1e707b: NISSAN_XTRAIL gateway, opendbc/car/nissan/fingerprints.py:105; asked on the car's bus at the camera harness, so it may sit behind a gateway from the OBD port"}
           ]
         }
       ]
