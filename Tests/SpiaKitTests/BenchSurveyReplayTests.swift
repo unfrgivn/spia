@@ -48,6 +48,8 @@ struct BenchSurveyReplayTests {
         for name in [
             "vlinker-fs-usb-only-probe.txt", "vlinker-fs-usb-only-airbag-read.txt",
             "vlinker-fs-usb-only-survey.txt", "vlinker-fs-usb-only-scan-after-module.txt",
+            "vlinker-fs-usb-only-search-skipped.txt", "vlinker-fs-usb-only-29bit-module-read.txt",
+            "vlinker-fs-usb-only-monitor.txt",
         ] {
             #expect(try sent(name).first == "ATZ")
         }
@@ -130,5 +132,89 @@ struct BenchSurveyReplayTests {
         #expect(!failure.reconnectRequired)
         #expect(await transport.isFinished)
         #expect(try sent("vlinker-fs-usb-only-scan-after-module.txt").first == "ATZ")
+    }
+
+    @Test("with no car, a survey that would search skips the search instead of failing")
+    func searchSkippedWithoutACar() async throws {
+        let saved = try JSONDecoder().decode(
+            JobResult.self,
+            from: Data(contentsOf: fixture("vlinker-fs-usb-only-search-skipped.result.json")))
+        guard case .survey(let plan) = saved.job, case .survey(let report) = saved.payload else {
+            Issue.record("the saved result isn't a survey")
+            return
+        }
+        #expect(plan.search == .standard(over: .usbSerial))
+
+        let (transport, connection) = try await connected("vlinker-fs-usb-only-search-skipped.txt")
+        let runner = JobRunner(connection: connection)
+        let events = await confirmPrompts(runner.run(.survey(plan)), runner: runner)
+        let replayed = events.compactMap { event -> JobResult? in
+            if case .completed(let result) = event { return result }
+            return nil
+        }
+        #expect(replayed.first?.payload == saved.payload)
+        #expect(await transport.isFinished)
+        let prompts = events.compactMap { event -> UserAction? in
+            if case .needsUser(_, let action) = event { return action }
+            return nil
+        }
+        #expect(prompts == [.turnIgnitionOn, .turnIgnitionOn])
+
+        // Nothing answered the opening, so the search neither asked the engine's RPM nor
+        // listened, and the standard survey ran on to its first module.
+        #expect(report.search?.stopReason == "No engine computer answered, so Spia didn't search.")
+        #expect(report.search?.sweptCount == 0)
+        let sent = try sent("vlinker-fs-usb-only-search-skipped.txt")
+        #expect(!sent.contains("010C"))
+        #expect(!sent.contains("ATMA"))
+        #expect(report.stop?.candidate == plan.candidates[0])
+        #expect(report.stop?.reason.contains("CAN bus error") == true)
+    }
+
+    @Test("the real STN1170 accepts every 29-bit command a module read sends")
+    func extendedModuleRead() async throws {
+        let target = try ModuleTarget(bus: .highSpeed, request: 0x18DA_30F1, response: 0x18DA_F130)
+        let (transport, connection) = try await connected(
+            "vlinker-fs-usb-only-29bit-module-read.txt")
+        let events = await collect(JobRunner(connection: connection).run(.moduleDTCs(target)))
+        // The job checks each setup command for the adapter's OK, so failing only at the read
+        // means the adapter accepted the 29-bit protocol, header, filter, and flow control.
+        let failure = try #require(events.compactMap(\.failure).first)
+        #expect(failure.message.contains("CAN bus error"))
+        #expect(!failure.reconnectRequired)
+        #expect(await transport.isFinished)
+        let planned = DiagnosticJob.moduleDTCs(target).plannedCommands
+        #expect(
+            try sent("vlinker-fs-usb-only-29bit-module-read.txt").suffix(planned.count) == planned)
+        #expect(
+            planned.suffix(9) == [
+                "ATSP7", "ATST 64", "ATCFC 1", "ATSH 18DA30F1", "ATCRA 18DAF130", "ATFCSD 30 00 00",
+                "ATFCSH 18DA30F1", "ATFCSM 1", "190209",
+            ])
+    }
+
+    @Test("the real adapter's monitor stops on its deadline on a silent bus")
+    func monitorOnASilentBus() async throws {
+        let transport = try ReplayTransport(contentsOf: fixture("vlinker-fs-usb-only-monitor.txt"))
+        let session = ELM327Session(transport: transport)
+        _ = try await session.connect(protocol: .can11bit500k)
+        let heard = Heard()
+        try await session.monitor("ATMA", for: .milliseconds(300)) { _, event in
+            await heard.add(event)
+            return true
+        }
+        #expect(await heard.events.isEmpty)
+        // The stop byte went out, and the adapter's STOPPED and prompt came back.
+        #expect(await transport.isFinished)
+        let recorded = try Transcript.decodeFile(
+            String(contentsOf: fixture("vlinker-fs-usb-only-monitor.txt"), encoding: .utf8))
+        #expect(recorded.last { $0.direction == .tx }?.bytes == [0x20])
+        let lastReply = String(decoding: recorded.last?.bytes ?? [], as: UTF8.self)
+        #expect(lastReply.hasPrefix("STOPPED"))
+    }
+
+    private actor Heard {
+        var events: [MonitorEvent] = []
+        func add(_ event: MonitorEvent) { events.append(event) }
     }
 }

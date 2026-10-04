@@ -250,23 +250,28 @@ public actor JobRunner {
             emit(.warning("No computer gave the VIN."))
         }
 
+        // The search waits for an engine known to be off. A car whose engine computers didn't
+        // answer at all can't say, and has nothing to search on anyway.
         var searchOutcome: SearchOutcome?
         if plan.search != nil {
-            let engineOff = try await engineIsOff(emit: emit)
-            if engineOff == false {
-                searchOutcome = SearchOutcome(
-                    heardIDs: [], sweptCount: 0, confirmed: [], unconfirmed: [],
-                    engineRunning: true,
-                    stopReason:
-                        "The engine is running. Turn it off, leaving the ignition on, to search.")
-                emit(
-                    .warning(
-                        "The engine is running. Turn it off, leaving the ignition on, to search."))
-            } else if engineOff == nil {
-                searchOutcome = SearchOutcome(
-                    heardIDs: [], sweptCount: 0, confirmed: [], unconfirmed: [],
+            let engineOff: Bool?
+            if vehicleInfo.isEmpty {
+                engineOff = nil
+                searchOutcome = Self.skippedSearch(
                     engineRunning: nil,
-                    stopReason: "The search was skipped because engine state was not confirmed.")
+                    "No engine computer answered, so Spia didn't search.")
+            } else {
+                engineOff = try await engineIsOff(emit: emit)
+            }
+            if engineOff == false {
+                let reason =
+                    "The engine is running. Turn it off, leaving the ignition on, to search."
+                searchOutcome = Self.skippedSearch(engineRunning: true, reason)
+                emit(.warning(reason))
+            } else if engineOff == nil, searchOutcome == nil {
+                searchOutcome = Self.skippedSearch(
+                    engineRunning: nil,
+                    "The search was skipped because the engine wasn't confirmed off.")
             }
         }
 
@@ -375,11 +380,21 @@ public actor JobRunner {
         detected == nil || detected == .can11bit500k
     }
 
+    private static func skippedSearch(engineRunning: Bool?, _ reason: String) -> SearchOutcome {
+        SearchOutcome(
+            heardIDs: [], sweptCount: 0, confirmed: [], unconfirmed: [],
+            engineRunning: engineRunning, stopReason: reason)
+    }
+
+    /// Whether the engine is off: RPM reads zero, or, when the engine computer doesn't say (no
+    /// answer, or any adapter reply that leaves the line in step), the owner confirms it. Nil
+    /// when the owner declines.
     private func engineIsOff(
         emit: @escaping @Sendable (JobEvent) -> Void
     ) async throws -> Bool? {
+        let rpm: Double?
         do {
-            let rpm = try await connection.withSession { session in
+            rpm = try await connection.withSession { session in
                 let responses = try await session.request(OBDRequest(raw: [0x01, 0x0C]))
                 return responses.compactMap { response -> Double? in
                     guard
@@ -389,11 +404,14 @@ public actor JobRunner {
                     return value
                 }.first
             }
-            guard let rpm else { return await ask(.confirmEngineOff, emit: emit) ? true : nil }
-            return rpm <= 0
-        } catch ELM327Error.adapter(.noData) {
-            return await ask(.confirmEngineOff, emit: emit) ? true : nil
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            if ConnectionManager.desynchronizes(error) { throw error }
+            rpm = nil
         }
+        guard let rpm else { return await ask(.confirmEngineOff, emit: emit) ? true : nil }
+        return rpm <= 0
     }
 
     private func performThoroughSearch(
