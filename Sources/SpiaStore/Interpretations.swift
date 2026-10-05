@@ -40,22 +40,54 @@ public struct StoredQuestion: Codable, Sendable, Equatable {
     public let id: UUID
     public let text: String
     public let module: ModuleTarget?
-    public let code: String?
+    public let codes: [String]
     public let askedAt: Date
     public var answer: String?
     public var answeredAt: Date?
 
     public init(
-        id: UUID, text: String, module: ModuleTarget?, code: String?, askedAt: Date,
+        id: UUID, text: String, module: ModuleTarget?, codes: [String], askedAt: Date,
         answer: String?, answeredAt: Date?
     ) {
         self.id = id
         self.text = text
         self.module = module
-        self.code = code
+        self.codes = codes
         self.askedAt = askedAt
         self.answer = answer
         self.answeredAt = answeredAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, text, module, codes, code, askedAt, answer, answeredAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        text = try container.decode(String.self, forKey: .text)
+        module = try container.decodeIfPresent(ModuleTarget.self, forKey: .module)
+        if let storedCodes = try container.decodeIfPresent([String].self, forKey: .codes) {
+            codes = storedCodes
+        } else if let oldCode = try container.decodeIfPresent(String.self, forKey: .code) {
+            codes = [oldCode]
+        } else {
+            codes = []
+        }
+        askedAt = try container.decode(Date.self, forKey: .askedAt)
+        answer = try container.decodeIfPresent(String.self, forKey: .answer)
+        answeredAt = try container.decodeIfPresent(Date.self, forKey: .answeredAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(text, forKey: .text)
+        try container.encodeIfPresent(module, forKey: .module)
+        try container.encode(codes, forKey: .codes)
+        try container.encode(askedAt, forKey: .askedAt)
+        try container.encodeIfPresent(answer, forKey: .answer)
+        try container.encodeIfPresent(answeredAt, forKey: .answeredAt)
     }
 }
 
@@ -191,7 +223,8 @@ public final class VehicleInterpretations {
         modules.first { $0.target == target }
     }
     public func store(
-        _ result: InterpretationResult, target: ModuleTarget?, provider: ProviderID, model: String
+        _ result: InterpretationResult, target: ModuleTarget?, provider: ProviderID, model: String,
+        module: ModuleInterpretation? = nil
     ) {
         let date = Date.now
         for item in result.codes {
@@ -202,7 +235,7 @@ public final class VehicleInterpretations {
                     firstCheck: item.firstCheck, confidence: item.confidence, provider: provider,
                     model: model, date: date))
         }
-        if let module = result.module, let target {
+        if let module, let target {
             modules.removeAll { $0.target == target }
             modules.append(
                 StoredModuleInterpretation(
@@ -240,6 +273,8 @@ public final class VehicleInterpretations {
         }
     }
 
+    /// A nil code query is the module-level bucket for questions with zero or several codes.
+    /// A single-code query returns only questions whose codes contain that code.
     private func matchingQuestions(
         about subject: SessionBoard.Subject, code: String?, scope: ReviewScope?
     ) -> [StoredQuestion] {
@@ -252,9 +287,15 @@ public final class VehicleInterpretations {
             case .module(let target): subjectMatches = question.module == target
             case .battery: subjectMatches = false
             }
-            let codeMatches =
-                code == nil
-                || (question.code.flatMap { CodeName($0)?.printed } ?? question.code) == printed
+            let codeMatches: Bool
+            if let printed {
+                codeMatches =
+                    question.codes.contains {
+                        (CodeName($0)?.printed ?? $0) == printed
+                    } && question.codes.count == 1
+            } else {
+                codeMatches = question.codes.count != 1
+            }
             return subjectMatches && codeMatches
         }
     }
@@ -282,16 +323,16 @@ public final class VehicleInterpretations {
             let moduleTarget = item.module.flatMap { label in
                 modules.first { $0.label.caseInsensitiveCompare(label) == .orderedSame }?.target
             }
-            let storedCode = item.code
+            let storedCodes = item.codes
             let old = previous?.questions.first {
                 $0.text == item.question && $0.module == moduleTarget
-                    && (CodeName($0.code ?? "")?.printed ?? $0.code)
-                        == (CodeName(storedCode ?? "")?.printed ?? storedCode)
+                    && $0.codes.map { CodeName($0)?.printed ?? $0 }
+                        == storedCodes.map { CodeName($0)?.printed ?? $0 }
             }
             return StoredQuestion(
                 id: UUID(), text: item.question,
                 module: moduleTarget,
-                code: storedCode,
+                codes: storedCodes,
                 askedAt: old?.askedAt ?? .now, answer: old?.answer, answeredAt: old?.answeredAt)
         }
         let checks = result.checks.map { item in

@@ -94,20 +94,28 @@ public struct InterpretationCodeInput: Sendable, Equatable {
 public enum InterpretationRequest {
     public static func make(
         briefing: SessionBriefing, module: SessionBriefing.ModuleFacts?,
-        codes: [InterpretationCodeInput], provider: ProviderID, sharing: SharingPolicy
+        codes: [InterpretationCodeInput], nameModule: Bool = false, provider: ProviderID,
+        sharing: SharingPolicy
     ) -> AssistantRequest {
         let moduleText =
-            module.map {
-                "Module: \($0.label), bus \($0.bus), request \($0.request), reply \($0.reply)."
+            module.map { facts in
+                "Module: \(facts.label), bus \(facts.bus), request \(facts.request), reply \(facts.reply)."
             } ?? "Module: engine generic scan."
         let codeText = codes.map { "- \($0.code) (\($0.catalogName ?? "no public description"))" }
             .joined(separator: "\n")
+        let naming =
+            module.map { _ in
+                nameModule
+                    ? "Name this module: its only label is a placeholder."
+                    : "`module` must be null: this module is already named."
+            } ?? "The engine generic scan has no module to name."
         let prompt = """
             \(moduleText)
-            Codes:
+            \(naming)
+            Codes, read from this module by this app with their status bytes:
             \(codeText)
 
-            Use record_interpretations. Give each code a technician's name, its meaning on this car in at most two sentences including the failure-type byte when present, the first thing to check, and confidence. Label guesses as guesses. Name and give the role of a fallback module, otherwise return null.
+            A public name beside a code is its SAE definition; treat it as reliable, not as a guess, and never propose reading the code again. Use record_interpretations. Give each code a technician's name, its meaning on this car in at most two sentences including the failure-type byte when present, the first physical thing to check, and confidence. Label guesses as guesses.
             """
         return AssistantRequest(
             instructions: AssistantInstructions.make(

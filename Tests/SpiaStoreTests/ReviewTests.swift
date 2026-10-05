@@ -26,8 +26,8 @@ struct ReviewTests {
             questions: [
                 .init(
                     question: "Does the lamp stay on?", module: "Airbag controller (ORC)",
-                    code: "80011B"),
-                .init(question: "Was work done recently?", module: nil, code: nil),
+                    codes: ["80011B"]),
+                .init(question: "Was work done recently?", module: nil, codes: []),
             ],
             checks: [
                 .init(
@@ -90,10 +90,48 @@ struct ReviewTests {
         store(cache)
         let found = cache.openQuestions(about: .module(DemoGarage.airbag.target), code: "80011B")
         #expect(found.count == 1)
-        #expect(found.first?.code == "80011B")
+        #expect(found.count == 1)
+        #expect(found.first?.codes == ["80011B"])
         #expect(cache.openQuestions(about: .engine, code: "80011B").isEmpty)
         #expect(
             cache.openQuestions(about: .module(DemoGarage.airbag.target), code: "80021B").isEmpty)
+    }
+
+    @Test("a multi-code question stays in the module bucket")
+    func multiCodeQuestionPlacement() throws {
+        let vehicle = try garage.addVehicle(name: "Test car")
+        let cache = VehicleInterpretations(vehicleID: vehicle.id, files: garage.files)
+        cache.storeReview(
+            ReviewResult(
+                reading: "x",
+                questions: [
+                    .init(
+                        question: "Which stage?", module: "Airbag controller (ORC)",
+                        codes: ["80011B", "80021B"])
+                ], checks: []),
+            scope: .car, inputs: "inputs", provider: .anthropic, model: "test",
+            modules: [("Airbag controller (ORC)", DemoGarage.airbag.target)])
+        #expect(
+            cache.questions(about: .module(DemoGarage.airbag.target), code: "80011B", scope: nil)
+                .isEmpty)
+        #expect(
+            cache.questions(about: .module(DemoGarage.airbag.target), code: "80021B", scope: nil)
+                .isEmpty)
+        #expect(
+            cache.questions(about: .module(DemoGarage.airbag.target), code: nil, scope: nil).count
+                == 1)
+    }
+
+    @Test("old stored code key decodes as one code")
+    func oldCodeKey() throws {
+        let id = UUID()
+        let json =
+            "{\"id\":\"\(id.uuidString)\",\"text\":\"Was work done?\",\"module\":null,\"code\":\"80011B\",\"askedAt\":\"2026-10-05T00:00:00Z\",\"answer\":null,\"answeredAt\":null}"
+        let data = Data(json.utf8)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let question = try decoder.decode(StoredQuestion.self, from: data)
+        #expect(question.codes == ["80011B"])
     }
 
     @Test("review respects cloud consent and reports a missing key after consent")
@@ -129,6 +167,17 @@ struct ReviewTests {
         let briefing = garage.briefing(for: vehicle, adapter: nil)
         #expect(briefing.reviews.contains { $0.contains("The airbag controller") })
         #expect(briefing.reviews.contains { $0.contains("Only when turning.") })
+    }
+
+    @Test("an unrequested module interpretation is not kept")
+    func dropsUnrequestedModuleName() throws {
+        let vehicle = try garage.addVehicle(name: "Test car")
+        let cache = VehicleInterpretations(vehicleID: vehicle.id, files: garage.files)
+        cache.store(
+            InterpretationResult(
+                codes: [], module: .init(name: "Wrong controller", role: "wrong")),
+            target: DemoGarage.airbag.target, provider: .anthropic, model: "test", module: nil)
+        #expect(cache.interpretation(for: DemoGarage.airbag.target) == nil)
     }
 
     private func interpreterCache(_ vehicle: Vehicle) -> VehicleInterpretations {

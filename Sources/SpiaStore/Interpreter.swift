@@ -50,6 +50,7 @@ public final class Interpreter {
                     briefing: briefing,
                     module: moduleFacts(for: item, vehicle: vehicle),
                     codes: codeInputs(for: item),
+                    nameModule: item.needsName,
                     provider: providerID,
                     sharing: SharingPolicy(includeVIN: configuration.settings.shareVIN))
                 var call: ToolCall?
@@ -66,7 +67,8 @@ public final class Interpreter {
                 let result = try InterpretationTool.parse(call)
                 interpretations.store(
                     result, target: item.target, provider: providerID,
-                    model: configuration.settings.model(for: providerID))
+                    model: configuration.settings.model(for: providerID),
+                    module: item.needsName ? result.module : nil)
                 interpretations.lastError = nil
             } catch {
                 interpretations.lastError = "Code explanation failed: \(error.readable)."
@@ -115,6 +117,8 @@ public final class Interpreter {
                     providerID, keys: configuration.keys)
                 let request = ReviewRequest.make(
                     briefing: carBriefing, scope: requestScope, answered: answered,
+                    codes: reviewCodes(for: vehicle.board()),
+                    unread: unreadParts(for: vehicle.board()),
                     provider: providerID,
                     sharing: SharingPolicy(includeVIN: configuration.settings.shareVIN))
                 var call: ToolCall?
@@ -132,6 +136,31 @@ public final class Interpreter {
                 interpretations.lastError = nil
             } catch {
                 interpretations.lastError = "Review failed: \(error.readable)."
+            }
+        }
+    }
+
+    private func reviewCodes(for board: SessionBoard) -> [(printed: String, name: String?)] {
+        board.rows.flatMap { row in
+            row.printedCodes.map { code in
+                let name = catalogName(for: code)
+                return (printed: code, name: name)
+            }
+        }
+    }
+
+    private func catalogName(for printed: String) -> String? {
+        let base = printed.split(separator: "-", maxSplits: 1).first.map(String.init) ?? printed
+        guard let code = CodeName(base) else { return nil }
+        return CodeCatalog.bundledCatalog?.entry(for: code)?.title
+    }
+
+    private func unreadParts(for board: SessionBoard) -> [String] {
+        board.rows.filter { $0.status == .notRead }.map { row in
+            switch row.subject {
+            case .engine: return "Engine and transmission"
+            case .module: return row.name
+            case .battery: return "Battery"
             }
         }
     }

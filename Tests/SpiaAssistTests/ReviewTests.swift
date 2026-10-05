@@ -38,14 +38,14 @@ struct ReviewTests {
         let call = ToolCall(
             id: "review-1", name: ReviewTool.name,
             arguments:
-                #"{"reading":"The airbag controller has two stored faults and the body computer is clear.","questions":[{"question":"Does the airbag lamp stay on after start?","module":"Airbag controller (ORC)","code":"B0001-1B"},{"question":"Did this begin after any work?","module":null,"code":null}],"checks":[{"check":"module_codes","module":"Airbag controller (ORC)","reason":"Read the controller again to see whether the faults remain."}]}"#
+                #"{"reading":"The airbag controller has two stored faults and the body computer is clear.","questions":[{"question":"Does the airbag lamp stay on after start?","module":"Airbag controller (ORC)","codes":["B0001-1B","B0002-1B"]},{"question":"Did this begin after any work?","module":null,"codes":[]}],"checks":[{"check":"module_codes","module":"Airbag controller (ORC)","reason":"Read the controller again to see whether the faults remain."}]}"#
         )
         let result = try ReviewTool.parse(call, modules: modules)
         #expect(result.reading.contains("airbag"))
         #expect(result.questions.count == 2)
         #expect(result.questions[0].module == modules[0])
-        #expect(result.questions[0].code == "B0001-1B")
-        #expect(result.questions[1].module == nil && result.questions[1].code == nil)
+        #expect(result.questions[0].codes == ["B0001-1B", "B0002-1B"])
+        #expect(result.questions[1].module == nil && result.questions[1].codes.isEmpty)
         #expect(result.checks.count == 1)
         #expect(result.checks[0].check == .moduleCodes)
     }
@@ -55,15 +55,32 @@ struct ReviewTests {
         let unknown = ToolCall(
             id: "1", name: ReviewTool.name,
             arguments:
-                #"{"reading":"x","questions":[{"question":"x","module":"Engine","code":null}],"checks":[]}"#
+                #"{"reading":"x","questions":[{"question":"x","module":"Engine","codes":[]}],"checks":[]}"#
         )
         #expect(throws: Error.self) { try ReviewTool.parse(unknown, modules: modules) }
         let tooMany = ToolCall(
             id: "1", name: ReviewTool.name,
             arguments:
-                #"{"reading":"x","questions":[{"question":"1","module":null,"code":null},{"question":"2","module":null,"code":null},{"question":"3","module":null,"code":null},{"question":"4","module":null,"code":null}],"checks":[]}"#
+                #"{"reading":"x","questions":[{"question":"1","module":null,"codes":[]},{"question":"2","module":null,"codes":[]},{"question":"3","module":null,"codes":[]},{"question":"4","module":null,"codes":[]}],"checks":[]}"#
         )
         #expect(throws: Error.self) { try ReviewTool.parse(tooMany, modules: modules) }
+    }
+
+    @Test("record_review rejects and quotes a bad code element")
+    func rejectsBadCodeElement() {
+        let call = ToolCall(
+            id: "1", name: ReviewTool.name,
+            arguments:
+                #"{"reading":"x","questions":[{"question":"x","module":null,"codes":["B0001-1B","not-a-code"]}],"checks":[]}"#
+        )
+        do {
+            _ = try ReviewTool.parse(call, modules: modules)
+            Issue.record("bad code was accepted")
+        } catch let error as AssistantError {
+            #expect(error == .malformedStream("invalid review code \"not-a-code\""))
+        } catch {
+            Issue.record("unexpected error: \(error)")
+        }
     }
 
     @Test("problem review quotes answers and withholds VIN")
@@ -84,6 +101,8 @@ struct ReviewTests {
             briefing: briefing,
             scope: .problem(title: "Horn controls", text: "The horn stopped after rain."),
             answered: [(question: "Was the battery disconnected?", answer: "Yes, yesterday.")],
+            codes: [(printed: "B0001-1B", name: "Driver Frontal Stage 1 Deployment Control")],
+            unread: ["Steering column"],
             provider: .anthropic, sharing: .init(includeVIN: false))
         let text = reviewText(request) + request.instructions
         #expect(text.contains("The horn stopped after rain."))
@@ -91,6 +110,8 @@ struct ReviewTests {
         #expect(text.contains("Yes, yesterday."))
         #expect(text.contains("B0001-1B"))
         #expect(text.contains("Driver Frontal Stage 1 Deployment Control"))
+        #expect(text.contains("Not read yet:\n- Steering column"))
+        #expect(text.contains("at most three sentences of plain prose, with no lists or headings"))
         #expect(!text.contains("SECRET"))
         #expect(request.toolChoice == .tool(ReviewTool.name))
     }
@@ -128,7 +149,8 @@ struct ReviewTests {
                     result: nil, codes: ["B0001-1B", "B0002-1B"], fromRecording: true, warnings: [])
             ])
         let request = ReviewRequest.make(
-            briefing: briefing, scope: .car, answered: [], provider: provider.id,
+            briefing: briefing, scope: .car, answered: [], codes: [], unread: [],
+            provider: provider.id,
             sharing: .init(includeVIN: false))
         var call: ToolCall?
         for try await event in provider.respond(to: request) {

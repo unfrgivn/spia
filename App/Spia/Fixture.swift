@@ -223,10 +223,10 @@
                         ReviewQuestion(
                             question:
                                 "Does the horn work with the wheel turned fully left or right?",
-                            module: DemoGarage.airbag.label, code: "B0001-1B"),
+                            module: DemoGarage.airbag.label, codes: ["B0001-1B", "B0002-1B"]),
                         ReviewQuestion(
                             question: "Has the steering wheel or airbag been removed or serviced?",
-                            module: nil, code: nil),
+                            module: nil, codes: []),
                     ],
                     checks: [
                         CheckProposal(

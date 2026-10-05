@@ -40,7 +40,7 @@ struct VehicleOverview: View {
                         review: interpretations.review(for: .car),
                         inFlight: interpretations.reviewInFlight.contains(.car),
                         untaggedQuestions: interpretations.review(for: .car)?.questions.filter {
-                            $0.module == nil && $0.code == nil
+                            $0.module == nil && $0.codes.isEmpty
                         } ?? [],
                         moduleLabels: moduleLabels,
                         answer: answer,

@@ -160,7 +160,7 @@ struct SessionView: View {
                         untaggedQuestions: interpretations.review(for: .problem(session.id))?
                             .questions
                             .filter {
-                                $0.module == nil && $0.code == nil
+                                $0.module == nil && $0.codes.isEmpty
                             } ?? [],
                         moduleLabels: moduleLabels,
                         answer: answer,

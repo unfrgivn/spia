@@ -78,19 +78,38 @@ struct InterpretationTests {
                 .init(code: "B0001-1B", catalogName: "Driver Frontal Stage 1 Deployment Control")
             ],
             provider: .anthropic, sharing: SharingPolicy(includeVIN: false))
-        let prompt = request.messages.first?.parts.first
-        #expect(prompt == .text(promptText))
+        let prompt = promptText(from: request)
+        #expect(prompt.contains("- B0001-1B (Driver Frontal Stage 1 Deployment Control)"))
+        #expect(prompt.contains("read from this module by this app"))
+        #expect(prompt.contains("treat it as reliable, not as a guess"))
+        #expect(prompt.contains("Use record_interpretations."))
+        #expect(!prompt.contains("SECRET"))
+        #expect(request.toolChoice == .tool(InterpretationTool.name))
         #expect(request.instructions.contains("withheld by the user's privacy setting"))
+        let named = InterpretationRequest.make(
+            briefing: briefing,
+            module: .init(
+                label: "Airbag controller (ORC)", bus: "hs", request: "744", reply: "4C4",
+                labelConfirmed: true),
+            codes: [], provider: .anthropic, sharing: SharingPolicy(includeVIN: false))
+        let placeholder = InterpretationRequest.make(
+            briefing: briefing,
+            module: .init(
+                label: "Module 744", bus: "hs", request: "744", reply: "4C4",
+                labelConfirmed: false),
+            codes: [], nameModule: true, provider: .anthropic,
+            sharing: SharingPolicy(includeVIN: false))
+        #expect(
+            promptText(from: named).contains("`module` must be null: this module is already named.")
+        )
+        #expect(
+            promptText(from: placeholder).contains(
+                "Name this module: its only label is a placeholder."))
     }
 
-    private var promptText: String {
-        """
-        Module: engine generic scan.
-        Codes:
-        - B0001-1B (Driver Frontal Stage 1 Deployment Control)
-
-        Use record_interpretations. Give each code a technician's name, its meaning on this car in at most two sentences including the failure-type byte when present, the first thing to check, and confidence. Label guesses as guesses. Name and give the role of a fallback module, otherwise return null.
-        """
+    private func promptText(from request: AssistantRequest) -> String {
+        guard case .text(let text)? = request.messages.first?.parts.first else { return "" }
+        return text
     }
 }
 

@@ -9,12 +9,12 @@ public enum ReviewScope: Codable, Sendable, Hashable, Equatable {
 public struct ReviewQuestion: Codable, Sendable, Equatable {
     public let question: String
     public let module: String?
-    public let code: String?
+    public let codes: [String]
 
-    public init(question: String, module: String?, code: String?) {
+    public init(question: String, module: String?, codes: [String]) {
         self.question = question
         self.module = module
-        self.code = code
+        self.codes = codes
     }
 }
 
@@ -52,9 +52,12 @@ public enum ReviewTool {
                             "properties": [
                                 "question": ["type": "string"],
                                 "module": module,
-                                "code": ["type": ["string", "null"]],
+                                "codes": [
+                                    "type": "array",
+                                    "items": ["type": "string"],
+                                ],
                             ],
-                            "required": ["question", "module", "code"],
+                            "required": ["question", "module", "codes"],
                             "additionalProperties": false,
                         ],
                     ],
@@ -90,7 +93,7 @@ public enum ReviewTool {
         else { throw AssistantError.malformedStream("invalid review") }
         let questions = try questionValues.map { item -> ReviewQuestion in
             guard case .object(let object) = item,
-                Set(object.keys) == ["question", "module", "code"],
+                Set(object.keys) == ["question", "module", "codes"],
                 let question = object["question"]?.string, !question.isEmpty
             else {
                 throw AssistantError.malformedStream("invalid review question")
@@ -99,13 +102,21 @@ public enum ReviewTool {
             if let module,
                 !modules.contains(where: { $0.caseInsensitiveCompare(module) == .orderedSame })
             {
-                throw AssistantError.malformedStream("unknown review module")
+                throw AssistantError.malformedStream("unknown review module \"\(module)\"")
             }
-            let code = object["code"]?.string
-            if let code, !Self.validCode(code) {
-                throw AssistantError.malformedStream("invalid review code")
+            guard case .array(let codeValues)? = object["codes"] else {
+                throw AssistantError.malformedStream("invalid review question codes")
             }
-            return ReviewQuestion(question: question, module: module, code: code)
+            let codes = try codeValues.map { value -> String in
+                guard let code = value.string else {
+                    throw AssistantError.malformedStream("invalid review code")
+                }
+                guard Self.validCode(code) else {
+                    throw AssistantError.malformedStream("invalid review code \"\(code)\"")
+                }
+                return code
+            }
+            return ReviewQuestion(question: question, module: module, codes: codes)
         }
         let checks = try checkValues.map { item -> CheckProposal in
             guard case .object(let object) = item,
@@ -117,7 +128,7 @@ public enum ReviewTool {
             if let module,
                 !modules.contains(where: { $0.caseInsensitiveCompare(module) == .orderedSame })
             {
-                throw AssistantError.malformedStream("unknown review check module")
+                throw AssistantError.malformedStream("unknown review check module \"\(module)\"")
             }
             return CheckProposal(check: check, module: module, reason: reason)
         }
@@ -142,7 +153,8 @@ public enum ReviewRequest {
 
     public static func make(
         briefing: SessionBriefing, scope: Scope, answered: [(question: String, answer: String)],
-        provider: ProviderID, sharing: SharingPolicy
+        codes: [(printed: String, name: String?)], unread: [String], provider: ProviderID,
+        sharing: SharingPolicy
     ) -> AssistantRequest {
         let subject: String
         switch scope {
@@ -154,12 +166,26 @@ public enum ReviewRequest {
             answered.isEmpty
             ? "No questions have been answered yet."
             : answered.map { "- Q: \($0.question)\n  A: \($0.answer)" }.joined(separator: "\n")
+        let codeText =
+            codes.isEmpty
+            ? "- None"
+            : codes.map { "- \($0.printed): \($0.name ?? "manufacturer-specific, no public name")" }
+                .joined(separator: "\n")
+        let unreadText =
+            unread.isEmpty ? "- None" : unread.map { "- \($0)" }.joined(separator: "\n")
         let prompt = """
             \(subject)
             Write a careful technician's reading of what the board adds up to for this car or problem.
+            The reading must be at most three sentences of plain prose, with no lists or headings.
             Ask at most three questions, only when an answer would change what to do next. Tag a question
-            with a module label or a printed code when it concerns one. Never repeat an answered question.
-            Propose checks only from the four allowed kinds, for modules not yet read or worth rereading.
+            with the module label it concerns, and list every printed code it concerns in `codes`; leave
+            `codes` empty when it's about the module or the car as a whole. Never repeat an answered question.
+            Codes on the board, with their public names; use these names and do not rename or reinterpret a code's identity:
+            \(codeText)
+            Not read yet:
+            \(unreadText)
+            Propose checks only for parts listed as not read yet. The adapter check is allowed only when Battery is
+            listed as not read yet. Never propose vehicle_info when the briefing already has a VIN.
             Manufacturer-code meanings are interpretations, not verified descriptions.
 
             Already answered questions:

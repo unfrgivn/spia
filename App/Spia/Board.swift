@@ -537,13 +537,13 @@ private struct CodeNamesView: View {
 
     private func questions(for code: String) -> [StoredQuestion] {
         interpretations?.questions(about: row.subject, code: code, scope: scope).filter {
-            $0.code != nil
+            $0.codes.count == 1
         } ?? []
     }
 
     private var moduleQuestions: [StoredQuestion] {
         interpretations?.questions(about: row.subject, code: nil, scope: scope).filter {
-            $0.code == nil
+            $0.codes.count != 1
         } ?? []
     }
 
