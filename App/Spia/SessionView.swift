@@ -398,13 +398,13 @@ struct SessionView: View {
     }
 
     private func run(_ job: DiagnosticJob) {
-        guard let workbench else { return }
+        guard let workbench, let vehicle = session.vehicle else { return }
         guard workbench.connection.status != nil else {
             showConnection = true
             return
         }
         Task {
-            let outcome = await workbench.run(job, in: session)
+            let outcome = await workbench.run(job, for: vehicle, in: session)
             if case .completed(let result) = outcome,
                 case .survey(let report) = result.payload
             {

@@ -34,7 +34,8 @@ struct SpiaStoreTests {
         let transport = try ReplayTransport(contentsOf: recording.url())
         let connection = ConnectionManager(adapter: DemoGarage.adapter) { transport }
         try await connection.connect()
-        let transcript = garage.newTranscript(for: session)
+        let vehicle = try #require(session.vehicle)
+        let transcript = garage.newTranscript(for: vehicle)
         var result: JobResult?
         for await event in await JobRunner(connection: connection).run(
             job, transcript: transcript.url)
@@ -42,7 +43,8 @@ struct SpiaStoreTests {
             if case .completed(let completed) = event { result = completed }
         }
         let completed = try #require(result)
-        try garage.record(completed, warnings: [], transcriptPath: transcript.path, in: session)
+        try garage.record(
+            completed, warnings: [], transcriptPath: transcript.path, for: vehicle, in: session)
         return completed
     }
 
@@ -114,7 +116,8 @@ struct SpiaStoreTests {
         let (workbench, session) = try await demoWorkbench()
         #expect(workbench.connection.status?.hardware == "vLinker FS r2")
 
-        await workbench.run(.moduleDTCs(DemoGarage.airbag.target), in: session)
+        await workbench.run(
+            .moduleDTCs(DemoGarage.airbag.target), for: session.vehicle!, in: session)
 
         #expect(workbench.activity == nil)
         let entry = try #require(session.timeline.last)
@@ -160,7 +163,8 @@ struct SpiaStoreTests {
         let replayWorkbench = Workbench(backend: replayBackend, garage: garage)
         await replayWorkbench.connect()
         #expect(replayWorkbench.liveStatus == nil)
-        let replayOutcome = await replayWorkbench.run(savedAirbag.job, in: session)
+        let replayOutcome = await replayWorkbench.run(
+            savedAirbag.job, for: session.vehicle!, in: session)
         guard case .completed(let replayResult) = replayOutcome else {
             Issue.record("saved airbag check did not replay")
             return
@@ -253,7 +257,8 @@ struct SpiaStoreTests {
     @Test("a check that can't run is saved as a failure, not as an empty result")
     func recordsFailure() async throws {
         let (workbench, session) = try await demoWorkbench()
-        await workbench.run(.moduleDTCs(DemoGarage.steeringColumn.target), in: session)
+        await workbench.run(
+            .moduleDTCs(DemoGarage.steeringColumn.target), for: session.vehicle!, in: session)
         let entry = try #require(session.timeline.last)
         #expect(entry.kind == .failure)
         #expect(entry.result == nil)
@@ -263,8 +268,8 @@ struct SpiaStoreTests {
     @Test("generic scan and vehicle info summaries read plainly")
     func summaries() async throws {
         let (workbench, session) = try await demoWorkbench()
-        await workbench.run(.vehicleInfo, in: session)
-        await workbench.run(.genericScan, in: session)
+        await workbench.run(.vehicleInfo, for: session.vehicle!, in: session)
+        await workbench.run(.genericScan, for: session.vehicle!, in: session)
         #expect(
             session.timeline.suffix(2).map(\.body) == [
                 "VIN ZAM57RTS4H1249941 · 2 modules answered (ECM1-EngineControl1, TCM-TransmisCtrl)",
@@ -288,7 +293,7 @@ struct SpiaStoreTests {
         #expect(status.hardware == "vLinker FS r2")
         #expect(status.voltage == nil)
 
-        let running = Task { await workbench.run(.genericScan, in: session) }
+        let running = Task { await workbench.run(.genericScan, for: session.vehicle!, in: session) }
         var waited = 0
         while workbench.activity?.prompt == nil, waited < 1000 {
             await Task.yield()
@@ -327,11 +332,12 @@ struct SpiaStoreTests {
         #expect(session.timeline.map(\.body) == ["only over bumps"])
     }
 
-    @Test("deleting a vehicle removes its sessions, history, and transcript files")
+    @Test("deleting a vehicle removes its sessions, history, and vehicle transcripts")
     func deleteVehicle() async throws {
         let (workbench, session) = try await demoWorkbench()
-        await workbench.run(.moduleDTCs(DemoGarage.airbag.target), in: session)
-        let folder = try #require(garage.files.folders(for: session.id).first)
+        await workbench.run(
+            .moduleDTCs(DemoGarage.airbag.target), for: session.vehicle!, in: session)
+        let folder = garage.files.transcriptFolder(for: session.vehicle!.id)
         #expect(FileManager.default.fileExists(atPath: folder.path))
         let vehicle = try #require(session.vehicle)
 

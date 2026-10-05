@@ -5,16 +5,8 @@ import SpiaKit
 import SpiaReference
 import SwiftData
 
-extension CatalogVehicle {
-    public init(_ identity: VehicleIdentity) {
-        self.init(make: identity.make, model: identity.model, year: identity.modelYear)
-    }
-}
-
-/// Version 1 of the on-disk store. Future versions add a new schema and a migration stage;
-/// existing users' garages must always open.
-public enum SpiaSchemaV1: VersionedSchema {
-    public static let versionIdentifier = Schema.Version(1, 0, 0)
+public enum SpiaSchemaV2: VersionedSchema {
+    public static let versionIdentifier = Schema.Version(2, 0, 0)
     public static var models: [any PersistentModel.Type] {
         [
             Vehicle.self, AdapterProfile.self, ModulePreset.self, DiagnosticSession.self,
@@ -45,10 +37,14 @@ public enum SpiaSchemaV1: VersionedSchema {
         public var modules: [ModulePreset] = []
         @Relationship(deleteRule: .cascade, inverse: \DiagnosticSession.vehicle)
         public var sessions: [DiagnosticSession] = []
+        /// Everything read from or noted about the car, whichever problem it was for.
+        @Relationship(deleteRule: .cascade, inverse: \TimelineEntry.vehicle)
+        public var entries: [TimelineEntry] = []
         @Relationship(deleteRule: .cascade, inverse: \VehicleImage.vehicle)
         public var images: [VehicleImage] = []
 
         public var orderedModules: [ModulePreset] { modules.sorted { $0.position < $1.position } }
+        public var orderedEntries: [TimelineEntry] { entries.sorted { $0.date < $1.date } }
         public var orderedSessions: [DiagnosticSession] {
             sessions.sorted { $0.updatedAt > $1.updatedAt }
         }
@@ -161,7 +157,9 @@ public enum SpiaSchemaV1: VersionedSchema {
         }
     }
 
-    /// One problem being worked on: what the user reported, and everything learned since.
+    /// One problem being worked on: what the user reported, the notes and readings taken for
+    /// it, and the conversation about it. The car's state is the vehicle's; this is a view of
+    /// it as of the problem.
     @Model public final class DiagnosticSession {
         @Attribute(.unique) public var id: UUID
         public var title: String
@@ -169,11 +167,14 @@ public enum SpiaSchemaV1: VersionedSchema {
         public var statusRaw: String
         public var startedAt: Date
         public var updatedAt: Date
+        public var closedAt: Date?
         public var resolution: String?
         /// The user agreed that this session's data may be sent to cloud AI providers.
         public var cloudSharingAllowed: Bool = false
         public var vehicle: Vehicle?
-        @Relationship(deleteRule: .cascade, inverse: \TimelineEntry.session)
+        /// Notes and the readings taken for this problem. Deleting the problem unlinks its
+        /// readings rather than deleting them; `Garage.delete` removes the notes itself.
+        @Relationship(deleteRule: .nullify, inverse: \TimelineEntry.session)
         public var entries: [TimelineEntry] = []
         @Relationship(deleteRule: .cascade, inverse: \ChatMessage.session)
         public var messages: [ChatMessage] = []
@@ -187,16 +188,26 @@ public enum SpiaSchemaV1: VersionedSchema {
             updatedAt = .now
         }
 
+        /// Closing records the first close time. Reopening clears it, so the board follows the
+        /// current car while a problem is open and the historical car after it is closed.
         public var status: SessionStatus {
             get { SessionStatus(rawValue: statusRaw) ?? .open }
-            set { statusRaw = newValue.rawValue }
+            set {
+                statusRaw = newValue.rawValue
+                if newValue == .open {
+                    closedAt = nil
+                } else if closedAt == nil {
+                    closedAt = .now
+                }
+            }
         }
 
         public var timeline: [TimelineEntry] { entries.sorted { $0.date < $1.date } }
         public var conversation: [ChatMessage] { messages.sorted { $0.sequence < $1.sequence } }
     }
 
-    /// Something that happened in a session: a note, a check result, or a failed check.
+    /// Something learned about the car: a note, a check result, or a failed check. It belongs
+    /// to the vehicle, and to the problem it was taken for when there was one.
     @Model public final class TimelineEntry {
         @Attribute(.unique) public var id: UUID
         public var date: Date
@@ -209,7 +220,9 @@ public enum SpiaSchemaV1: VersionedSchema {
         public var warnings: [String]
         /// Transcript path relative to the app's storage folder.
         public var transcriptPath: String?
+        /// The problem this was taken for, if any. Nil once that problem is deleted.
         public var session: DiagnosticSession?
+        public var vehicle: Vehicle?
 
         public init(kind: EntryKind, title: String, body: String = "", date: Date = .now) {
             id = UUID()
@@ -229,7 +242,7 @@ public enum SpiaSchemaV1: VersionedSchema {
     }
 }
 
-extension SpiaSchemaV1 {
+extension SpiaSchemaV2 {
     /// A photo the owner added of their own car. The file is a JPEG under the app's storage
     /// folder, resized and without location metadata.
     @Model public final class VehicleImage {
@@ -303,105 +316,5 @@ extension SpiaSchemaV1 {
             }
             set { resolutionsData = try? JSONEncoder().encode(newValue) }
         }
-    }
-}
-
-/// A message part as stored: images live in files under the app's storage folder.
-public enum StoredPart: Codable, Sendable, Equatable {
-    case text(String)
-    case image(path: String, mediaType: String)
-    case toolCall(ToolCall)
-    case toolResult(ToolResult)
-}
-
-/// What became of a tool call.
-public enum ToolResolution: Codable, Sendable, Equatable {
-    case pending
-    case running
-    case completed(summary: String)
-    case failed(message: String)
-    case declined
-    case answered(String)
-    /// The user moved on without responding.
-    case skipped
-    /// The model's call couldn't be used (unknown module, bad arguments).
-    case invalid(String)
-
-    public var isOpen: Bool { self == .pending || self == .running }
-}
-
-public enum SessionStatus: String, Codable, Sendable, CaseIterable {
-    case open, resolved, archived
-}
-
-public enum EntryKind: String, Codable, Sendable {
-    case note, result, failure
-}
-
-public typealias Vehicle = SpiaSchemaV2.Vehicle
-public typealias AdapterProfile = SpiaSchemaV2.AdapterProfile
-public typealias ModulePreset = SpiaSchemaV2.ModulePreset
-public typealias DiagnosticSession = SpiaSchemaV2.DiagnosticSession
-public typealias TimelineEntry = SpiaSchemaV2.TimelineEntry
-public typealias ChatMessage = SpiaSchemaV2.ChatMessage
-public typealias VehicleImage = SpiaSchemaV2.VehicleImage
-
-extension TimelineEntry {
-    /// Maps a stored result for the board, preserving the car's original replay date.
-    public var boardResult: SessionBoard.Result? {
-        result.map {
-            SessionBoard.Result(date: $0.source.replayDate ?? date, payload: $0.payload)
-        }
-    }
-}
-
-extension [ModulePreset] {
-    /// The modules the board names, in the owner's order. Invalid module targets are omitted.
-    public var boardModules: [SessionBoard.Module] {
-        compactMap { preset in
-            preset.target.map { SessionBoard.Module(label: preset.label, target: $0) }
-        }
-    }
-}
-
-extension Vehicle {
-    /// Folds readings belonging to the car, optionally stopping at a historical date.
-    public func board(asOf: Date? = nil, live: AdapterStatus? = nil) -> SessionBoard {
-        let results: [SessionBoard.Result] = orderedEntries.compactMap { entry in
-            guard let result = entry.boardResult, asOf.map({ result.date <= $0 }) ?? true else {
-                return nil
-            }
-            return result
-        }
-        return SessionBoard(modules: orderedModules.boardModules, results: results, live: live)
-    }
-}
-
-extension DiagnosticSession {
-    /// This problem's board is the vehicle's state when the problem was closed, or now while open.
-    public func board(live: AdapterStatus? = nil) -> SessionBoard {
-        vehicle?.board(asOf: closedAt, live: closedAt == nil ? live : nil)
-            ?? SessionBoard(modules: [], results: [], live: live)
-    }
-}
-
-public enum SpiaMigrationPlan: SchemaMigrationPlan {
-    public static var schemas: [any VersionedSchema.Type] {
-        [SpiaSchemaV1.self, SpiaSchemaV2.self]
-    }
-    public static var stages: [MigrationStage] {
-        [
-            .custom(fromVersion: SpiaSchemaV1.self, toVersion: SpiaSchemaV2.self, willMigrate: nil)
-            {
-                context in
-                let entries = try context.fetch(FetchDescriptor<SpiaSchemaV2.TimelineEntry>())
-                for entry in entries { entry.vehicle = entry.session?.vehicle }
-                let sessions = try context.fetch(FetchDescriptor<SpiaSchemaV2.DiagnosticSession>())
-                for session in sessions where session.status != .open {
-                    session.closedAt = session.updatedAt
-                }
-                try context.save()
-            }
-        ]
     }
 }

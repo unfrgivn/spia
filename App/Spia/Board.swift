@@ -3,27 +3,7 @@ import SpiaKit
 import SpiaStore
 import SwiftUI
 
-extension [ModulePreset] {
-    /// The modules the board names, in the owner's order. A preset whose IDs were edited into
-    /// something that isn't one module is left out.
-    var boardModules: [SessionBoard.Module] {
-        compactMap { preset in
-            preset.target.map { SessionBoard.Module(label: preset.label, target: $0) }
-        }
-    }
-}
-
 extension DiagnosticSession {
-    /// What this session's results say about the car. `live` is the connected adapter's status,
-    /// newer than any saved adapter check.
-    func board(live: AdapterStatus? = nil) -> SessionBoard {
-        let results = timeline.compactMap { entry in
-            entry.boardResult
-        }
-        return SessionBoard(
-            modules: vehicle?.orderedModules.boardModules ?? [], results: results, live: live)
-    }
-
     /// The lamp a list of sessions shows beside this one: the colour of its most urgent problem,
     /// green once everything is read and clear, and none while there's nothing to say.
     var lamp: Tone? {

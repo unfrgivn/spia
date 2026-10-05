@@ -14,7 +14,7 @@ struct GarageSurveyTests {
         let garage = Garage(
             context: container.mainContext,
             files: SpiaFiles(root: FileManager.default.temporaryDirectory))
-        let vehicle = SpiaSchemaV1.Vehicle(name: "Test car")
+        let vehicle = Vehicle(name: "Test car")
         container.mainContext.insert(vehicle)
         let existingTarget = try ModuleTarget(bus: .highSpeed, request: 0x744, response: 0x4C4)
         let otherBusTarget = try ModuleTarget(bus: .mediumSpeed, request: 0x744, response: 0x53C)

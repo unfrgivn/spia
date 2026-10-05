@@ -221,7 +221,11 @@ public final class AssistantConversation {
         }
         message.resolutions[callID] = .running
         save()
-        let outcome = await workbench.run(job, in: session)
+        guard let vehicle = session.vehicle else {
+            error = "This problem has no vehicle."
+            return
+        }
+        let outcome = await workbench.run(job, for: vehicle, in: session)
         guard let (resolution, result) = Self.feedback(for: outcome, callID: callID) else {
             message.resolutions[callID] = .pending
             error = "Another check is running. Approve this one when it finishes."

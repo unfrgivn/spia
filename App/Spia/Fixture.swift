@@ -88,7 +88,7 @@
                     JobResult(
                         job: .survey(report.plan), payload: .survey(report), source: .live,
                         transcript: nil),
-                    warnings: [], transcriptPath: nil, in: session)
+                    warnings: [], transcriptPath: nil, for: vehicle, in: session)
             } else if screen != .welcome {
                 if screen == .replay || screen == .replayTimeline || screen == .recordings {
                     let vehicle = try model.garage.addVehicle(
@@ -175,13 +175,15 @@
             // Connect once the screen is up, so shots can show what a new connection looks like.
             try? await Task.sleep(for: .seconds(2))
             await workbench.connect()
-            _ = await workbench.run(.adapterCheck, in: session)
+            _ = await workbench.run(.adapterCheck, for: vehicle, in: session)
             // Checks after the bulb check, the way someone connects and then runs one.
             try? await Task.sleep(for: .seconds(1.5))
-            _ = await workbench.run(.genericScan, in: session)
-            _ = await workbench.run(.moduleDTCs(DemoGarage.airbag.target), in: session)
-            _ = await workbench.run(.moduleDTCs(DemoGarage.abs.target), in: session)
-            _ = await workbench.run(.moduleDTCs(DemoGarage.bodyComputer.target), in: session)
+            _ = await workbench.run(.genericScan, for: vehicle, in: session)
+            _ = await workbench.run(
+                .moduleDTCs(DemoGarage.airbag.target), for: vehicle, in: session)
+            _ = await workbench.run(.moduleDTCs(DemoGarage.abs.target), for: vehicle, in: session)
+            _ = await workbench.run(
+                .moduleDTCs(DemoGarage.bodyComputer.target), for: vehicle, in: session)
             if let error = workbench.lastError { print("Spia fixture check failed: \(error)") }
             answerAirbagQuestion(in: session, garage: model.garage)
         }
@@ -193,8 +195,9 @@
             guard let workbench = model.workbench(for: vehicle) else { return }
             await Task.yield()
             await workbench.connect()
-            _ = await workbench.run(.adapterCheck, in: session)
-            _ = await workbench.run(.moduleDTCs(DemoGarage.airbag.target), in: session)
+            _ = await workbench.run(.adapterCheck, for: vehicle, in: session)
+            _ = await workbench.run(
+                .moduleDTCs(DemoGarage.airbag.target), for: vehicle, in: session)
         }
 
         private static func surveyReport() throws -> SurveyReport {

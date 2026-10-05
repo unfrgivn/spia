@@ -61,7 +61,8 @@ struct AssistantConversationTests {
     @Test("the briefing carries the modules and each result, marked as from a recording")
     func briefing() async throws {
         let (_, session, workbench) = try await demo()
-        await workbench.run(.moduleDTCs(DemoGarage.airbag.target), in: session)
+        await workbench.run(
+            .moduleDTCs(DemoGarage.airbag.target), for: session.vehicle!, in: session)
 
         let briefing = garage.briefing(for: session, adapter: workbench.connection.status)
 
