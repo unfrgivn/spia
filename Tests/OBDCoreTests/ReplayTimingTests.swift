@@ -74,13 +74,14 @@ struct ReplayTimingTests {
                 timeout: .milliseconds(7)) == .wait(.milliseconds(7)))
     }
 
-    @Test("cancellation interrupts a paced read")
-    func cancellationInterruptsSleep() async throws {
+    @Test("a cancelled paced read throws instead of delivering")
+    func cancellationInterruptsRead() async throws {
         let events = try fixture("ghibli-ignition-on-probe.txt")
         let transport = ReplayTransport(events: events, timing: .recorded)
         try await transport.write(Array("ATZ\r".utf8))
+        // Cancelled at once, so the outcome doesn't depend on the clock: the read either
+        // hasn't started and refuses, or is pacing the 1.2 s gap and is interrupted.
         let read = Task { try await transport.read(timeout: .seconds(3)) }
-        try await Task.sleep(for: .milliseconds(10))
         read.cancel()
         await #expect(throws: CancellationError.self) { try await read.value }
     }
