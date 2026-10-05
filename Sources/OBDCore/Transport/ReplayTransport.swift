@@ -81,6 +81,9 @@ public actor ReplayTransport: Transport {
     }
 
     public func read(timeout: Duration) async throws -> [UInt8] {
+        // A read cancelled before it got to run must not hand back data, even when the
+        // recording says the reply is already due.
+        try Task.checkCancellation()
         guard timing == .recorded else { return try await readImmediately(timeout: timeout) }
         let decision = Self.readDecision(
             events: events, cursor: cursor,
