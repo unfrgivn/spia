@@ -16,6 +16,84 @@ private func events(_ text: String, chunk: Int = 7) -> [SSEEvent] {
     return result + parser.finish()
 }
 
+@Suite("Code interpretations")
+struct InterpretationTests {
+    @Test("the interpretation tool is strict and parses code results")
+    func toolAndParser() throws {
+        let parameters = InterpretationTool.definition.parameters
+        #expect(parameters["additionalProperties"] == .bool(false))
+        #expect(parameters["required"] == ["codes", "module"])
+        let call = ToolCall(
+            id: "1", name: InterpretationTool.name,
+            arguments:
+                #"{"codes":[{"code":"B0001-1B","name":"clock spring","meaning":"Stage 1 circuit fault","first_check":"Use the SRS procedure","confidence":"high"},{"code":"B0002-1B","name":"connector","meaning":"Stage 2 circuit fault","first_check":"Inspect safely","confidence":"medium"}],"module":null}"#
+        )
+        let result = try InterpretationTool.parse(call)
+        #expect(result.codes.count == 2)
+        #expect(result.module == nil)
+    }
+
+    @Test("module interpretations and invalid confidence are handled")
+    func moduleAndInvalidConfidence() throws {
+        let valid = ToolCall(
+            id: "1", name: InterpretationTool.name,
+            arguments: #"{"codes":[],"module":{"name":"ORC","role":"airbag controller"}}"#)
+        #expect(try InterpretationTool.parse(valid).module?.name == "ORC")
+        let invalid = ToolCall(
+            id: "1", name: InterpretationTool.name,
+            arguments:
+                #"{"codes":[{"code":"P1009","name":"x","meaning":"x","first_check":"x","confidence":"certain"}],"module":null}"#
+        )
+        #expect(throws: Error.self) { try InterpretationTool.parse(invalid) }
+    }
+
+    @Test("forced and automatic tool choice are encoded for both providers")
+    func toolChoiceBodies() throws {
+        let request = AssistantRequest(
+            instructions: "x", messages: [], tools: [InterpretationTool.definition],
+            toolChoice: .tool(InterpretationTool.name))
+        let anthropic = try AnthropicProvider.body(for: request, model: "m")
+        #expect(
+            anthropic["tool_choice"] == ["type": "tool", "name": .string(InterpretationTool.name)])
+        let openAI = try OpenAIProvider.body(for: request, model: "m")
+        #expect(
+            openAI["tool_choice"] == ["type": "function", "name": .string(InterpretationTool.name)])
+        let automatic = AssistantRequest(instructions: "x", messages: [], tools: [])
+        #expect(
+            try AnthropicProvider.body(for: automatic, model: "m")["tool_choice"] == [
+                "type": "auto"
+            ])
+        #expect(
+            try OpenAIProvider.body(for: automatic, model: "m")["tool_choice"] == .string("auto"))
+    }
+
+    @Test("interpretation requests include catalog names and withhold VIN")
+    func requestPrompt() throws {
+        let briefing = SessionBriefing(
+            vehicle: .init(name: "Ghibli", vin: "SECRET", notes: ""), problem: "",
+            modules: [], adapter: nil, events: [])
+        let request = InterpretationRequest.make(
+            briefing: briefing, module: nil,
+            codes: [
+                .init(code: "B0001-1B", catalogName: "Driver Frontal Stage 1 Deployment Control")
+            ],
+            provider: .anthropic, sharing: SharingPolicy(includeVIN: false))
+        let prompt = request.messages.first?.parts.first
+        #expect(prompt == .text(promptText))
+        #expect(request.instructions.contains("withheld by the user's privacy setting"))
+    }
+
+    private var promptText: String {
+        """
+        Module: engine generic scan.
+        Codes:
+        - B0001-1B (Driver Frontal Stage 1 Deployment Control)
+
+        Use record_interpretations. Give each code a technician's name, its meaning on this car in at most two sentences including the failure-type byte when present, the first thing to check, and confidence. Label guesses as guesses. Name and give the role of a fallback module, otherwise return null.
+        """
+    }
+}
+
 @Suite("Server-sent events")
 struct SSEParserTests {
     @Test("events, multi-line data, comments, and CRLF split across reads")
@@ -444,6 +522,36 @@ struct LiveProviderTests {
         #expect(produced)
     }
 
+    private func interpret(_ provider: any AssistantProvider) async throws {
+        let request = InterpretationRequest.make(
+            briefing: SessionBriefing(
+                vehicle: .init(name: "2017 Maserati Ghibli", vin: nil, notes: ""),
+                problem: "Horn and steering-wheel buttons dead.",
+                modules: [
+                    .init(
+                        label: "Airbag controller (ORC)", bus: "hs", request: "7A0", reply: "7A8",
+                        labelConfirmed: true)
+                ], adapter: nil, events: []),
+            module: .init(
+                label: "Airbag controller (ORC)", bus: "hs", request: "7A0", reply: "7A8",
+                labelConfirmed: true),
+            codes: [
+                .init(code: "B0001-1B", catalogName: "Driver Frontal Stage 1 Deployment Control"),
+                .init(code: "B0002-1B", catalogName: "Driver Frontal Stage 2 Deployment Control"),
+            ], provider: provider.id, sharing: .init(includeVIN: false))
+        var call: ToolCall?
+        for try await event in provider.respond(to: request) {
+            if case .toolCall(let value) = event { call = value }
+        }
+        let result = try InterpretationTool.parse(try #require(call))
+        #expect(result.codes.count == 2)
+        #expect(
+            result.codes.allSatisfy {
+                !$0.name.isEmpty && !$0.meaning.isEmpty && !$0.firstCheck.isEmpty
+                    && ["high", "medium", "low"].contains($0.confidence)
+            })
+    }
+
     @Test("Claude answers with text or a valid tool call", .enabled(if: anthropicKey != nil))
     func claude() async throws {
         try await check(
@@ -453,6 +561,18 @@ struct LiveProviderTests {
     @Test("OpenAI answers with text or a valid tool call", .enabled(if: openAIKey != nil))
     func openAI() async throws {
         try await check(
+            OpenAIProvider(apiKey: Self.openAIKey ?? "", model: OpenAIProvider.fastModel))
+    }
+
+    @Test("Claude interprets the Ghibli airbag codes", .enabled(if: anthropicKey != nil))
+    func claudeInterpretations() async throws {
+        try await interpret(
+            AnthropicProvider(apiKey: Self.anthropicKey ?? "", model: AnthropicProvider.fastModel))
+    }
+
+    @Test("OpenAI interprets the Ghibli airbag codes", .enabled(if: openAIKey != nil))
+    func openAIInterpretations() async throws {
+        try await interpret(
             OpenAIProvider(apiKey: Self.openAIKey ?? "", model: OpenAIProvider.fastModel))
     }
 }

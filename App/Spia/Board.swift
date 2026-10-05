@@ -17,6 +17,15 @@ extension DiagnosticSession {
     }
 }
 
+extension SessionBoard.Row {
+    var target: ModuleTarget? {
+        if case .module(let target) = subject {
+            return target
+        }
+        return nil
+    }
+}
+
 /// How much room the board has: one line per row on a Mac or an iPad held sideways, stacked on
 /// an iPhone or beside the assistant.
 enum BoardLayout {
@@ -185,8 +194,8 @@ struct SessionBoardView: View {
     var unreadable: [SessionBoard.Subject: String] = [:]
     /// The assistant's answers, under the rows they're about.
     var notes: [SessionBoard.Subject: BoardNote] = [:]
-    /// Asks the assistant about a row.
-    var explain: ((SessionBoard.Row) -> Void)?
+    var interpretations: VehicleInterpretations?
+    var askMore: ((String) -> Void)?
     /// Opens the reading history for a row.
     var open: ((SessionBoard.Row) -> Void)?
     var openAssistant: (() -> Void)?
@@ -202,7 +211,7 @@ struct SessionBoardView: View {
                     case .compact: compact(row)
                     }
                     if !row.codes.isEmpty, row.subject != reading?.subject {
-                        CodeNamesView(row: row)
+                        CodeNamesView(row: row, interpretations: interpretations, askMore: askMore)
                             .padding(.leading, layout == .wide ? 140 : 104)
                             .padding(.bottom, 12)
                     }
@@ -365,13 +374,6 @@ struct SessionBoardView: View {
             Button("Read") { read(row.subject) }
                 .buttonStyle(OutlineButtonStyle())
                 .accessibilityLabel("Read \(row.name)")
-        } else if row.question != nil, notes[row.subject] == nil, let explain {
-            Button("Explain") { explain(row) }
-                .buttonStyle(.plain)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Palette.accent)
-                .help("Ask the assistant about this")
-                .accessibilityLabel("Explain \(row.name)")
         }
     }
 
@@ -439,24 +441,88 @@ struct StatusWord: View {
 /// public title where SAE defines one, else why there isn't one.
 private struct CodeNamesView: View {
     let row: SessionBoard.Row
+    let interpretations: VehicleInterpretations?
+    let askMore: ((String) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             ForEach(Array(zip(row.printedCodes, row.names).enumerated()), id: \.offset) {
                 _, item in
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(item.0)
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundStyle(Palette.secondary)
-                    Text(Self.title(for: item.1))
-                        .font(.system(size: 13))
-                        .foregroundStyle(Palette.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(item.0)
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundStyle(Palette.secondary)
+                        Text(Self.title(for: item.1))
+                            .font(.system(size: 13))
+                            .foregroundStyle(Palette.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let interpretation = interpretations?.interpretation(
+                        for: row.subject, code: item.0)
+                    {
+                        interpretationView(interpretation, catalogTitle: Self.title(for: item.1))
+                    }
                 }
+            }
+            if let target = row.target, let module = interpretations?.interpretation(for: target),
+                row.name == target.fallbackLabel
+            {
+                Text("\(module.provider.displayName): likely the \(module.name); \(module.role)")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Palette.secondary)
+            }
+            if let question = row.question, let askMore,
+                interpretations?.codes.contains(where: { $0.target == row.target }) == true
+            {
+                Button("Ask more") { askMore(question) }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(Palette.accent)
+            }
+            if let target = row.target, interpretations?.inFlight.contains(target) == true {
+                Text("Looking up…")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Palette.tertiary)
+                    .modifier(Breathing(active: true))
+            } else if row.target == nil, interpretations?.inFlight.contains(nil) == true {
+                Text("Looking up…")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Palette.tertiary)
+                    .modifier(Breathing(active: true))
             }
         }
         .frame(maxWidth: 720, alignment: .leading)
         .accessibilityElement(children: .combine)
+    }
+
+    private func interpretationView(
+        _ interpretation: StoredCodeInterpretation, catalogTitle: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if interpretation.name.caseInsensitiveCompare(catalogTitle) != .orderedSame {
+                Text(interpretation.name)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Palette.primary)
+            }
+            Text(interpretation.meaning)
+                .font(.system(size: 13))
+                .foregroundStyle(Palette.secondary)
+            Text("Check first: \(interpretation.firstCheck)")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Palette.secondary)
+            Text(stamp(interpretation))
+                .font(.system(size: 11.5))
+                .foregroundStyle(Palette.tertiary)
+        }
+    }
+
+    private func stamp(_ interpretation: StoredCodeInterpretation) -> String {
+        let confidence =
+            interpretation.confidence == "high"
+            ? "" : ", \(interpretation.confidence) confidence"
+        return
+            "Interpretation · \(interpretation.provider.displayName) · \(interpretation.date.formatted(date: .abbreviated, time: .omitted))\(confidence)"
     }
 
     private static func title(for name: CodeName?) -> String {

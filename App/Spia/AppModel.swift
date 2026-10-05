@@ -20,6 +20,7 @@ final class AppModel {
     let container: ModelContainer
     let garage: Garage
     let assistant: AssistantConfiguration
+    let interpreter: Interpreter
     let replayTiming: ReplayTiming
     private var workbenches: [UUID: Workbench] = [:]
     private var recordingWorkbenches: [UUID: Workbench] = [:]
@@ -43,6 +44,7 @@ final class AppModel {
         self.replayTiming = replayTiming
         self.savedChecksProvider = savedChecksProvider
         garage = Garage(context: container.mainContext, files: files)
+        interpreter = Interpreter(configuration: assistant, garage: garage)
     }
 
     static func live() throws -> AppModel {

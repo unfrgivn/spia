@@ -5,7 +5,6 @@ import SwiftUI
 extension View {
     func readingHistory(
         runner: DiagnosticRunCoordinator?, vehicle: Vehicle?,
-        explain: ((SessionBoard.Row) -> Void)? = nil,
         showTranscript: @escaping (TimelineEntry) -> Void = { _ in }
     ) -> some View {
         sheet(
@@ -16,12 +15,7 @@ extension View {
             if let runner, let vehicle {
                 ReadingHistoryView(
                     vehicle: vehicle, subject: subject, session: runner.session,
-                    explain: explain.map { callback in
-                        { row in
-                            runner.historySubject = nil
-                            callback(row)
-                        }
-                    }, showTranscript: showTranscript)
+                    showTranscript: showTranscript)
             }
         }
     }
@@ -31,11 +25,11 @@ struct ReadingHistoryView: View {
     let vehicle: Vehicle
     let subject: SessionBoard.Subject
     let session: DiagnosticSession?
-    let explain: ((SessionBoard.Row) -> Void)?
     let showTranscript: (TimelineEntry) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var expanded: Set<UUID> = []
     private let catalog = CodeCatalog.bundledCatalog
+    @Environment(AppModel.self) private var model
 
     private var asOf: Date? { session?.closedAt }
     private var history: ReadingHistory { vehicle.history(for: subject, asOf: asOf) }
@@ -89,10 +83,6 @@ struct ReadingHistoryView: View {
                     }
                 }
                 Spacer()
-                if let explain, row.question != nil {
-                    Button("Explain") { explain(row) }
-                        .buttonStyle(.bordered)
-                }
             }
             HStack(spacing: 12) {
                 StatusWord(row: row, size: 20)
@@ -148,6 +138,26 @@ struct ReadingHistoryView: View {
                             Text("Not in the public code list")
                                 .font(.caption)
                                 .foregroundStyle(Palette.secondary)
+                        }
+                    }
+                    if let interpretation = model.interpreter.interpretations(for: vehicle)
+                        .interpretation(for: subject, code: code.name?.printed ?? code.code)
+                    {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(interpretation.name)
+                                .font(.callout.weight(.medium))
+                                .foregroundStyle(Palette.primary)
+                            Text(interpretation.meaning)
+                                .font(.caption)
+                                .foregroundStyle(Palette.secondary)
+                            Text("Check first: \(interpretation.firstCheck)")
+                                .font(.caption)
+                                .foregroundStyle(Palette.secondary)
+                            Text(
+                                "Interpretation · \(interpretation.provider.displayName) · \(interpretation.date.formatted(date: .abbreviated, time: .omitted))"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(Palette.tertiary)
                         }
                     }
                     // On their own line: five flags beside the code don't fit the sheet.

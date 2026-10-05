@@ -18,6 +18,7 @@ struct VehicleOverview: View {
     @State private var uploadingCover = false
     @State private var problem: String?
     @State private var width: CGFloat = 1_000
+    @State private var interpretationDismissed = false
 
     var body: some View {
         let compact = BoardLayout(width: width) == .compact
@@ -32,6 +33,20 @@ struct VehicleOverview: View {
                 }
                 BoardHeadline(headline: board.headline, summary: board.summary, compact: compact)
                     .padding(.top, compact ? 18 : 28)
+                if shouldShowInterpretationConsent {
+                    InterpretationConsentCard(
+                        compact: compact, board: board, vehicle: vehicle,
+                        interpretations: interpretations,
+                        allow: {
+                            interpretations.allow(model.assistant.settings.defaultProvider)
+                            Task {
+                                await model.interpreter.catchUp(
+                                    vehicle, adapter: workbench?.liveStatus)
+                            }
+                        }, dismiss: { interpretationDismissed = true }
+                    )
+                    .padding(.top, compact ? 18 : 24)
+                }
                 if let workbench, let activity = workbench.activity,
                     activity.vehicleID == vehicle.id,
                     activity.prompt != nil || SessionBoard.Subject(job: activity.job) == nil
@@ -43,9 +58,26 @@ struct VehicleOverview: View {
                     board: board, layout: BoardLayout(width: width), read: runner?.reader,
                     reading: runner?.reading,
                     unreadable: runner?.unreadable(for: board) ?? [:],
+                    interpretations: interpretations,
                     open: { runner?.historySubject = $0.subject }
                 )
                 .padding(.top, compact ? 18 : 22)
+                if let error = interpretations.lastError {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(Palette.secondary)
+                        Button("Try again") {
+                            Task {
+                                await model.interpreter.catchUp(
+                                    vehicle, adapter: workbench?.liveStatus)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Palette.accent)
+                    }
+                    .padding(.top, 8)
+                }
                 SessionLedger(
                     vehicle: vehicle, compact: compact, open: { show(.session($0.id)) },
                     newSession: newSession
@@ -77,6 +109,7 @@ struct VehicleOverview: View {
         .toolbar { overviewToolbar }
         .task(id: vehicle.id) {
             runner = DiagnosticRunCoordinator(vehicle: vehicle, session: nil, model: model)
+            await model.interpreter.catchUp(vehicle, adapter: workbench?.liveStatus)
             #if DEBUG
                 if Fixture.screen == .onboarding { runner?.requestSurvey() }
                 if Fixture.screen == .surveyResults || Fixture.screen == .surveyResultsMissing
@@ -163,6 +196,13 @@ struct VehicleOverview: View {
     }
 
     private var board: SessionBoard { vehicle.board(live: workbench?.liveStatus) }
+    private var interpretations: VehicleInterpretations {
+        model.interpreter.interpretations(for: vehicle)
+    }
+    private var shouldShowInterpretationConsent: Bool {
+        !interpretationDismissed && !board.rows.allSatisfy { $0.codes.isEmpty }
+            && model.assistant.settings.defaultProvider.isCloud && interpretations.consent == nil
+    }
     /// The car as the garage shows it, always drawn dark: beside its photo when there's room,
     /// under it when there isn't, so the name never sits on the car.
     private func hero(compact: Bool) -> some View {

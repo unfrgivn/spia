@@ -29,7 +29,7 @@
             case welcome
             /// The session, scrolled down to its timeline.
             case timeline
-            /// The session, with Explain pressed on the first row that has no answer yet.
+            /// The session with the interpretation rows visible.
             case explain
             /// The session, with a module's reading history open.
             case history
@@ -102,6 +102,7 @@
                     }
                 } else {
                     let vehicle = try model.garage.addDemoVehicle()
+                    seedInterpretations(model: model, vehicle: vehicle)
                     Task { await runChecks(model: model, vehicle: vehicle) }
                 }
             }
@@ -173,7 +174,44 @@
             _ = await workbench.run(
                 .moduleDTCs(DemoGarage.bodyComputer.target), for: vehicle, in: session)
             if let error = workbench.lastError { print("Spia fixture check failed: \(error)") }
-            answerAirbagQuestion(in: session, garage: model.garage)
+        }
+
+        private static func seedInterpretations(model: AppModel, vehicle: Vehicle) {
+            let cache = model.interpreter.interpretations(for: vehicle)
+            cache.allow(.anthropic)
+            cache.store(
+                InterpretationResult(
+                    codes: [
+                        CodeInterpretation(
+                            code: "B0001-1B", name: "Driver airbag clock spring",
+                            meaning:
+                                "The driver frontal stage 1 deployment circuit has an open or high-resistance path. On this car, the dead horn and steering-wheel controls make the clock spring the leading suspect.",
+                            firstCheck:
+                                "Follow Maserati's SRS procedure and inspect the clock-spring and connector area without probing airbag circuits.",
+                            confidence: "high"),
+                        CodeInterpretation(
+                            code: "B0002-1B", name: "Driver airbag connector",
+                            meaning:
+                                "The driver frontal stage 2 deployment circuit reports the same failure type, which points to an interruption rather than a deployment command.",
+                            firstCheck:
+                                "Have a qualified technician inspect the SRS connector and clock spring using the manufacturer's procedure.",
+                            confidence: "high"),
+                    ], module: nil),
+                target: DemoGarage.airbag.target, provider: .anthropic,
+                model: AnthropicProvider.fastModel)
+            cache.store(
+                InterpretationResult(
+                    codes: [
+                        CodeInterpretation(
+                            code: "P1009-00", name: "Body computer communication fault",
+                            meaning:
+                                "This manufacturer-specific code is not verified by the public catalog. It may reflect a body-computer communication or supply issue, but that meaning is only a low-confidence guess.",
+                            firstCheck:
+                                "Check battery voltage and body-computer power and ground according to the service manual.",
+                            confidence: "low")
+                    ], module: nil),
+                target: DemoGarage.bodyComputer.target, provider: .anthropic,
+                model: AnthropicProvider.fastModel)
         }
 
         private static func runReplayChecks(
@@ -322,33 +360,5 @@
                     stopReason: nil))
         }
 
-        /// A question about the airbag row and an answer, as if the owner had tapped Explain,
-        /// so shots show a note. The fixture has no keys, so nothing is really asked.
-        private static func answerAirbagQuestion(in session: DiagnosticSession, garage: Garage) {
-            guard
-                let question = session.board().rows
-                    .first(where: { $0.subject == .module(DemoGarage.airbag.target) })?.question
-            else { return }
-            let next = (session.messages.map(\.sequence).max() ?? -1) + 1
-            session.messages.append(
-                ChatMessage(sequence: next, role: .user, parts: [.text(question)]))
-            session.messages.append(
-                ChatMessage(
-                    sequence: next + 1, role: .assistant, parts: [.text(airbagAnswer)],
-                    provider: .anthropic))
-            try? garage.context.save()
-        }
-
-        private static let airbagAnswer = """
-            Those are the airbag controller's own codes, so their exact meanings are in Maserati's \
-            service data rather than the public OBD list. With a dead horn and dead wheel buttons \
-            as well, the usual cause is a failing **clock spring**: the coiled cable behind the \
-            steering wheel that carries the horn, the wheel buttons, and the driver's airbag.
-
-            Check first:
-
-            1. Does the horn work with the wheel turned fully left or right?
-            2. Is the airbag lamp on all the time, or only at some wheel angles?
-            """
     }
 #endif

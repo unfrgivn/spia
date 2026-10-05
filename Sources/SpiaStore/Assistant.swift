@@ -29,11 +29,36 @@ extension Garage {
             }
         }
         entries.sort { $0.date < $1.date }
-        return SessionBriefing(
+        return makeBriefing(
+            vehicle: vehicle, problem: session.problem, adapter: adapter, entries: entries)
+    }
+
+    /// What the assistant is told about the whole car, including its open problems and latest readings.
+    public func briefing(for vehicle: Vehicle, adapter: AdapterStatus?) -> SessionBriefing {
+        let subjects = vehicle.board().rows.map(\.subject)
+        var entries: [TimelineEntry] = []
+        var entryIDs = Set<UUID>()
+        for subject in subjects {
+            guard let reading = vehicle.history(for: subject).readings.first,
+                let entry = vehicle.entry(for: reading), entryIDs.insert(entry.id).inserted
+            else { continue }
+            entries.append(entry)
+        }
+        let problem = vehicle.sessions
+            .filter { $0.status == .open }
+            .map { "\($0.title): \($0.problem)" }
+            .joined(separator: "\n")
+        return makeBriefing(vehicle: vehicle, problem: problem, adapter: adapter, entries: entries)
+    }
+
+    private func makeBriefing(
+        vehicle: Vehicle?, problem: String, adapter: AdapterStatus?, entries: [TimelineEntry]
+    ) -> SessionBriefing {
+        SessionBriefing(
             vehicle: .init(
                 name: vehicle?.name ?? "Unnamed vehicle", vin: vehicle?.vin,
                 notes: vehicle?.notes ?? ""),
-            problem: session.problem,
+            problem: problem,
             modules: (vehicle?.orderedModules ?? []).compactMap { preset in
                 guard let target = preset.target else { return nil }
                 return .init(
@@ -43,31 +68,44 @@ extension Garage {
                 )
             },
             adapter: adapter,
-            events: entries.map { entry in
-                let result = entry.result
-                let fromRecording: Bool
-                if case .recording = result?.source {
-                    fromRecording = true
-                } else if case .replay = result?.source {
-                    fromRecording = true
-                } else {
-                    fromRecording = false
-                }
-                let summary: String
-                if case .replay(let recorded) = result?.source {
-                    summary =
-                        "Replayed from a recording of this car made on "
-                        + recorded.formatted(date: .abbreviated, time: .omitted) + ". " + entry.body
-                } else {
-                    summary = entry.body
-                }
-                let namedCodes = namedCodes(in: result?.payload)
-                return .init(
-                    date: entry.date, kind: entry.kindRaw, title: entry.title, summary: summary,
-                    result: result?.payload, codes: namedCodes, fromRecording: fromRecording,
-                    warnings: entry.warnings)
-            },
-            references: vehicle.flatMap(references(for:)).flatMap(Self.facts))
+            events: entries.sorted { $0.date < $1.date }.map(event),
+            references: vehicle.flatMap(references(for:)).flatMap(Self.facts),
+            interpretations: vehicle.map { interpretationLines(for: $0) } ?? [])
+    }
+
+    private func event(_ entry: TimelineEntry) -> SessionBriefing.Event {
+        let result = entry.result
+        let fromRecording: Bool
+        if case .recording = result?.source {
+            fromRecording = true
+        } else if case .replay = result?.source {
+            fromRecording = true
+        } else {
+            fromRecording = false
+        }
+        let summary: String
+        if case .replay(let recorded) = result?.source {
+            summary =
+                "Replayed from a recording of this car made on "
+                + recorded.formatted(date: .abbreviated, time: .omitted) + ". " + entry.body
+        } else {
+            summary = entry.body
+        }
+        return .init(
+            date: entry.date, kind: entry.kindRaw, title: entry.title, summary: summary,
+            result: result?.payload, codes: namedCodes(in: result?.payload),
+            fromRecording: fromRecording, warnings: entry.warnings)
+    }
+
+    private func interpretationLines(for vehicle: Vehicle) -> [String] {
+        let stored = VehicleInterpretations(vehicleID: vehicle.id, files: files)
+        return stored.codes.map { item in
+            let module =
+                item.target.map { target in
+                    vehicle.orderedModules.first { $0.target == target }?.label ?? "Module"
+                } ?? "Engine"
+            return "\(module), \(item.code), \(item.name): \(item.meaning)"
+        }
     }
 
     private func namedCodes(in payload: JobPayload?) -> [String] {

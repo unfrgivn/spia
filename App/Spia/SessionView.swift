@@ -18,6 +18,7 @@ struct SessionView: View {
     @State private var checking: Set<SessionBoard.Subject> = []
     /// A board row's question, for the assistant to ask.
     @State private var question: String?
+    @State private var interpretationDismissed = false
     #if os(iOS)
         @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
@@ -58,14 +59,14 @@ struct SessionView: View {
             }
             .surveyReview(runner: runner, vehicle: session.vehicle)
             .readingHistory(
-                runner: runner, vehicle: session.vehicle, explain: { explain($0) },
-                showTranscript: { transcript = $0 }
+                runner: runner, vehicle: session.vehicle, showTranscript: { transcript = $0 }
             )
             .task(id: session.vehicle?.id) {
                 if let vehicle = session.vehicle {
                     workbench = model.workbench(for: vehicle)
                     runner = DiagnosticRunCoordinator(
                         vehicle: vehicle, session: session, model: model)
+                    await model.interpreter.catchUp(vehicle, adapter: workbench?.liveStatus)
                 }
                 #if DEBUG
                     if Fixture.screen == .recordings {
@@ -133,16 +134,51 @@ struct SessionView: View {
                 {
                     ActivityPanel(activity: activity, workbench: workbench).padding(.top, 24)
                 }
+                if let vehicle = session.vehicle, let interpretations,
+                    shouldShowInterpretationConsent
+                {
+                    InterpretationConsentCard(
+                        compact: !wide, board: board, vehicle: vehicle,
+                        interpretations: interpretations,
+                        allow: {
+                            interpretations.allow(model.assistant.settings.defaultProvider)
+                            Task {
+                                await model.interpreter.catchUp(
+                                    vehicle, adapter: workbench?.liveStatus)
+                            }
+                        }, dismiss: { interpretationDismissed = true }
+                    )
+                    .padding(.top, wide ? 24 : 18)
+                }
                 SessionBoardView(
                     board: board, layout: layout,
                     read: session.closedAt == nil ? runner?.reader : nil,
                     reading: runner?.reading,
                     checking: checking, unreadable: runner?.unreadable(for: board) ?? [:],
-                    notes: notes,
-                    explain: { explain($0) }, open: { runner?.historySubject = $0.subject },
+                    notes: notes, interpretations: interpretations,
+                    askMore: {
+                        question = $0; showAssistant = true
+                    },
+                    open: { runner?.historySubject = $0.subject },
                     openAssistant: { showAssistant = true }
                 )
                 .padding(.top, wide ? 32 : 22)
+                if let error = interpretations?.lastError, let vehicle = session.vehicle {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(Palette.secondary)
+                        Button("Try again") {
+                            Task {
+                                await model.interpreter.catchUp(
+                                    vehicle, adapter: workbench?.liveStatus)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Palette.accent)
+                    }
+                    .padding(.top, 8)
+                }
                 CaseFile(
                     session: session, layout: layout, showTranscript: { transcript = $0 },
                     reviewSurvey: {
@@ -166,13 +202,7 @@ struct SessionView: View {
                     try? await Task.sleep(for: .seconds(3))
                     scroller.scrollTo(Self.timelineID, anchor: .top)
                 case .explain:
-                    try? await Task.sleep(for: .seconds(6))
-                    let notes = notes
-                    if let row = board.rows.first(where: {
-                        $0.question != nil && notes[$0.subject] == nil
-                    }) {
-                        explain(row)
-                    }
+                    break
                 case .history:
                     try? await Task.sleep(for: .seconds(6))
                     runner?.historySubject = .module(DemoGarage.airbag.target)
@@ -239,18 +269,21 @@ struct SessionView: View {
     /// With the connected adapter's battery reading, which is newer than any saved one.
     private var board: SessionBoard { session.board(live: workbench?.liveStatus) }
 
+    private var interpretations: VehicleInterpretations? {
+        session.vehicle.map { model.interpreter.interpretations(for: $0) }
+    }
+
+    private var shouldShowInterpretationConsent: Bool {
+        guard let interpretations else { return false }
+        return !interpretationDismissed && !board.rows.allSatisfy { $0.codes.isEmpty }
+            && model.assistant.settings.defaultProvider.isCloud && interpretations.consent == nil
+    }
+
     private var subtitle: String {
         guard let vehicle = session.vehicle else { return "" }
         if vehicle.isDemo { return "\(vehicle.name) · Demo" }
         if workbench?.adapter.kind == .replay { return "\(vehicle.name) · Recordings" }
         return vehicle.name
-    }
-
-    /// Opens the assistant on a row's question; it asks at once when it can, or waits in the
-    /// composer while it needs setting up or the owner's consent.
-    private func explain(_ row: SessionBoard.Row) {
-        question = row.question
-        showAssistant = true
     }
 
     /// Answers about the board's rows, found in the conversation, or being written now.

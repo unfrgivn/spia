@@ -133,6 +133,36 @@ struct VehicleSettings: View {
                     TextField("Notes", text: $notes, axis: .vertical)
                         .lineLimit(2...6)
                 }
+                Section("Code explanations") {
+                    let interpretations = model.interpreter.interpretations(for: vehicle)
+                    if let consent = interpretations.consent {
+                        HStack {
+                            Text(
+                                "Allowed with \(consent.provider.displayName) since \(consent.grantedAt.formatted(date: .abbreviated, time: .omitted))"
+                            )
+                            Spacer()
+                            Button("Stop") { interpretations.withdraw() }
+                        }
+                    } else {
+                        HStack {
+                            Text("Not allowed")
+                            Spacer()
+                            Button("Allow…") {
+                                interpretations.allow(model.assistant.settings.defaultProvider)
+                            }
+                            .disabled(
+                                model.assistant.unavailableReason(
+                                    model.assistant.settings.defaultProvider) != nil)
+                        }
+                        if let reason = model.assistant.unavailableReason(
+                            model.assistant.settings.defaultProvider)
+                        {
+                            Text(reason)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
             }
             .formStyle(.grouped)
             HStack {
