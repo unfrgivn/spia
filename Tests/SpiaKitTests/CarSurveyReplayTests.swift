@@ -19,6 +19,8 @@ import Testing
 ///   the car on: the transmission answered, the engine computer didn't. The survey, vehicle
 ///   information, then, after the owner switched the ignition fully on, the scan and vehicle
 ///   information again.
+/// - `*-app-search*` and `*-vehicle-info-after-search`: the thorough search's first runs on the
+///   cars, 2026-10-04, in the Mac app over USB, each followed by vehicle information.
 @Suite("App recordings from the cars")
 struct CarSurveyReplayTests {
     struct Recording: Sendable, CustomTestStringConvertible {
@@ -46,6 +48,10 @@ struct CarSurveyReplayTests {
         Recording(name: "cx5-app-ble-scan", adapter: .bluetooth, prompts: []),
         Recording(
             name: "cx5-app-ble-vehicle-info-after-ignition", adapter: .bluetooth, prompts: []),
+        Recording(name: "ghibli-app-search", adapter: .usbSerial, prompts: []),
+        Recording(name: "ghibli-app-vehicle-info-after-search", adapter: .usbSerial, prompts: []),
+        Recording(name: "tiguan-app-search-busy", adapter: .usbSerial, prompts: []),
+        Recording(name: "tiguan-app-vehicle-info-after-search", adapter: .usbSerial, prompts: []),
     ]
 
     private static let ghibliVIN = "ZAM57RTS4H1249941"
@@ -399,5 +405,78 @@ struct CarSurveyReplayTests {
             failure?.message == "replay: expected write \"<end of transcript>\", got \"0900\r\"")
         #expect(try Self.sent(name).last == "090A")
         #expect(await transport.isFinished)
+    }
+
+    @Test("the Ghibli's first search heard FCA's network management and found eight modules")
+    func ghibliSearch() throws {
+        let report = try Self.survey("ghibli-app-search")
+        #expect(report.detectedProtocol == .can11bit500k)
+        let search = try #require(report.search)
+        // The listen heard the network management the ignition-on capture shows in the window,
+        // few enough to sweep.
+        #expect(
+            search.heardIDs == [
+                0x400, 0x401, 0x402, 0x403, 0x407, 0x409, 0x422, 0x423, 0x44A, 0x44C,
+            ])
+        #expect(search.engineRunning == false)
+        #expect(search.stopReason == nil)
+        #expect(search.sweptCount == 499)
+        // Eight modules no list knew, every one replying at request - 0x280 as FCA's do, and every
+        // one confirmed on its exact reply.
+        #expect(
+            search.confirmed.map(\.request) == [
+                0x740, 0x742, 0x743, 0x749, 0x74B, 0x762, 0x764, 0x768,
+            ])
+        for target in search.confirmed { #expect(target.response == target.request - 0x280) }
+        #expect(search.unconfirmed.isEmpty)
+
+        let found = report.modules.filter {
+            if case .discovered = $0.candidate.origin { return true }
+            return false
+        }
+        #expect(found.map(\.candidate.target) == search.confirmed)
+        #expect(report.modules.count == 14)
+        // Each gave the car's VIN, so each is this car's.
+        for module in found {
+            let vin = module.identification.first { $0.did == 0xF190 }?.result
+            #expect(vin == .value(Array(Self.ghibliVIN.utf8)))
+        }
+        func records(_ request: UInt32) throws -> [ModuleDTCRecord] {
+            Self.records(try Self.module(request, in: report))
+        }
+        #expect(
+            try records(0x740) == [
+                ModuleDTCRecord(code: "A59B00", status: 0x4B),
+                ModuleDTCRecord(code: "A59B01", status: 0x48),
+                ModuleDTCRecord(code: "9A1100", status: 0x49),
+            ])
+        // The instrument cluster's U0001 and the tire pressure module's C0077.
+        #expect(try records(0x742) == [ModuleDTCRecord(code: "C00100", status: 0x28)])
+        #expect(try records(0x743) == [ModuleDTCRecord(code: "407700", status: 0x08)])
+    }
+
+    @Test("the Tiguan's search stopped at VW's 29-bit traffic in the reply window")
+    func tiguanSearchBusy() throws {
+        let report = try Self.survey("tiguan-app-search-busy")
+        #expect(report.detectedProtocol == .can11bit500k)
+        #expect(report.modules.count == 19)
+        let search = try #require(report.search)
+        #expect(
+            search.stopReason
+                == "The bus is busy where module replies would come, so Spia didn't search.")
+        #expect(search.sweptCount == 0)
+        // 29-bit frames from 17F00010: the 11-bit window let them through, so they count.
+        #expect(search.heardIDs == [0x17F0_0010])
+    }
+
+    @Test("vehicle information after each search reset the adapter in place and read the VIN")
+    func vehicleInfoAfterSearch() throws {
+        for (name, vin) in [
+            ("ghibli-app-vehicle-info-after-search", Self.ghibliVIN),
+            ("tiguan-app-vehicle-info-after-search", Self.tiguanVIN),
+        ] {
+            #expect(try Self.sent(name).first == "ATZ")
+            #expect(try Self.vehicleInfo(name).compactMap(\.vin.value).contains(vin))
+        }
     }
 }
