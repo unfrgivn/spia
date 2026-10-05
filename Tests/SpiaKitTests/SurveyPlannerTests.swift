@@ -103,7 +103,11 @@ struct SurveyPlannerTests {
                 if case .saved = candidate.origin { return true }
                 return false
             } == [false, true, true, true, false, true])
-        #expect(ghibliPlan.expected.map(\.request) == [0x744, 0x747, 0x620, 0x763, 0x7E0, 0x7E1])
+        #expect(
+            ghibliPlan.expected.map(\.request) == [
+                0x744, 0x747, 0x620, 0x763, 0x7E0, 0x7E1,
+                0x740, 0x742, 0x743, 0x749, 0x74B, 0x762, 0x764, 0x768,
+            ])
 
         // The CX-5 saved its transmission, which named itself; no catalog knows the car, so it
         // comes before the legislated addresses, and the engine computer is expected too.
@@ -150,7 +154,7 @@ struct SurveyPlannerTests {
         let ghibliPlan = try SurveyPlanner.plan(
             catalog: catalog, vehicle: ghibli(), reachableBuses: [.highSpeed, .mediumSpeed])
         #expect(ghibliPlan.requiresVIN)
-        #expect(ghibliPlan.expected.count == 6)
+        #expect(ghibliPlan.expected.count == 14)
         #expect(ghibliPlan.expected.contains { $0.request == 0x7E0 && $0.response == 0x7E8 })
 
         let tiguan = CatalogVehicle(make: "Volkswagen", model: "Tiguan", year: 2018)
@@ -174,12 +178,85 @@ struct SurveyPlannerTests {
         #expect(oldPlan.expected.isEmpty)
     }
 
+    @Test(
+        "modules saved under the review's fallback take the catalog's names; named ones keep theirs"
+    )
+    func unnamedSavedModules() throws {
+        func target(_ request: UInt32, _ response: UInt32) throws -> ModuleTarget {
+            try ModuleTarget(bus: .highSpeed, request: request, response: response)
+        }
+        func label(_ origin: SurveyCandidate.Origin?) -> String? {
+            switch origin {
+            case .catalog(let label, _, _)?, .saved(let label, _)?: return label
+            case .legislated?, .discovered?, nil: return nil
+            }
+        }
+        // The Mac's Ghibli as the owner saved it on 2026-10-04: the first six under their names,
+        // then the eight the thorough search found, under the review's fallback.
+        let found: [UInt32] = [0x740, 0x742, 0x743, 0x749, 0x74B, 0x762, 0x764, 0x768]
+        let saved =
+            [
+                ModuleChoice(target: try target(0x744, 0x4C4), label: "Airbag controller (ORC)"),
+                ModuleChoice(target: try target(0x747, 0x4C7), label: "ABS"),
+                ModuleChoice(target: try target(0x620, 0x504), label: "Body computer (BCM)"),
+                ModuleChoice(target: try target(0x763, 0x4E3), label: "Steering column (SCCM)"),
+                ModuleChoice(
+                    target: try target(0x7E0, 0x7E8), label: "ECM1-EngineControl1", confirmed: true),
+                ModuleChoice(
+                    target: try target(0x7E1, 0x7E9), label: "TCM-TransmisCtrl", confirmed: true),
+            ]
+            + (try found.map {
+                ModuleChoice(
+                    target: try target($0, $0 - 0x280), label: String(format: "Module %03X", $0))
+            })
+        let plan = try SurveyPlanner.plan(
+            catalog: catalog(), vehicle: try ghibli(), reachableBuses: [.highSpeed],
+            savedModules: saved)
+        let origins = Dictionary(
+            uniqueKeysWithValues: plan.candidates.map { ($0.target.request, $0.origin) })
+        #expect(
+            found.map { label(origins[$0]) } == [
+                "Radio frequency hub (RFH)", "Instrument cluster (IPC)",
+                "Tire pressure monitoring (TPMS)", "Electronic shifter (ESM)",
+                "Drivetrain control (AWD)", "Park assist (PTS)", "Forward-facing camera",
+                "Adaptive front lighting",
+            ])
+        #expect(origins[0x744] == .saved(label: "Airbag controller (ORC)", confirmed: false))
+        #expect(origins[0x7E0] == .saved(label: "ECM1-EngineControl1", confirmed: true))
+        #expect(plan.candidates.count == 20)
+
+        // So the review proposes the catalog's names, and saving it renames them.
+        let cluster = try #require(plan.candidates.first { $0.target.request == 0x742 })
+        let report = SurveyReport(
+            plan: plan, voltage: nil, vehicleInfo: [],
+            modules: [
+                SurveyModule(
+                    candidate: cluster, presence: .present, identification: [],
+                    codes: .outcome(.records(availability: 0xFF, [])))
+            ], unanswered: [], notProbed: [], stop: nil)
+        #expect(report.proposedModules().map(\.label) == ["Instrument cluster (IPC)"])
+
+        // A fallback the owner confirmed is a name they chose; one the catalog doesn't know has
+        // nothing better. Both stay as saved.
+        let kept = try SurveyPlanner.plan(
+            catalog: catalog(), vehicle: try ghibli(), reachableBuses: [.highSpeed],
+            savedModules: [
+                ModuleChoice(
+                    target: try target(0x740, 0x4C0), label: "Module 740", confirmed: true),
+                ModuleChoice(target: try target(0x799, 0x519), label: "Module 799"),
+            ])
+        let keptOrigins = Dictionary(
+            uniqueKeysWithValues: kept.candidates.map { ($0.target.request, $0.origin) })
+        #expect(keptOrigins[0x740] == .saved(label: "Module 740", confirmed: true))
+        #expect(keptOrigins[0x799] == .saved(label: "Module 799", confirmed: false))
+    }
+
     @Test("Ghibli and Tiguan plans put catalog modules before legislated candidates")
     func knownPlans() throws {
         let catalog = try catalog()
         let ghibliPlan = try SurveyPlanner.plan(
             catalog: catalog, vehicle: try ghibli(), reachableBuses: [.highSpeed])
-        #expect(ghibliPlan.candidates.count == 12)
+        #expect(ghibliPlan.candidates.count == 20)
         #expect(ghibliPlan.unreachable.isEmpty)
         #expect(ghibliPlan.platform == "M157")
         #expect(
@@ -189,8 +266,10 @@ struct SurveyPlannerTests {
                 try ModuleTarget(bus: .highSpeed, request: 0x7E0, response: 0x7E8),
                 try ModuleTarget(bus: .highSpeed, request: 0x7E1, response: 0x7E9),
             ])
+        // Then the eight the thorough search found, then the rest of the legislated range.
         #expect(
             ghibliPlan.candidates.dropFirst(6).map { $0.target.request } == [
+                0x740, 0x742, 0x743, 0x749, 0x74B, 0x762, 0x764, 0x768,
                 0x7E2, 0x7E3, 0x7E4, 0x7E5, 0x7E6, 0x7E7,
             ])
 

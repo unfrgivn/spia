@@ -149,7 +149,7 @@ public struct SurveyReview: Sendable, Equatable {
     public static func label(for candidate: SurveyCandidate) -> String {
         if case .catalog(let label, _, _) = candidate.origin { return label }
         if case .saved(let label, _) = candidate.origin { return label }
-        return String(format: "Module %03X", candidate.target.request)
+        return candidate.target.fallbackLabel
     }
 
     private static func expectedLabel(_ target: ModuleTarget, in report: SurveyReport) -> String {
@@ -160,7 +160,7 @@ public struct SurveyReview: Sendable, Equatable {
         if target.request == 0x7E0 && target.response == 0x7E8 {
             return "the engine computer (7E0)"
         }
-        return String(format: "Module %03X", target.request)
+        return target.fallbackLabel
     }
 
     private static func codesSummary(_ codes: SurveyCodes) -> String {

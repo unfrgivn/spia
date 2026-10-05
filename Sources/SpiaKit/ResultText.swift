@@ -77,7 +77,7 @@ public enum ResultText {
                 } else if case .saved(let savedLabel, _) = stop.candidate.origin {
                     label = savedLabel
                 } else {
-                    label = String(format: "Module %03X", stop.candidate.target.request)
+                    label = stop.candidate.target.fallbackLabel
                 }
                 var stopped = String(
                     format: "Stopped at %@ (%03X): %@.", label, stop.candidate.target.request,

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogVersion": "2026.10.01",
+  "catalogVersion": "2026.10.04",
   "makes": [
     {
       "make": "Maserati",
@@ -16,7 +16,15 @@
             {"label": "Body computer (BCM)", "bus": "hs", "request": "620", "reply": "504", "provenance": "observed", "source": "Complete DTC read recorded on the 2017 Ghibli S Q4, 2026-09-26 (ghibli-abs-bcm-flowcontrol)"},
             {"label": "Steering column (SCCM)", "bus": "hs", "request": "763", "reply": "4E3", "provenance": "observed", "source": "Answered, gave the VIN, and gave a complete DTC read on the 2017 Ghibli S Q4, 2026-09-30 (ghibli-app-survey)"},
             {"label": "Engine", "bus": "hs", "request": "7E0", "reply": "7E8", "provenance": "observed", "source": "Answered 7DF on the 2017 Ghibli S Q4, 2026-09-26 (ghibli-ignition-on-term)"},
-            {"label": "Transmission", "bus": "hs", "request": "7E1", "reply": "7E9", "provenance": "observed", "source": "Answered 7DF on the 2017 Ghibli S Q4, 2026-09-26 (ghibli-ignition-on-term)"}
+            {"label": "Transmission", "bus": "hs", "request": "7E1", "reply": "7E9", "provenance": "observed", "source": "Answered 7DF on the 2017 Ghibli S Q4, 2026-09-26 (ghibli-ignition-on-term)"},
+            {"label": "Radio frequency hub (RFH)", "bus": "hs", "request": "740", "reply": "4C0", "provenance": "observed", "source": "Found by the thorough search on the 2017 Ghibli S Q4, 2026-10-04, answering at request - 280 and giving the VIN (ghibli-app-search); named from FCA's address map (carcoding.app/en/ecu/brand/fca)"},
+            {"label": "Instrument cluster (IPC)", "bus": "hs", "request": "742", "reply": "4C2", "provenance": "observed", "source": "Found by the thorough search on the 2017 Ghibli S Q4, 2026-10-04, answering at request - 280 and giving the VIN (ghibli-app-search); named from FCA's address map (carcoding.app/en/ecu/brand/fca) and opendbc's Chrysler combination meter at 742"},
+            {"label": "Tire pressure monitoring (TPMS)", "bus": "hs", "request": "743", "reply": "4C3", "provenance": "observed", "source": "Found by the thorough search on the 2017 Ghibli S Q4, 2026-10-04, answering at request - 280 and giving the VIN (ghibli-app-search); named from FCA's address map (carcoding.app/en/ecu/brand/fca); its code C0077 is low tire pressure"},
+            {"label": "Electronic shifter (ESM)", "bus": "hs", "request": "749", "reply": "4C9", "provenance": "observed", "source": "Found by the thorough search on the 2017 Ghibli S Q4, 2026-10-04, answering at request - 280 and giving the VIN (ghibli-app-search); named from FCA's address map (carcoding.app/en/ecu/brand/fca)"},
+            {"label": "Drivetrain control (AWD)", "bus": "hs", "request": "74B", "reply": "4CB", "provenance": "observed", "source": "Found by the thorough search on the 2017 Ghibli S Q4, 2026-10-04, answering at request - 280 and giving the VIN (ghibli-app-search); named from FCA's address map (carcoding.app/en/ecu/brand/fca)"},
+            {"label": "Park assist (PTS)", "bus": "hs", "request": "762", "reply": "4E2", "provenance": "observed", "source": "Found by the thorough search on the 2017 Ghibli S Q4, 2026-10-04, answering at request - 280 and giving the VIN (ghibli-app-search); named from FCA's address map (carcoding.app/en/ecu/brand/fca)"},
+            {"label": "Forward-facing camera", "bus": "hs", "request": "764", "reply": "4E4", "provenance": "observed", "source": "Found by the thorough search on the 2017 Ghibli S Q4, 2026-10-04, answering at request - 280 and giving the VIN (ghibli-app-search); named from FCA's address map (carcoding.app/en/ecu/brand/fca)"},
+            {"label": "Adaptive front lighting", "bus": "hs", "request": "768", "reply": "4E8", "provenance": "observed", "source": "Found by the thorough search on the 2017 Ghibli S Q4, 2026-10-04, answering at request - 280 and giving the VIN (ghibli-app-search); named from FCA's address map (carcoding.app/en/ecu/brand/fca)"}
           ]
         }
       ]

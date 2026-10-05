@@ -31,7 +31,7 @@ struct SurveyPolicyReplayTests {
     func expectedTargets() throws {
         let ghibli = try plan(make: "Maserati", model: "Ghibli", year: 2017)
         #expect(ghibli.requiresVIN)
-        #expect(ghibli.expected.count == 6)
+        #expect(ghibli.expected.count == 14)
         let cx5 = try plan(make: "Mazda", model: "CX-5", year: 2014)
         #expect(cx5.requiresVIN)
         #expect(cx5.expected.map(\.request) == [0x7E0])
@@ -96,14 +96,21 @@ struct SurveyPolicyReplayTests {
 
     @Test("the Ghibli second look begins at the first expected silent module")
     func ghibliSecondLook() async throws {
-        // The same plan without protocol detection, which the recording predates, so the replay
-        // reaches the end of the pass.
+        // The recording's own candidates, with today's rule for which ones to expect, and no
+        // protocol detection, which the recording predates, so the replay reaches the end of the
+        // pass however the catalog grows.
         let current = try plan(make: "Maserati", model: "Ghibli", year: 2017)
+        let saved = try JSONDecoder().decode(
+            JobResult.self,
+            from: Data(contentsOf: fixture("ghibli-app-ble-survey.result.json")))
+        guard case .survey(let recorded) = saved.job else { throw ReplayFailure() }
+        let recordedTargets = Set(recorded.candidates.map(\.target))
         let plan = SurveyPlan(
             catalogVersion: current.catalogVersion, vehicle: current.vehicle,
-            platform: current.platform, candidates: current.candidates,
-            unreachable: current.unreachable, requiresVIN: current.requiresVIN,
-            expected: current.expected, detectsProtocol: false)
+            platform: current.platform, candidates: recorded.candidates,
+            unreachable: recorded.unreachable, requiresVIN: true,
+            expected: current.expected.filter { recordedTargets.contains($0) },
+            detectsProtocol: false)
         #expect(plan.expected.first?.request == 0x744)
         let run = try await replay(plan, against: "ghibli-app-ble-survey.txt")
         // Every recorded probe matched, then the second look began, for the airbag controller and

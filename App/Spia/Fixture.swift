@@ -213,7 +213,8 @@
             let steering = try candidate(0x763)
             let engine = try candidate(0x7E0)
             let transmission = try candidate(0x7E1)
-            // What the Ghibli answered on the car over USB (2026-09-30): six modules, and the names
+            // What the Ghibli answered on the car over USB: the six of its first surveys
+            // (2026-09-30), the eight its first thorough search found (2026-10-04), and the names
             // and VIN its engine and transmission computers gave to 09.
             var ecm = ECUInfoReport(ecu: 0x7E8)
             ecm.name = .positive("ECM1-EngineControl1")
@@ -255,10 +256,25 @@
                     candidate: transmission, presence: .present, identification: [],
                     codes: noCodes),
             ]
-            let answered = Set(modules.map(\.candidate.target))
+            let codesFound: [UInt32: [ModuleDTCRecord]] = [
+                0x740: [
+                    ModuleDTCRecord(code: "A59B00", status: 0x4B),
+                    ModuleDTCRecord(code: "A59B01", status: 0x48),
+                    ModuleDTCRecord(code: "9A1100", status: 0x49),
+                ],
+                0x742: [ModuleDTCRecord(code: "C00100", status: 0x28)],
+                0x743: [ModuleDTCRecord(code: "407700", status: 0x08)],
+            ]
+            let found = try [0x740, 0x742, 0x743, 0x749, 0x74B, 0x762, 0x764, 0x768].map {
+                (request: UInt32) in
+                SurveyModule(
+                    candidate: try candidate(request), presence: .present, identification: [],
+                    codes: .outcome(.records(availability: 0xFF, codesFound[request] ?? [])))
+            }
+            let answered = Set((modules + found).map(\.candidate.target))
             return SurveyReport(
                 plan: plan, voltage: 14.3, vehicleInfo: [ECUIdentity(ecm), ECUIdentity(tcm)],
-                modules: modules,
+                modules: modules + found,
                 unanswered: plan.candidates.filter { !answered.contains($0.target) },
                 notProbed: [], stop: nil)
         }

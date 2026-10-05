@@ -633,7 +633,7 @@ public actor JobRunner {
     private func candidateLabel(_ candidate: SurveyCandidate) -> String {
         if case .catalog(let label, _, _) = candidate.origin { return label }
         if case .saved(let label, _) = candidate.origin { return label }
-        return String(format: "Module %03X", candidate.target.request)
+        return candidate.target.fallbackLabel
     }
 
     /// Runs `read`, and when the car isn't fully on asks the user to fix the ignition, then reads

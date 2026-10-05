@@ -35,7 +35,7 @@ struct ModuleCatalogTests {
     func bundledCatalog() throws {
         let catalog = try catalog()
         #expect(catalog.schemaVersion == 1)
-        #expect(catalog.catalogVersion == "2026.10.01+opendbc-f1e707b")
+        #expect(catalog.catalogVersion == "2026.10.04+opendbc-f1e707b")
         // Spia's Maserati and Volkswagen, then opendbc's 27 makes, Volkswagen among them.
         #expect(catalog.makes.count == 28)
         #expect(catalog.makes.prefix(2).map(\.make) == ["Maserati", "Volkswagen"])

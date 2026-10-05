@@ -165,7 +165,7 @@ public struct SessionBoard: Equatable, Sendable {
         }
         let known = Set(modules.map(\.target))
         let others = readOrder.filter { !known.contains($0) }.map { target in
-            Module(label: String(format: "Module %03X", target.request), target: target)
+            Module(label: target.fallbackLabel, target: target)
         }
         let unsorted =
             [Self.engineRow(scan)] + (modules + others).map { Self.moduleRow($0, reads[$0.target]) }

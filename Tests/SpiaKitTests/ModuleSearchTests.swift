@@ -192,9 +192,10 @@ struct ModuleSearchTests {
         let plan = try Self.ghibliPlan(search: search)
         let heard = Set(try Self.captureFrames().map(\.header).filter { $0 & 0x400 == 0x400 })
         let requests = search.sweepRequests(candidates: plan.candidates, heardIDs: heard)
-        // 600-7FF is 512 IDs, less 7DF, 7E0-7E7, and the Ghibli's 744, 747, 620, and 763.
-        #expect(requests.count == 499)
-        for skipped: UInt32 in [0x7DF, 0x7E0, 0x7E7, 0x744, 0x747, 0x620, 0x763] {
+        // 600-7FF is 512 IDs, less 7DF, 7E0-7E7, and the Ghibli's 12 other known modules from
+        // 600 up: 620, 740, 742, 743, 744, 747, 749, 74B, 762, 763, 764, and 768.
+        #expect(requests.count == 491)
+        for skipped: UInt32 in [0x7DF, 0x7E0, 0x7E7, 0x744, 0x747, 0x620, 0x763, 0x740, 0x768] {
             #expect(!requests.contains(skipped))
         }
         #expect(requests.first == 0x600)
@@ -206,8 +207,8 @@ struct ModuleSearchTests {
         let usb = ModuleSearch.standard(over: .usbSerial)
         let bluetooth = ModuleSearch.standard(over: .bluetooth)
         let candidates = try Self.ghibliPlan(search: usb).candidates
-        #expect(usb.estimateMilliseconds(candidates: candidates) == 2_000 + 499 * 80)
-        #expect(bluetooth.estimateMilliseconds(candidates: candidates) == 1_000 + 499 * 120)
+        #expect(usb.estimateMilliseconds(candidates: candidates) == 2_000 + 491 * 80)
+        #expect(bluetooth.estimateMilliseconds(candidates: candidates) == 1_000 + 491 * 120)
         #expect(usb.replyTimeoutCommand == "ATST 0C")
         #expect(usb.maxListenFrames == 40)
         #expect(bluetooth.maxListenFrames == 20)

@@ -270,8 +270,12 @@ public enum SurveyPlanner {
         var seen = Set<ModuleTarget>()
         let saved = savedModules.filter { seen.insert($0.target).inserted }
         let savedByTarget = Dictionary(uniqueKeysWithValues: saved.map { ($0.target, $0) })
+        // A module saved without a name (the review's "Module 7xx", unconfirmed) keeps the
+        // catalog's name when the catalog knows it, so saving the next review names it.
         var known = catalogCandidates.map { candidate in
-            guard let saved = savedByTarget[candidate.target] else { return candidate }
+            guard let saved = savedByTarget[candidate.target], !saved.isUnnamed else {
+                return candidate
+            }
             return SurveyCandidate(
                 target: candidate.target,
                 origin: .saved(label: saved.label, confirmed: saved.confirmed))

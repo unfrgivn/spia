@@ -91,6 +91,9 @@ public struct ModuleTarget: Codable, Sendable, Hashable {
     }
 
     public var readCommand: String { String(format: "1902%02X", statusMask) }
+
+    /// What a module is called until something names it: its request ID.
+    public var fallbackLabel: String { String(format: "Module %03X", request) }
 }
 
 /// What the car has to be doing for a check to work.

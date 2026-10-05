@@ -100,7 +100,9 @@ struct OpenDBCCatalogTests {
         let ghibli = try #require(
             catalog.match(CatalogVehicle(make: "MASERATI", model: "Ghibli", year: 2017)))
         #expect(ghibli.name == "M157")
-        #expect(ghibli.modules.count == 6)
+        // The six seen in its first surveys, then the eight its first thorough search found.
+        #expect(ghibli.modules.count == 14)
+        #expect(ghibli.modules.allSatisfy { $0.provenance == .observed })
     }
 
     @Test("a 2019 Civic gets Honda's 29-bit modules, each replying with its address bytes swapped")

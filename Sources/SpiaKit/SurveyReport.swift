@@ -200,6 +200,9 @@ public struct ModuleChoice: Codable, Sendable, Equatable, Hashable {
         self.label = label
         self.confirmed = confirmed
     }
+
+    /// Saved with the review's fallback, "Module 7xx", and never confirmed: nobody named it.
+    public var isUnnamed: Bool { !confirmed && label == target.fallbackLabel }
 }
 
 public struct SurveyReport: Codable, Sendable, Equatable {
@@ -277,8 +280,7 @@ public struct SurveyReport: Codable, Sendable, Equatable {
                     target: module.candidate.target, label: name.text, confirmed: true)
             }
             return ModuleChoice(
-                target: module.candidate.target,
-                label: String(format: "Module %03X", module.candidate.target.request),
+                target: module.candidate.target, label: module.candidate.target.fallbackLabel,
                 confirmed: false)
         }
     }
