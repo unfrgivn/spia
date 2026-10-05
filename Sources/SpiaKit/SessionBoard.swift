@@ -30,10 +30,12 @@ public struct SessionBoard: Equatable, Sendable {
         }
     }
 
-    public enum Subject: Hashable, Sendable {
+    public enum Subject: Hashable, Sendable, Identifiable {
         case engine
         case module(ModuleTarget)
         case battery
+
+        public var id: Self { self }
 
         /// The row a check fills in: engine and transmission for the generic scan, the module it
         /// reads, the battery for the adapter check. Vehicle information has no row.
@@ -111,6 +113,21 @@ public struct SessionBoard: Equatable, Sendable {
         /// Read from the connected adapter just now, rather than from a saved result.
         public var live = false
 
+        public init(
+            subject: Subject, name: String, shortName: String?, status: Status, codes: [String],
+            value: String?, detail: String, date: Date?, live: Bool = false
+        ) {
+            self.subject = subject
+            self.name = name
+            self.shortName = shortName
+            self.status = status
+            self.codes = codes
+            self.value = value
+            self.detail = detail
+            self.date = date
+            self.live = live
+        }
+
         public var id: Subject { subject }
 
         /// The status as the board shows it: "Fault", "Code", "Not read".
@@ -179,6 +196,40 @@ public struct SessionBoard: Equatable, Sendable {
     }
 
     // MARK: Rows
+
+    static func row(
+        for subject: Subject, result: Result, modules: [Module]
+    ) -> Row? {
+        switch (subject, result.payload) {
+        case (.engine, .genericScan(let reports)):
+            return engineRow((result.date, reports))
+        case (.module(let target), .moduleDTCs(let moduleResult))
+        where moduleResult.target == target:
+            let module =
+                modules.first { $0.target == target }
+                ?? Module(label: target.fallbackLabel, target: target)
+            return moduleRow(module, (result.date, moduleResult.outcome))
+        case (.module(let target), .survey(let report)):
+            guard
+                let module = report.modules.first(where: {
+                    $0.candidate.target == target
+                        && {
+                            if case .outcome = $0.codes { return true }
+                            return false
+                        }($0)
+                })
+            else { return nil }
+            let preset =
+                modules.first { $0.target == target }
+                ?? Module(label: target.fallbackLabel, target: target)
+            guard case .outcome(let outcome) = module.codes else { return nil }
+            return moduleRow(preset, (result.date, outcome))
+        case (.battery, .adapter(let status)):
+            return batteryRow((result.date, status))
+        default:
+            return nil
+        }
+    }
 
     private static func engineRow(_ scan: (date: Date, reports: [ECUScan])?) -> Row {
         let name = "Engine and transmission"

@@ -12,6 +12,7 @@ final class DiagnosticRunCoordinator {
     var workbench: Workbench?
     var connectRequested = false
     var reviewReport: SurveyReport?
+    var historySubject: SessionBoard.Subject?
     private var pendingSurvey = false
     private var pendingThoroughSearch = false
 

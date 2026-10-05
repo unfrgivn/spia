@@ -223,7 +223,7 @@ private struct ReplayChip: View {
 
 /// Requests that went unanswered, and the transcript of every byte, when there is one. Reading
 /// cards keep their headline's row to themselves, so where and when goes here too.
-private struct EntryFooter: View {
+struct EntryFooter: View {
     let entry: TimelineEntry
     let showTranscript: () -> Void
     var showsStamp = false
@@ -249,7 +249,7 @@ private struct EntryFooter: View {
     }
 }
 
-private struct ResultDetail: View {
+struct ResultDetail: View {
     let payload: JobPayload
     let modules: [ModulePreset]
     let reviewSurvey: (SurveyReport) -> Void
@@ -328,7 +328,7 @@ private struct ModuleCodesView: View {
     }
 }
 
-private struct FlowChips: View {
+struct FlowChips: View {
     let flags: [DTCStatus.Flag]
 
     var body: some View {

@@ -5,11 +5,30 @@ import SpiaKit
 import SpiaReference
 
 extension Garage {
-    /// What the assistant is told about `session`: the vehicle, the problem, its modules, and
-    /// every note and check result so far.
+    /// What the assistant is told about `session`: the vehicle, the problem, its modules, the
+    /// problem's own notes and readings, and the newest reading of every other part of the car at
+    /// the problem's point in time.
     public func briefing(for session: DiagnosticSession, adapter: AdapterStatus?) -> SessionBriefing
     {
         let vehicle = session.vehicle
+        let cutoff = session.closedAt ?? .now
+        var entries = session.timeline
+        var entryIDs = Set(entries.map(\.id))
+        if let vehicle {
+            let subjects =
+                [.engine]
+                + vehicle.orderedModules.compactMap { preset in
+                    preset.target.map(SessionBoard.Subject.module)
+                } + [.battery]
+            for subject in subjects {
+                guard let reading = vehicle.history(for: subject, asOf: cutoff).readings.first,
+                    !entryIDs.contains(reading.id), let entry = vehicle.entry(for: reading)
+                else { continue }
+                entries.append(entry)
+                entryIDs.insert(entry.id)
+            }
+        }
+        entries.sort { $0.date < $1.date }
         return SessionBriefing(
             vehicle: .init(
                 name: vehicle?.name ?? "Unnamed vehicle", vin: vehicle?.vin,
@@ -24,7 +43,7 @@ extension Garage {
                 )
             },
             adapter: adapter,
-            events: session.timeline.map { entry in
+            events: entries.map { entry in
                 let result = entry.result
                 let fromRecording: Bool
                 if case .recording = result?.source {

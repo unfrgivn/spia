@@ -375,6 +375,24 @@ extension Vehicle {
         }
         return SessionBoard(modules: orderedModules.boardModules, results: results, live: live)
     }
+
+    /// Folds every reading for one part of the car, optionally stopping at a historical date.
+    public func history(for subject: SessionBoard.Subject, asOf: Date? = nil) -> ReadingHistory {
+        let results: [(id: UUID, result: SessionBoard.Result)] = orderedEntries.compactMap {
+            entry in
+            guard let result = entry.boardResult, asOf.map({ result.date <= $0 }) ?? true else {
+                return nil
+            }
+            return (entry.id, result)
+        }
+        return ReadingHistory(
+            subject: subject, modules: orderedModules.boardModules, results: results)
+    }
+
+    /// Finds the car entry that produced a history reading.
+    public func entry(for reading: ReadingHistory.Reading) -> TimelineEntry? {
+        entries.first { $0.id == reading.id }
+    }
 }
 
 extension DiagnosticSession {

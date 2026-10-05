@@ -57,6 +57,10 @@ struct SessionView: View {
                 TranscriptView(entry: entry)
             }
             .surveyReview(runner: runner, vehicle: session.vehicle)
+            .readingHistory(
+                runner: runner, vehicle: session.vehicle, explain: { explain($0) },
+                showTranscript: { transcript = $0 }
+            )
             .task(id: session.vehicle?.id) {
                 if let vehicle = session.vehicle {
                     workbench = model.workbench(for: vehicle)
@@ -135,7 +139,7 @@ struct SessionView: View {
                     reading: runner?.reading,
                     checking: checking, unreadable: runner?.unreadable(for: board) ?? [:],
                     notes: notes,
-                    explain: { explain($0) },
+                    explain: { explain($0) }, open: { runner?.historySubject = $0.subject },
                     openAssistant: { showAssistant = true }
                 )
                 .padding(.top, wide ? 32 : 22)
@@ -169,6 +173,9 @@ struct SessionView: View {
                     }) {
                         explain(row)
                     }
+                case .history:
+                    try? await Task.sleep(for: .seconds(6))
+                    runner?.historySubject = .module(DemoGarage.airbag.target)
                 case .surveyResults, .surveyResultsMissing, .surveyResultsSearched:
                     try? await Task.sleep(for: .milliseconds(500))
                     if let entry = session.timeline.last,

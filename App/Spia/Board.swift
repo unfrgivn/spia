@@ -187,6 +187,8 @@ struct SessionBoardView: View {
     var notes: [SessionBoard.Subject: BoardNote] = [:]
     /// Asks the assistant about a row.
     var explain: ((SessionBoard.Row) -> Void)?
+    /// Opens the reading history for a row.
+    var open: ((SessionBoard.Row) -> Void)?
     var openAssistant: (() -> Void)?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -285,9 +287,26 @@ struct SessionBoardView: View {
 
     private func name(_ row: SessionBoard.Row) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(row.name)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Palette.primary)
+            Group {
+                if let open, row.date != nil {
+                    Button {
+                        open(row)
+                    } label: {
+                        HStack(spacing: 7) {
+                            Text(row.name)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Palette.tertiary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help("Show history")
+                } else {
+                    Text(row.name)
+                }
+            }
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(Palette.primary)
             if let short = row.shortName, layout == .wide {
                 Text(short)
                     .font(.system(size: 11.5, weight: .medium, design: .monospaced))

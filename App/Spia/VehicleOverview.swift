@@ -42,7 +42,8 @@ struct VehicleOverview: View {
                 SessionBoardView(
                     board: board, layout: BoardLayout(width: width), read: runner?.reader,
                     reading: runner?.reading,
-                    unreadable: runner?.unreadable(for: board) ?? [:]
+                    unreadable: runner?.unreadable(for: board) ?? [:],
+                    open: { runner?.historySubject = $0.subject }
                 )
                 .padding(.top, compact ? 18 : 22)
                 SessionLedger(
@@ -102,6 +103,7 @@ struct VehicleOverview: View {
             }
         }
         .surveyReview(runner: runner, vehicle: vehicle)
+        .readingHistory(runner: runner, vehicle: vehicle)
         .fileImporter(isPresented: $uploadingCover, allowedContentTypes: [.image]) { result in
             switch result {
             case .success(let url):

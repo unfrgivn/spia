@@ -31,6 +31,8 @@
             case timeline
             /// The session, with Explain pressed on the first row that has no answer yet.
             case explain
+            /// The session, with a module's reading history open.
+            case history
         }
 
         static var enabled: Bool { UserDefaults.standard.string(forKey: "SpiaFixture") != nil }
@@ -129,7 +131,7 @@
             case .overview: .overview
             case .references, .bulletins, .complaints: .references
             case .photos: .photos
-            case .session, .timeline, .explain, .replay, .replayTimeline, .recordings:
+            case .session, .timeline, .explain, .history, .replay, .replayTimeline, .recordings:
                 vehicle.orderedSessions.first.map { .session($0.id) }
             case .garage, .settings, .welcome, nil: nil
             case .onboarding: .overview

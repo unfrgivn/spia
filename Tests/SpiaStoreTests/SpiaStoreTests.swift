@@ -246,6 +246,41 @@ struct SpiaStoreTests {
         #expect(briefing.events.last?.summary.contains("Replayed from a recording") == true)
     }
 
+    @Test("briefings include the car reading and only their problem's notes")
+    func problemBriefingUsesCarHistory() async throws {
+        let (workbench, originalSession) = try await demoWorkbench()
+        let vehicle = try #require(originalSession.vehicle)
+        await workbench.run(.adapterCheck, for: vehicle)
+        let reading = try #require(vehicle.entries.first { $0.kind == .result })
+
+        let firstProblem = try garage.addSession(to: vehicle, title: "First problem")
+        try garage.addNote("first problem note", to: firstProblem)
+        let secondProblem = try garage.addSession(to: vehicle, title: "Second problem")
+        try garage.addNote("second problem note", to: secondProblem)
+
+        let firstBriefing = garage.briefing(for: firstProblem, adapter: nil)
+        #expect(
+            firstBriefing.events.contains {
+                $0.kind == "note" && $0.summary == "first problem note"
+            })
+        #expect(firstBriefing.events.contains { $0.kind == "result" && $0.title == reading.title })
+        #expect(!firstBriefing.events.contains { $0.summary == "second problem note" })
+
+        let secondBriefing = garage.briefing(for: secondProblem, adapter: nil)
+        #expect(
+            secondBriefing.events.contains {
+                $0.kind == "note" && $0.summary == "second problem note"
+            })
+        #expect(secondBriefing.events.contains { $0.kind == "result" && $0.title == reading.title })
+        #expect(!secondBriefing.events.contains { $0.summary == "first problem note" })
+
+        let oldProblem = try garage.addSession(to: vehicle, title: "Earlier problem")
+        oldProblem.status = .resolved
+        oldProblem.closedAt = reading.date.addingTimeInterval(-1)
+        let oldBriefing = garage.briefing(for: oldProblem, adapter: nil)
+        #expect(!oldBriefing.events.contains { $0.kind == "result" && $0.title == reading.title })
+    }
+
     @Test("the demo workbench offers only the checks the recordings answer")
     func demoChecks() async throws {
         let (workbench, _) = try await demoWorkbench()
