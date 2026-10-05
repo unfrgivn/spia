@@ -16,6 +16,7 @@ public struct ReadingHistory: Equatable, Sendable {
 
     public struct Code: Equatable, Sendable, Identifiable {
         public let code: String
+        public var name: CodeName? { CodeName(code) }
         public let firstSeen: Date
         public let lastSeen: Date
         public let present: Bool

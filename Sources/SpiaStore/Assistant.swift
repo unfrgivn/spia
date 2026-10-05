@@ -61,11 +61,44 @@ extension Garage {
                 } else {
                     summary = entry.body
                 }
+                let namedCodes = namedCodes(in: result?.payload)
                 return .init(
                     date: entry.date, kind: entry.kindRaw, title: entry.title, summary: summary,
-                    result: result?.payload, fromRecording: fromRecording, warnings: entry.warnings)
+                    result: result?.payload, codes: namedCodes, fromRecording: fromRecording,
+                    warnings: entry.warnings)
             },
             references: vehicle.flatMap(references(for:)).flatMap(Self.facts))
+    }
+
+    private func namedCodes(in payload: JobPayload?) -> [String] {
+        let rawCodes: [String]
+        switch payload {
+        case .genericScan(let reports):
+            rawCodes = reports.flatMap { report in
+                [report.stored, report.pending, report.permanent].compactMap(\.value).flatMap { $0 }
+            }
+        case .moduleDTCs(let module):
+            if case .records(_, let records) = module.outcome {
+                rawCodes = records.map(\.code)
+            } else {
+                rawCodes = []
+            }
+        case .survey(let report):
+            rawCodes = report.modules.flatMap { module in
+                guard case .outcome(.records(_, let records)) = module.codes else {
+                    return [String]()
+                }
+                return records.map(\.code)
+            }
+        default:
+            rawCodes = []
+        }
+        let catalog = CodeCatalog.bundledCatalog
+        return Array(Set(rawCodes)).sorted().map { raw in
+            guard let name = CodeName(raw) else { return raw }
+            let title = catalog?.entry(for: name)?.title
+            return title.map { "\(name.printed) (\($0))" } ?? name.printed
+        }
     }
 
     /// What the assistant is told about the vehicle's public records.

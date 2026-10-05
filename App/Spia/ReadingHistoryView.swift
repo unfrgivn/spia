@@ -35,6 +35,7 @@ struct ReadingHistoryView: View {
     let showTranscript: (TimelineEntry) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var expanded: Set<UUID> = []
+    private let catalog = CodeCatalog.bundledCatalog
 
     private var asOf: Date? { session?.closedAt }
     private var history: ReadingHistory { vehicle.history(for: subject, asOf: asOf) }
@@ -116,10 +117,37 @@ struct ReadingHistoryView: View {
             ForEach(history.codes) { code in
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(code.code).font(.body.monospaced().weight(.semibold))
+                        Text(code.name?.printed ?? code.code)
+                            .font(.body.monospaced().weight(.semibold))
+                        Text("raw \(code.code)")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(Palette.tertiary)
                         if !code.present {
                             Text("Gone").foregroundStyle(Palette.pass).font(
                                 .caption.weight(.semibold))
+                        }
+                    }
+                    if let name = code.name {
+                        if let entry = catalog?.entry(for: name) {
+                            Text(entry.title)
+                                .font(.callout.weight(.medium))
+                                .foregroundStyle(Palette.secondary)
+                            Text(entry.description)
+                                .font(.caption)
+                                .foregroundStyle(Palette.secondary)
+                            ForEach(entry.causes, id: \.self) { cause in
+                                Text("• \(cause)")
+                                    .font(.caption)
+                                    .foregroundStyle(Palette.secondary)
+                            }
+                        } else if !name.isGeneric {
+                            Text("Manufacturer-specific; no public description")
+                                .font(.caption)
+                                .foregroundStyle(Palette.secondary)
+                        } else {
+                            Text("Not in the public code list")
+                                .font(.caption)
+                                .foregroundStyle(Palette.secondary)
                         }
                     }
                     // On their own line: five flags beside the code don't fit the sheet.
@@ -187,7 +215,7 @@ struct ReadingHistoryView: View {
 
     @ViewBuilder private func readingText(_ row: SessionBoard.Row) -> some View {
         if !row.codes.isEmpty {
-            Text(row.codes.joined(separator: " "))
+            Text(row.printedCodes.joined(separator: " "))
                 .font(.body.monospaced().weight(.semibold))
         } else if let value = row.value {
             Text(value).font(.body.monospaced().weight(.semibold))

@@ -92,11 +92,11 @@ struct SessionBoardTests {
         }
         #expect(
             question("Airbag controller")
-                == "What do 80011B and 80021B from the airbag controller (ORC) mean on this car, and what should I check first?"
+                == "What do B0001-1B and B0002-1B from the airbag controller (ORC) mean on this car, and what should I check first?"
         )
         #expect(
             question("Body computer")
-                == "What does 100900 from the body computer (BCM) mean on this car, and what should I check first?"
+                == "What does P1009-00 from the body computer (BCM) mean on this car, and what should I check first?"
         )
         #expect(
             question("Battery")

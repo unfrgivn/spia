@@ -22,13 +22,14 @@ public enum ResultText {
                 [report.stored, report.pending, report.permanent].compactMap(\.value).flatMap { $0 }
             }
             let unique = Array(Set(codes)).sorted()
+            let printed = unique.map { CodeName($0)?.printed ?? $0 }
             let mil = reports.contains { $0.readiness.value?.milOn == true }
             let unanswered = reports.contains { $0.stored.value == nil }
             var text =
                 unique.isEmpty
                 ? (unanswered
                     ? "Some modules couldn't report codes" : "No engine or transmission codes")
-                : "\(unique.count) code\(unique.count == 1 ? "" : "s"): \(unique.joined(separator: ", "))"
+                : "\(unique.count) code\(unique.count == 1 ? "" : "s"): \(printed.joined(separator: ", "))"
             text += mil ? " · check-engine light ON" : " · check-engine light off"
             return text
 
@@ -38,7 +39,8 @@ public enum ResultText {
                 return "No trouble codes"
             case .records(let availability, let records):
                 let failing = records.filter { $0.status & availability & 0x01 != 0 }.count
-                let list = records.map(\.code).joined(separator: ", ")
+                let list = records.map { CodeName($0.code)?.printed ?? $0.code }.joined(
+                    separator: ", ")
                 let suffix = failing == 0 ? "" : " · \(failing) failing now"
                 return "\(records.count) code\(records.count == 1 ? "" : "s"): \(list)\(suffix)"
             case .negative(_, let code):

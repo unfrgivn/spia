@@ -104,6 +104,10 @@ public struct SessionBoard: Equatable, Sendable {
         public let shortName: String?
         public let status: Status
         public let codes: [String]
+        public var names: [CodeName?] { codes.map(CodeName.init) }
+        public var printedCodes: [String] {
+            names.enumerated().map { $0.element?.printed ?? codes[$0.offset] }
+        }
         /// A measurement: "11.7 V".
         public let value: String?
         public let detail: String
@@ -444,7 +448,7 @@ extension SessionBoard.Row {
         case .fault, .codes:
             let verb = codes.count == 1 ? "does" : "do"
             return
-                "What \(verb) \(Self.list(codes)) from the \(place) mean on this car, and what should I check first?"
+                "What \(verb) \(Self.list(printedCodes)) from the \(place) mean on this car, and what should I check first?"
         case .low, .high:
             return
                 "The battery reads \(value ?? "an unusual voltage") at the OBD port. Is that a problem, and what should I check?"

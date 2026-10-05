@@ -201,6 +201,11 @@ struct SessionBoardView: View {
                     case .wide: wide(row)
                     case .compact: compact(row)
                     }
+                    if !row.codes.isEmpty, row.subject != reading?.subject {
+                        CodeNamesView(row: row)
+                            .padding(.leading, layout == .wide ? 140 : 104)
+                            .padding(.bottom, 12)
+                    }
                     if let note = notes[row.subject] {
                         BoardNoteView(note: note, open: openAssistant)
                             .padding(.leading, layout == .wide ? 140 : 104)
@@ -320,7 +325,7 @@ struct SessionBoardView: View {
         let mono = Font.system(size: size, weight: .semibold, design: .monospaced)
         if !row.codes.isEmpty {
             HStack(spacing: 14) {
-                ForEach(row.codes, id: \.self) { Text($0) }
+                ForEach(row.printedCodes, id: \.self) { Text($0) }
             }
             .font(mono)
             .foregroundStyle(row.status.tone.color)
@@ -427,6 +432,38 @@ struct StatusWord: View {
                             removal: .offset(y: -size * 0.55).combined(with: .opacity)))
         }
         .animation(reduceMotion ? nil : .snappy(duration: 0.35), value: word)
+    }
+}
+
+/// What a row's codes are called, one line each, under the row: the printed code, then the
+/// public title where SAE defines one, else why there isn't one.
+private struct CodeNamesView: View {
+    let row: SessionBoard.Row
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(zip(row.printedCodes, row.names).enumerated()), id: \.offset) {
+                _, item in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(item.0)
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Palette.secondary)
+                    Text(Self.title(for: item.1))
+                        .font(.system(size: 13))
+                        .foregroundStyle(Palette.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .frame(maxWidth: 720, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    private static func title(for name: CodeName?) -> String {
+        guard let name else { return "Not a standard code" }
+        if let entry = CodeCatalog.bundledCatalog?.entry(for: name) { return entry.title }
+        return name.isGeneric
+            ? "Not in the public code list" : "Manufacturer-specific; no public description"
     }
 }
 

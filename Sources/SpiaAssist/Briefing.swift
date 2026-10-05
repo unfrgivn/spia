@@ -42,11 +42,13 @@ public struct SessionBriefing: Codable, Sendable, Equatable {
         public var title: String
         public var summary: String
         public var result: JobPayload?
+        public var codes: [String]
         public var fromRecording: Bool
         public var warnings: [String]
 
         public init(
             date: Date, kind: String, title: String, summary: String, result: JobPayload?,
+            codes: [String] = [],
             fromRecording: Bool,
             warnings: [String]
         ) {
@@ -55,6 +57,7 @@ public struct SessionBriefing: Codable, Sendable, Equatable {
             self.title = title
             self.summary = summary
             self.result = result
+            self.codes = codes
             self.fromRecording = fromRecording
             self.warnings = warnings
         }

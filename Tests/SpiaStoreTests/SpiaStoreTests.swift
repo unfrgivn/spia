@@ -122,7 +122,7 @@ struct SpiaStoreTests {
         #expect(workbench.activity == nil)
         let entry = try #require(session.timeline.last)
         #expect(entry.kind == .result)
-        #expect(entry.body == "2 codes: 80011B, 80021B · 2 failing now")
+        #expect(entry.body == "2 codes: B0001-1B, B0002-1B · 2 failing now")
         let result = try #require(entry.result)
         #expect(result.source == .recording("ghibli-orc-flowcontrol"))
 

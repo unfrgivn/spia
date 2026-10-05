@@ -309,7 +309,7 @@ private struct ModuleCodesView: View {
             case .records(let availability, let records):
                 ForEach(records, id: \.code) { record in
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(record.code)
+                        Text(CodeName(record.code)?.printed ?? record.code)
                             .font(.body.monospaced().weight(.semibold))
                             .textSelection(.enabled)
                         FlowChips(
@@ -317,7 +317,7 @@ private struct ModuleCodesView: View {
                     }
                 }
                 Text(
-                    "Codes are the module's raw bytes. Manufacturer descriptions aren't verified yet."
+                    "Generic code names and descriptions are from OBDex (CC0). Manufacturer-specific codes aren't described publicly."
                 )
                 .font(.caption)
                 .foregroundStyle(Palette.secondary)
