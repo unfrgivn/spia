@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import Observation
 import SpiaAssist
 import SpiaKit
@@ -35,10 +36,91 @@ public struct StoredModuleInterpretation: Codable, Sendable, Equatable {
     public let date: Date
 }
 
+public struct StoredQuestion: Codable, Sendable, Equatable {
+    public let id: UUID
+    public let text: String
+    public let module: ModuleTarget?
+    public let code: String?
+    public let askedAt: Date
+    public var answer: String?
+    public var answeredAt: Date?
+
+    public init(
+        id: UUID, text: String, module: ModuleTarget?, code: String?, askedAt: Date,
+        answer: String?, answeredAt: Date?
+    ) {
+        self.id = id
+        self.text = text
+        self.module = module
+        self.code = code
+        self.askedAt = askedAt
+        self.answer = answer
+        self.answeredAt = answeredAt
+    }
+}
+
+public struct StoredCheck: Codable, Sendable, Equatable {
+    public let kind: CheckKind
+    public let module: ModuleTarget?
+    public let reason: String
+
+    public init(kind: CheckKind, module: ModuleTarget?, reason: String) {
+        self.kind = kind
+        self.module = module
+        self.reason = reason
+    }
+}
+
+public struct StoredReview: Codable, Sendable, Equatable {
+    public let scope: ReviewScope
+    public let reading: String
+    public var questions: [StoredQuestion]
+    public let checks: [StoredCheck]
+    public let inputs: String
+    public let provider: ProviderID
+    public let model: String
+    public let date: Date
+
+    public init(
+        scope: ReviewScope, reading: String, questions: [StoredQuestion], checks: [StoredCheck],
+        inputs: String, provider: ProviderID, model: String, date: Date
+    ) {
+        self.scope = scope
+        self.reading = reading
+        self.questions = questions
+        self.checks = checks
+        self.inputs = inputs
+        self.provider = provider
+        self.model = model
+        self.date = date
+    }
+}
+
 public struct InterpretationSnapshot: Codable, Sendable, Equatable {
     public var consent: InterpretationConsent?
     public var codes: [StoredCodeInterpretation]
     public var modules: [StoredModuleInterpretation]
+    public var reviews: [StoredReview]
+
+    public init(
+        consent: InterpretationConsent?, codes: [StoredCodeInterpretation],
+        modules: [StoredModuleInterpretation], reviews: [StoredReview] = []
+    ) {
+        self.consent = consent
+        self.codes = codes
+        self.modules = modules
+        self.reviews = reviews
+    }
+
+    private enum CodingKeys: String, CodingKey { case consent, codes, modules, reviews }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        consent = try container.decodeIfPresent(InterpretationConsent.self, forKey: .consent)
+        codes = try container.decode([StoredCodeInterpretation].self, forKey: .codes)
+        modules = try container.decode([StoredModuleInterpretation].self, forKey: .modules)
+        reviews = try container.decodeIfPresent([StoredReview].self, forKey: .reviews) ?? []
+    }
 }
 
 @MainActor @Observable
@@ -46,7 +128,9 @@ public final class VehicleInterpretations {
     public private(set) var consent: InterpretationConsent?
     public private(set) var codes: [StoredCodeInterpretation]
     public private(set) var modules: [StoredModuleInterpretation]
+    public private(set) var reviews: [StoredReview]
     public private(set) var inFlight: Set<ModuleTarget?> = []
+    public private(set) var reviewInFlight: Set<ReviewScope> = []
     public var lastError: String?
     private let url: URL
 
@@ -60,10 +144,12 @@ public final class VehicleInterpretations {
             consent = snapshot.consent
             codes = snapshot.codes
             modules = snapshot.modules
+            reviews = snapshot.reviews
         } else {
             consent = nil
             codes = []
             modules = []
+            reviews = []
         }
     }
 
@@ -83,6 +169,14 @@ public final class VehicleInterpretations {
 
     public func end(_ target: ModuleTarget?) {
         inFlight.remove(target)
+    }
+
+    public func beginReview(_ scope: ReviewScope) {
+        reviewInFlight.insert(scope)
+    }
+
+    public func endReview(_ scope: ReviewScope) {
+        reviewInFlight.remove(scope)
     }
 
     public func interpretation(for subject: SessionBoard.Subject, code: String)
@@ -117,17 +211,128 @@ public final class VehicleInterpretations {
         }
         save()
     }
+
+    public func review(for scope: ReviewScope) -> StoredReview? {
+        reviews.first { $0.scope == scope }
+    }
+
+    public func openQuestions(for scope: ReviewScope) -> [StoredQuestion] {
+        review(for: scope)?.questions.filter { $0.answer == nil } ?? []
+    }
+
+    public func openQuestions(about subject: SessionBoard.Subject, code: String?)
+        -> [StoredQuestion]
+    {
+        openQuestions(about: subject, code: code, scope: nil)
+    }
+
+    public func questions(about subject: SessionBoard.Subject, code: String?, scope: ReviewScope?)
+        -> [StoredQuestion]
+    {
+        matchingQuestions(about: subject, code: code, scope: scope)
+    }
+
+    public func openQuestions(
+        about subject: SessionBoard.Subject, code: String?, scope: ReviewScope?
+    ) -> [StoredQuestion] {
+        matchingQuestions(about: subject, code: code, scope: scope).filter {
+            $0.answer == nil
+        }
+    }
+
+    private func matchingQuestions(
+        about subject: SessionBoard.Subject, code: String?, scope: ReviewScope?
+    ) -> [StoredQuestion] {
+        let printed = code.flatMap { CodeName($0)?.printed } ?? code
+        return reviews.filter { scope == nil || $0.scope == scope }.flatMap(\.questions).filter {
+            question in
+            let subjectMatches: Bool
+            switch subject {
+            case .engine: subjectMatches = question.module == nil
+            case .module(let target): subjectMatches = question.module == target
+            case .battery: subjectMatches = false
+            }
+            let codeMatches =
+                code == nil
+                || (question.code.flatMap { CodeName($0)?.printed } ?? question.code) == printed
+            return subjectMatches && codeMatches
+        }
+    }
+
+    public func answer(questionID: UUID, text: String) {
+        for index in reviews.indices {
+            guard
+                let questionIndex = reviews[index].questions.firstIndex(where: {
+                    $0.id == questionID
+                })
+            else { continue }
+            reviews[index].questions[questionIndex].answer = text
+            reviews[index].questions[questionIndex].answeredAt = .now
+            save()
+            return
+        }
+    }
+
+    public func storeReview(
+        _ result: ReviewResult, scope: ReviewScope, inputs: String, provider: ProviderID,
+        model: String, modules: [(label: String, target: ModuleTarget)]
+    ) {
+        let previous = review(for: scope)
+        let questions = result.questions.map { item in
+            let moduleTarget = item.module.flatMap { label in
+                modules.first { $0.label.caseInsensitiveCompare(label) == .orderedSame }?.target
+            }
+            let storedCode = item.code
+            let old = previous?.questions.first {
+                $0.text == item.question && $0.module == moduleTarget
+                    && (CodeName($0.code ?? "")?.printed ?? $0.code)
+                        == (CodeName(storedCode ?? "")?.printed ?? storedCode)
+            }
+            return StoredQuestion(
+                id: UUID(), text: item.question,
+                module: moduleTarget,
+                code: storedCode,
+                askedAt: old?.askedAt ?? .now, answer: old?.answer, answeredAt: old?.answeredAt)
+        }
+        let checks = result.checks.map { item in
+            StoredCheck(
+                kind: item.check,
+                module: item.module.flatMap { label in
+                    modules.first { $0.label.caseInsensitiveCompare(label) == .orderedSame }?.target
+                },
+                reason: item.reason)
+        }
+        reviews.removeAll { $0.scope == scope }
+        reviews.append(
+            StoredReview(
+                scope: scope, reading: result.reading, questions: questions, checks: checks,
+                inputs: inputs, provider: provider, model: model, date: .now))
+        save()
+    }
     private func save() {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard
             let data = try? encoder.encode(
-                InterpretationSnapshot(consent: consent, codes: codes, modules: modules))
+                InterpretationSnapshot(
+                    consent: consent, codes: codes, modules: modules, reviews: reviews))
         else { return }
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? data.write(to: url, options: .atomic)
+    }
+}
+
+public enum ReviewInputs {
+    public static func hash(
+        board: SessionBoard, problem: String, answers: [(question: String, answer: String)]
+    ) -> String {
+        let rows = board.rows.map { "\($0.name)|\($0.printedCodes.joined(separator: ","))" }.joined(
+            separator: "\n")
+        let answerText = answers.map { "\($0.question)=\($0.answer)" }.joined(separator: "\n")
+        let input = "board:\n\(rows)\nproblem:\n\(problem)\nanswers:\n\(answerText)"
+        return SHA256.hash(data: Data(input.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 }
 

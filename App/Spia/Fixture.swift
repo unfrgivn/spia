@@ -31,6 +31,8 @@
             case timeline
             /// The session with the interpretation rows visible.
             case explain
+            /// The problem with its review questions visible.
+            case questions
             /// The session, with a module's reading history open.
             case history
         }
@@ -132,7 +134,8 @@
             case .overview: .overview
             case .references, .bulletins, .complaints: .references
             case .photos: .photos
-            case .session, .timeline, .explain, .history, .replay, .replayTimeline, .recordings:
+            case .session, .timeline, .explain, .questions, .history, .replay, .replayTimeline,
+                .recordings:
                 vehicle.orderedSessions.first.map { .session($0.id) }
             case .garage, .settings, .welcome, nil: nil
             case .onboarding: .overview
@@ -212,6 +215,34 @@
                     ], module: nil),
                 target: DemoGarage.bodyComputer.target, provider: .anthropic,
                 model: AnthropicProvider.fastModel)
+            cache.storeReview(
+                ReviewResult(
+                    reading:
+                        "The airbag controller's two driver-circuit faults fit the dead horn and wheel controls. The clock spring is the leading suspect, but its safety circuit should be handled only by the manufacturer's procedure.",
+                    questions: [
+                        ReviewQuestion(
+                            question:
+                                "Does the horn work with the wheel turned fully left or right?",
+                            module: DemoGarage.airbag.label, code: "B0001-1B"),
+                        ReviewQuestion(
+                            question: "Has the steering wheel or airbag been removed or serviced?",
+                            module: nil, code: nil),
+                    ],
+                    checks: [
+                        CheckProposal(
+                            check: .moduleCodes, module: DemoGarage.steeringColumn.label,
+                            reason: "Its codes would say whether the wheel's switches reach it")
+                    ]),
+                scope: .problem(vehicle.orderedSessions[0].id), inputs: "fixture-problem",
+                provider: .anthropic, model: AnthropicProvider.fastModel,
+                modules: vehicle.assistantModules)
+            cache.storeReview(
+                ReviewResult(
+                    reading:
+                        "The car's readings point to a steering-wheel control fault around the clock spring, with no engine or transmission codes to widen the search.",
+                    questions: [], checks: []),
+                scope: .car, inputs: "fixture-car", provider: .anthropic,
+                model: AnthropicProvider.fastModel, modules: vehicle.assistantModules)
         }
 
         private static func runReplayChecks(

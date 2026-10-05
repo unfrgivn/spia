@@ -33,6 +33,22 @@ struct VehicleOverview: View {
                 }
                 BoardHeadline(headline: board.headline, summary: board.summary, compact: compact)
                     .padding(.top, compact ? 18 : 28)
+                if interpretations.review(for: .car) != nil
+                    || interpretations.reviewInFlight.contains(.car)
+                {
+                    ReviewView(
+                        review: interpretations.review(for: .car),
+                        inFlight: interpretations.reviewInFlight.contains(.car),
+                        untaggedQuestions: interpretations.review(for: .car)?.questions.filter {
+                            $0.module == nil && $0.code == nil
+                        } ?? [],
+                        moduleLabels: moduleLabels,
+                        answer: answer,
+                        checks: reviewChecks(for: interpretations.review(for: .car)),
+                        run: { runner?.run($0) }
+                    )
+                    .padding(.top, compact ? 18 : 24)
+                }
                 if shouldShowInterpretationConsent {
                     InterpretationConsentCard(
                         compact: compact, board: board, vehicle: vehicle,
@@ -40,7 +56,7 @@ struct VehicleOverview: View {
                         allow: {
                             interpretations.allow(model.assistant.settings.defaultProvider)
                             Task {
-                                await model.interpreter.catchUp(
+                                await model.interpreter.refresh(
                                     vehicle, adapter: workbench?.liveStatus)
                             }
                         }, dismiss: { interpretationDismissed = true }
@@ -59,6 +75,8 @@ struct VehicleOverview: View {
                     reading: runner?.reading,
                     unreadable: runner?.unreadable(for: board) ?? [:],
                     interpretations: interpretations,
+                    scope: .car,
+                    answer: answer,
                     open: { runner?.historySubject = $0.subject }
                 )
                 .padding(.top, compact ? 18 : 22)
@@ -69,7 +87,7 @@ struct VehicleOverview: View {
                             .foregroundStyle(Palette.secondary)
                         Button("Try again") {
                             Task {
-                                await model.interpreter.catchUp(
+                                await model.interpreter.refresh(
                                     vehicle, adapter: workbench?.liveStatus)
                             }
                         }
@@ -79,7 +97,8 @@ struct VehicleOverview: View {
                     .padding(.top, 8)
                 }
                 SessionLedger(
-                    vehicle: vehicle, compact: compact, open: { show(.session($0.id)) },
+                    vehicle: vehicle, interpretations: interpretations, compact: compact,
+                    open: { show(.session($0.id)) },
                     newSession: newSession
                 )
                 .padding(.top, compact ? 30 : 40)
@@ -109,7 +128,7 @@ struct VehicleOverview: View {
         .toolbar { overviewToolbar }
         .task(id: vehicle.id) {
             runner = DiagnosticRunCoordinator(vehicle: vehicle, session: nil, model: model)
-            await model.interpreter.catchUp(vehicle, adapter: workbench?.liveStatus)
+            await model.interpreter.refresh(vehicle, adapter: workbench?.liveStatus)
             #if DEBUG
                 if Fixture.screen == .onboarding { runner?.requestSurvey() }
                 if Fixture.screen == .surveyResults || Fixture.screen == .surveyResultsMissing
@@ -198,6 +217,36 @@ struct VehicleOverview: View {
     private var board: SessionBoard { vehicle.board(live: workbench?.liveStatus) }
     private var interpretations: VehicleInterpretations {
         model.interpreter.interpretations(for: vehicle)
+    }
+
+    private var moduleLabels: [ModuleTarget: String] {
+        Dictionary(
+            uniqueKeysWithValues: vehicle.orderedModules.compactMap { module in
+                module.target.map { ($0, module.label) }
+            })
+    }
+
+    private func answer(_ id: UUID, _ text: String) {
+        Task {
+            await model.interpreter.answer(
+                vehicle, questionID: id, text: text, adapter: workbench?.liveStatus)
+        }
+    }
+
+    private func reviewChecks(for review: StoredReview?) -> [(StoredCheck, Bool)] {
+        review?.checks.compactMap { check in
+            guard let job = check.job, runner?.workbench?.canRun(job) == true else { return nil }
+            let read = board.rows.contains { row in
+                switch (check.kind, check.module, row.subject) {
+                case (.moduleCodes, let module?, .module(let target)): module == target
+                case (.genericScan, _, .engine), (.vehicleInfo, _, .engine),
+                    (.adapterCheck, _, .battery):
+                    true
+                default: false
+                }
+            }
+            return (check, !read)
+        } ?? []
     }
     private var shouldShowInterpretationConsent: Bool {
         !interpretationDismissed && !board.rows.allSatisfy { $0.codes.isEmpty }
@@ -477,6 +526,7 @@ private struct VehicleBoard: View {
 /// about, what its board says, and when it was last touched.
 private struct SessionLedger: View {
     let vehicle: Vehicle
+    let interpretations: VehicleInterpretations
     let compact: Bool
     let open: (DiagnosticSession) -> Void
     let newSession: () -> Void
@@ -534,6 +584,12 @@ private struct SessionLedger: View {
                         .font(.system(size: 13.5))
                         .foregroundStyle(Palette.secondary)
                         .lineLimit(compact ? 2 : 1)
+                }
+                let questions = session.openQuestionCount(in: interpretations)
+                if questions > 0 {
+                    Text(questions == 1 ? "1 question" : "\(questions) questions")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(Palette.caution)
                 }
             }
             Spacer(minLength: 8)

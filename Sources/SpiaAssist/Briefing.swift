@@ -110,10 +110,12 @@ public struct SessionBriefing: Codable, Sendable, Equatable {
     public var events: [Event]
     public var references: ReferenceFacts?
     public var interpretations: [String]
+    public var reviews: [String]
 
     public init(
         vehicle: VehicleFacts, problem: String, modules: [ModuleFacts], adapter: AdapterStatus?,
-        events: [Event], references: ReferenceFacts? = nil, interpretations: [String] = []
+        events: [Event], references: ReferenceFacts? = nil, interpretations: [String] = [],
+        reviews: [String] = []
     ) {
         self.vehicle = vehicle
         self.problem = problem
@@ -122,6 +124,7 @@ public struct SessionBriefing: Codable, Sendable, Equatable {
         self.events = events
         self.references = references
         self.interpretations = interpretations
+        self.reviews = reviews
     }
 }
 

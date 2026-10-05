@@ -27,7 +27,9 @@ struct VehicleWorkspace: View {
         let references = model.references(for: vehicle)
         NavigationSplitView {
             WorkspaceSidebar(
-                vehicle: vehicle, references: references, selection: $selection,
+                vehicle: vehicle, references: references,
+                interpretations: model.interpreter.interpretations(for: vehicle),
+                selection: $selection,
                 switchTo: switchTo, showGarage: leave, newSession: newSession
             )
             .navigationSplitViewColumnWidth(min: 230, ideal: 270)
@@ -93,6 +95,7 @@ private struct WorkspaceSidebar: View {
     @Environment(AppModel.self) private var model
     let vehicle: Vehicle
     let references: VehicleReferences
+    let interpretations: VehicleInterpretations
     @Binding var selection: WorkspaceSection?
     let switchTo: (Vehicle) -> Void
     let showGarage: () -> Void
@@ -123,6 +126,7 @@ private struct WorkspaceSidebar: View {
             Section("Problems") {
                 ForEach(vehicle.orderedSessions) { session in
                     SessionRow(session: session)
+                        .badge(session.openQuestionCount(in: interpretations))
                         .tag(WorkspaceSection.session(session.id))
                         .contextMenu {
                             Button("Delete Problem…", role: .destructive) { deleting = session }
@@ -222,6 +226,7 @@ private struct CarSwitcher: View {
     }
 }
 
+/// A problem in the sidebar. Its open-question count is the row's badge, set by the list.
 private struct SessionRow: View {
     let session: DiagnosticSession
 

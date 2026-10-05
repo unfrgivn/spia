@@ -15,6 +15,16 @@ extension DiagnosticSession {
         }
         return rows.allSatisfy { $0.status == .clear || $0.status == .ok } ? .good : nil
     }
+
+    @MainActor func openQuestionCount(in interpretations: VehicleInterpretations) -> Int {
+        interpretations.openQuestions(for: .problem(id)).count
+            + messages.reduce(0) { count, message in
+                count
+                    + message.toolCalls.filter {
+                        $0.name == "ask_user" && message.resolutions[$0.id] == .pending
+                    }.count
+            }
+    }
 }
 
 extension SessionBoard.Row {
@@ -195,6 +205,9 @@ struct SessionBoardView: View {
     /// The assistant's answers, under the rows they're about.
     var notes: [SessionBoard.Subject: BoardNote] = [:]
     var interpretations: VehicleInterpretations?
+    var scope: ReviewScope = .car
+    var answer: ((UUID, String) -> Void)?
+    var runCheck: ((StoredCheck) -> Void)?
     var askMore: ((String) -> Void)?
     /// Opens the reading history for a row.
     var open: ((SessionBoard.Row) -> Void)?
@@ -210,10 +223,18 @@ struct SessionBoardView: View {
                     case .wide: wide(row)
                     case .compact: compact(row)
                     }
-                    if !row.codes.isEmpty, row.subject != reading?.subject {
-                        CodeNamesView(row: row, interpretations: interpretations, askMore: askMore)
+                    if hasQuestions(row) {
+                        Chip(text: "Needs your answer", color: Palette.caution)
                             .padding(.leading, layout == .wide ? 140 : 104)
-                            .padding(.bottom, 12)
+                            .padding(.top, -4)
+                    }
+                    if !row.codes.isEmpty, row.subject != reading?.subject {
+                        CodeNamesView(
+                            row: row, interpretations: interpretations, askMore: askMore,
+                            scope: scope, answer: answer
+                        )
+                        .padding(.leading, layout == .wide ? 140 : 104)
+                        .padding(.bottom, 12)
                     }
                     if let note = notes[row.subject] {
                         BoardNoteView(note: note, open: openAssistant)
@@ -229,6 +250,16 @@ struct SessionBoardView: View {
         }
         // Rows re-sort by urgency as results arrive; they slide to their new place.
         .animation(reduceMotion ? nil : .snappy(duration: 0.4), value: board.rows.map(\.id))
+    }
+
+    private func hasQuestions(_ row: SessionBoard.Row) -> Bool {
+        guard let interpretations else { return false }
+        if !interpretations.openQuestions(about: row.subject, code: nil, scope: scope).isEmpty {
+            return true
+        }
+        return row.printedCodes.contains {
+            !interpretations.openQuestions(about: row.subject, code: $0, scope: scope).isEmpty
+        }
     }
 
     private func word(_ row: SessionBoard.Row, size: CGFloat) -> StatusWord {
@@ -443,6 +474,8 @@ private struct CodeNamesView: View {
     let row: SessionBoard.Row
     let interpretations: VehicleInterpretations?
     let askMore: ((String) -> Void)?
+    let scope: ReviewScope
+    let answer: ((UUID, String) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -463,6 +496,9 @@ private struct CodeNamesView: View {
                     {
                         interpretationView(interpretation, catalogTitle: Self.title(for: item.1))
                     }
+                    ForEach(questions(for: item.0), id: \.id) { question in
+                        QuestionView(question: question, answer: answer)
+                    }
                 }
             }
             if let target = row.target, let module = interpretations?.interpretation(for: target),
@@ -471,6 +507,9 @@ private struct CodeNamesView: View {
                 Text("\(module.provider.displayName): likely the \(module.name); \(module.role)")
                     .font(.system(size: 12.5))
                     .foregroundStyle(Palette.secondary)
+            }
+            ForEach(moduleQuestions, id: \.id) { question in
+                QuestionView(question: question, answer: answer)
             }
             if let question = row.question, let askMore,
                 interpretations?.codes.contains(where: { $0.target == row.target }) == true
@@ -494,6 +533,18 @@ private struct CodeNamesView: View {
         }
         .frame(maxWidth: 720, alignment: .leading)
         .accessibilityElement(children: .combine)
+    }
+
+    private func questions(for code: String) -> [StoredQuestion] {
+        interpretations?.questions(about: row.subject, code: code, scope: scope).filter {
+            $0.code != nil
+        } ?? []
+    }
+
+    private var moduleQuestions: [StoredQuestion] {
+        interpretations?.questions(about: row.subject, code: nil, scope: scope).filter {
+            $0.code == nil
+        } ?? []
     }
 
     private func interpretationView(
@@ -530,6 +581,37 @@ private struct CodeNamesView: View {
         if let entry = CodeCatalog.bundledCatalog?.entry(for: name) { return entry.title }
         return name.isGeneric
             ? "Not in the public code list" : "Manufacturer-specific; no public description"
+    }
+}
+
+private struct QuestionView: View {
+    let question: StoredQuestion
+    let answer: ((UUID, String) -> Void)?
+    @State private var text = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("Q: \(question.text)")
+                .font(.system(size: 13.5))
+                .foregroundStyle(Palette.primary)
+            if let response = question.answer {
+                Text("A: \(response)")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Palette.tertiary)
+            } else if let answer {
+                HStack(alignment: .bottom, spacing: 8) {
+                    TextField("Your answer", text: $text, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .lineLimit(1...4)
+                        .padding(8)
+                        .background(Palette.card, in: RoundedRectangle(cornerRadius: 8))
+                    Button("Answer") { answer(question.id, text) }
+                        .buttonStyle(OutlineButtonStyle())
+                        .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .padding(.top, 5)
     }
 }
 
@@ -581,6 +663,70 @@ private struct BoardNoteView: View {
     private var heading: String {
         let name = note.by ?? "The assistant"
         return note.pending ? "\(name) is answering…" : name
+    }
+}
+
+struct ReviewView: View {
+    let review: StoredReview?
+    let inFlight: Bool
+    let untaggedQuestions: [StoredQuestion]
+    let moduleLabels: [ModuleTarget: String]
+    let answer: (UUID, String) -> Void
+    let checks: [(StoredCheck, Bool)]
+    let run: (StoredCheck) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(Palette.accent)
+                    .frame(width: 3)
+                    .modifier(Breathing(active: inFlight))
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(heading)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Palette.accent)
+                    if let review, !inFlight {
+                        Text(review.reading)
+                            .font(.system(size: 14))
+                            .lineSpacing(2)
+                            .foregroundStyle(Palette.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("Read \(review.date, format: .dateTime.month().day().year())")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Palette.tertiary)
+                    }
+                }
+            }
+            ForEach(untaggedQuestions, id: \.id) { question in
+                QuestionView(question: question, answer: answer)
+            }
+            ForEach(Array(checks.enumerated()), id: \.offset) { _, item in
+                let check = item.0
+                if item.1 {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("Would read: \(label(for: check)), \(check.reason)")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Palette.secondary)
+                        Button("Read") { run(check) }
+                            .buttonStyle(OutlineButtonStyle())
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: 720, alignment: .leading)
+    }
+
+    private var heading: String {
+        if inFlight {
+            return "\(review?.provider.displayName ?? "The assistant") is reading the board…"
+        }
+        return review.map { "\($0.provider.displayName)'s reading" } ?? ""
+    }
+
+    private func label(for check: StoredCheck) -> String {
+        if let module = check.module, let label = moduleLabels[module] { return label }
+        return check.kind.rawValue.replacingOccurrences(of: "_", with: " ").capitalized
     }
 }
 

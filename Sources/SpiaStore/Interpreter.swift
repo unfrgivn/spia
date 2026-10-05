@@ -74,6 +74,75 @@ public final class Interpreter {
         }
     }
 
+    public func refresh(_ vehicle: Vehicle, adapter: AdapterStatus?) async {
+        await catchUp(vehicle, adapter: adapter)
+        await review(vehicle, adapter: adapter)
+    }
+
+    public func review(_ vehicle: Vehicle, adapter: AdapterStatus?) async {
+        let interpretations = interpretations(for: vehicle)
+        let carBriefing = garage.briefing(for: vehicle, adapter: adapter)
+        let scopes: [(ReviewScope, ReviewRequest.Scope, String)] =
+            [
+                (.car, .car, carBriefing.problem)
+            ]
+            + vehicle.sessions.filter { $0.status == .open }.map { session in
+                (
+                    .problem(session.id), .problem(title: session.title, text: session.problem),
+                    session.problem
+                )
+            }
+        let providerID = configuration.settings.defaultProvider
+        if providerID.isCloud && interpretations.consent == nil { return }
+        if let reason = configuration.unavailableReason(providerID) {
+            interpretations.lastError = reason
+            return
+        }
+        for (scope, requestScope, problem) in scopes {
+            guard !interpretations.reviewInFlight.contains(scope) else { continue }
+            let existing = interpretations.review(for: scope)
+            let answered =
+                existing?.questions.compactMap { question in
+                    question.answer.map { (question: question.text, answer: $0) }
+                } ?? []
+            let inputs = ReviewInputs.hash(
+                board: vehicle.board(), problem: problem, answers: answered)
+            guard existing?.inputs != inputs else { continue }
+            interpretations.beginReview(scope)
+            defer { interpretations.endReview(scope) }
+            do {
+                let provider = try configuration.settings.provider(
+                    providerID, keys: configuration.keys)
+                let request = ReviewRequest.make(
+                    briefing: carBriefing, scope: requestScope, answered: answered,
+                    provider: providerID,
+                    sharing: SharingPolicy(includeVIN: configuration.settings.shareVIN))
+                var call: ToolCall?
+                for try await event in provider.respond(to: request) {
+                    if case .toolCall(let toolCall) = event, toolCall.name == ReviewTool.name {
+                        call = toolCall
+                    }
+                }
+                guard let call else { throw InterpreterError.noStructuredAnswer }
+                let result = try ReviewTool.parse(call, modules: carBriefing.modules.map(\.label))
+                interpretations.storeReview(
+                    result, scope: scope, inputs: inputs, provider: providerID,
+                    model: configuration.settings.model(for: providerID),
+                    modules: vehicle.assistantModules)
+                interpretations.lastError = nil
+            } catch {
+                interpretations.lastError = "Review failed: \(error.readable)."
+            }
+        }
+    }
+
+    public func answer(
+        _ vehicle: Vehicle, questionID: UUID, text: String, adapter: AdapterStatus?
+    ) async {
+        interpretations(for: vehicle).answer(questionID: questionID, text: text)
+        await review(vehicle, adapter: adapter)
+    }
+
     private func moduleFacts(
         for work: InterpretationPlan.Work, vehicle: Vehicle
     ) -> SessionBriefing.ModuleFacts? {

@@ -64,11 +64,16 @@ final class DiagnosticRunCoordinator {
         }
         Task {
             let outcome = await workbench.run(job, for: vehicle, in: session)
-            await model.interpreter.catchUp(vehicle, adapter: workbench.connection.status)
+            await model.interpreter.refresh(vehicle, adapter: workbench.connection.status)
             if case .completed(let result) = outcome, case .survey(let report) = result.payload {
                 reviewReport = report
             }
         }
+    }
+
+    func run(_ check: StoredCheck) {
+        guard let job = check.job else { return }
+        run(job)
     }
 
     func requestSurvey(search: Bool = false) {
@@ -124,5 +129,16 @@ final class DiagnosticRunCoordinator {
             let plan = try model.surveyPlan(for: vehicle, workbench: workbench, search: search)
             run(.survey(plan))
         } catch { workbench?.lastError = error.readable }
+    }
+}
+
+extension StoredCheck {
+    var job: DiagnosticJob? {
+        switch kind {
+        case .adapterCheck: .adapterCheck
+        case .vehicleInfo: .vehicleInfo
+        case .genericScan: .genericScan
+        case .moduleCodes: module.map(DiagnosticJob.moduleDTCs)
+        }
     }
 }

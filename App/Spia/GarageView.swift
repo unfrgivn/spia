@@ -29,6 +29,7 @@ struct GarageView: View {
                     ForEach(vehicles) { vehicle in
                         ShowroomBay(
                             vehicle: vehicle, references: model.references(for: vehicle),
+                            interpretations: model.interpreter.interpretations(for: vehicle),
                             compact: compact, featured: vehicles.count == 1,
                             open: { open(vehicle, $0) },
                             startSession: { startSession(on: vehicle) }
@@ -146,6 +147,7 @@ struct GarageView: View {
 private struct ShowroomBay: View {
     let vehicle: Vehicle
     let references: VehicleReferences
+    let interpretations: VehicleInterpretations
     let compact: Bool
     /// The garage's only car, which gets the room to itself.
     let featured: Bool
@@ -254,12 +256,15 @@ private struct ShowroomBay: View {
                 Text("\(Text(session.title).foregroundStyle(Palette.primary)) \(opened)")
                     .font(.system(size: 13, weight: .medium))
                     .lineLimit(compact ? 2 : 1)
-                Text(board.headline)
-                    .font(.system(size: compact ? 19 : 24, weight: .semibold))
-                    .tracking(-0.3)
-                    .foregroundStyle(Palette.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 8)
+                Text(
+                    headline(
+                        board.headline, questions: session.openQuestionCount(in: interpretations))
+                )
+                .font(.system(size: compact ? 19 : 24, weight: .semibold))
+                .tracking(-0.3)
+                .foregroundStyle(Palette.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 8)
                 MiniBoard(
                     rows: board.rows.filter { $0.status != .notRead }.prefix(3),
                     size: compact ? 17 : 20
@@ -288,6 +293,12 @@ private struct ShowroomBay: View {
                     .padding(.top, 10)
             }
         }
+    }
+
+    private func headline(_ headline: String, questions: Int) -> String {
+        guard questions > 0 else { return headline }
+        let suffix = questions == 1 ? "1 question" : "\(questions) questions"
+        return "\(headline) · \(suffix)"
     }
 
     private var detail: String {

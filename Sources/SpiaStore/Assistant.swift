@@ -30,7 +30,8 @@ extension Garage {
         }
         entries.sort { $0.date < $1.date }
         return makeBriefing(
-            vehicle: vehicle, problem: session.problem, adapter: adapter, entries: entries)
+            vehicle: vehicle, problem: session.problem, adapter: adapter, entries: entries,
+            reviewScope: session.id)
     }
 
     /// What the assistant is told about the whole car, including its open problems and latest readings.
@@ -52,7 +53,8 @@ extension Garage {
     }
 
     private func makeBriefing(
-        vehicle: Vehicle?, problem: String, adapter: AdapterStatus?, entries: [TimelineEntry]
+        vehicle: Vehicle?, problem: String, adapter: AdapterStatus?, entries: [TimelineEntry],
+        reviewScope: UUID? = nil
     ) -> SessionBriefing {
         SessionBriefing(
             vehicle: .init(
@@ -70,7 +72,8 @@ extension Garage {
             adapter: adapter,
             events: entries.sorted { $0.date < $1.date }.map(event),
             references: vehicle.flatMap(references(for:)).flatMap(Self.facts),
-            interpretations: vehicle.map { interpretationLines(for: $0) } ?? [])
+            interpretations: vehicle.map { interpretationLines(for: $0) } ?? [],
+            reviews: vehicle.map { reviewLines(for: $0, scope: reviewScope) } ?? [])
     }
 
     private func event(_ entry: TimelineEntry) -> SessionBriefing.Event {
@@ -105,6 +108,22 @@ extension Garage {
                     vehicle.orderedModules.first { $0.target == target }?.label ?? "Module"
                 } ?? "Engine"
             return "\(module), \(item.code), \(item.name): \(item.meaning)"
+        }
+    }
+
+    private func reviewLines(for vehicle: Vehicle, scope: UUID? = nil) -> [String] {
+        let stored = VehicleInterpretations(vehicleID: vehicle.id, files: files)
+        return stored.reviews.filter { review in
+            switch review.scope {
+            case .car: return true
+            case .problem(let id): return scope == nil || id == scope
+            }
+        }.flatMap { review in
+            ["Review: \(review.reading)"]
+                + review.questions.map { question in
+                    let answer = question.answer.map { " Answer: \($0)" } ?? " Open question."
+                    return "Question: \(question.text).\(answer)"
+                }
         }
     }
 

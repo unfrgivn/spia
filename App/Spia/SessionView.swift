@@ -66,7 +66,7 @@ struct SessionView: View {
                     workbench = model.workbench(for: vehicle)
                     runner = DiagnosticRunCoordinator(
                         vehicle: vehicle, session: session, model: model)
-                    await model.interpreter.catchUp(vehicle, adapter: workbench?.liveStatus)
+                    await model.interpreter.refresh(vehicle, adapter: workbench?.liveStatus)
                 }
                 #if DEBUG
                     if Fixture.screen == .recordings {
@@ -143,10 +143,29 @@ struct SessionView: View {
                         allow: {
                             interpretations.allow(model.assistant.settings.defaultProvider)
                             Task {
-                                await model.interpreter.catchUp(
+                                await model.interpreter.refresh(
                                     vehicle, adapter: workbench?.liveStatus)
                             }
                         }, dismiss: { interpretationDismissed = true }
+                    )
+                    .padding(.top, wide ? 24 : 18)
+                }
+                if let interpretations,
+                    interpretations.review(for: .problem(session.id)) != nil
+                        || interpretations.reviewInFlight.contains(.problem(session.id))
+                {
+                    ReviewView(
+                        review: interpretations.review(for: .problem(session.id)),
+                        inFlight: interpretations.reviewInFlight.contains(.problem(session.id)),
+                        untaggedQuestions: interpretations.review(for: .problem(session.id))?
+                            .questions
+                            .filter {
+                                $0.module == nil && $0.code == nil
+                            } ?? [],
+                        moduleLabels: moduleLabels,
+                        answer: answer,
+                        checks: reviewChecks(interpretations.review(for: .problem(session.id))),
+                        run: { runner?.run($0) }
                     )
                     .padding(.top, wide ? 24 : 18)
                 }
@@ -156,6 +175,9 @@ struct SessionView: View {
                     reading: runner?.reading,
                     checking: checking, unreadable: runner?.unreadable(for: board) ?? [:],
                     notes: notes, interpretations: interpretations,
+                    scope: .problem(session.id),
+                    answer: answer,
+                    runCheck: { runner?.run($0) },
                     askMore: {
                         question = $0; showAssistant = true
                     },
@@ -170,7 +192,7 @@ struct SessionView: View {
                             .foregroundStyle(Palette.secondary)
                         Button("Try again") {
                             Task {
-                                await model.interpreter.catchUp(
+                                await model.interpreter.refresh(
                                     vehicle, adapter: workbench?.liveStatus)
                             }
                         }
@@ -271,6 +293,37 @@ struct SessionView: View {
 
     private var interpretations: VehicleInterpretations? {
         session.vehicle.map { model.interpreter.interpretations(for: $0) }
+    }
+
+    private var moduleLabels: [ModuleTarget: String] {
+        Dictionary(
+            uniqueKeysWithValues: (session.vehicle?.orderedModules ?? []).compactMap {
+                module in module.target.map { ($0, module.label) }
+            })
+    }
+
+    private func answer(_ id: UUID, _ text: String) {
+        guard let vehicle = session.vehicle else { return }
+        Task {
+            await model.interpreter.answer(
+                vehicle, questionID: id, text: text, adapter: workbench?.liveStatus)
+        }
+    }
+
+    private func reviewChecks(_ review: StoredReview?) -> [(StoredCheck, Bool)] {
+        review?.checks.compactMap { check in
+            guard let job = check.job, runner?.workbench?.canRun(job) == true else { return nil }
+            let read = board.rows.contains { row in
+                switch (check.kind, check.module, row.subject) {
+                case (.moduleCodes, let module?, .module(let target)): module == target
+                case (.genericScan, _, .engine), (.vehicleInfo, _, .engine),
+                    (.adapterCheck, _, .battery):
+                    true
+                default: false
+                }
+            }
+            return (check, !read)
+        } ?? []
     }
 
     private var shouldShowInterpretationConsent: Bool {
