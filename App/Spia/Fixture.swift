@@ -20,7 +20,6 @@
             case replayTimeline = "replay-timeline"
             case recordings
             case onboarding
-            case onboardingSession = "onboarding-session"
             case surveyResults = "survey-results"
             case surveyResultsMissing = "survey-results-missing"
             case surveyResultsSearched = "survey-results-searched"
@@ -66,17 +65,11 @@
             if screen == .onboarding {
                 _ = try model.garage.addVehicle(
                     name: "2017 Maserati Ghibli S Q4", vin: DemoGarage.vin)
-            } else if screen == .onboardingSession {
-                let vehicle = try model.garage.addVehicle(
-                    name: "2017 Maserati Ghibli S Q4", vin: DemoGarage.vin)
-                _ = try model.garage.addSession(to: vehicle, title: "First session")
             } else if screen == .surveyResults || screen == .surveyResultsMissing
                 || screen == .surveyResultsSearched
             {
                 let vehicle = try model.garage.addVehicle(
                     name: DemoGarage.vehicleName, vin: DemoGarage.vin)
-                let session = try model.garage.addSession(
-                    to: vehicle, title: "Finding this car's modules")
                 let report: SurveyReport
                 switch screen {
                 case .surveyResults: report = try surveyReport()
@@ -88,7 +81,7 @@
                     JobResult(
                         job: .survey(report.plan), payload: .survey(report), source: .live,
                         transcript: nil),
-                    warnings: [], transcriptPath: nil, for: vehicle, in: session)
+                    warnings: [], transcriptPath: nil, for: vehicle, in: nil)
             } else if screen != .welcome {
                 if screen == .replay || screen == .replayTimeline || screen == .recordings {
                     let vehicle = try model.garage.addVehicle(
@@ -140,14 +133,7 @@
                 vehicle.orderedSessions.first.map { .session($0.id) }
             case .garage, .settings, .welcome, nil: nil
             case .onboarding: .overview
-            case .onboardingSession:
-                vehicle.orderedSessions.first.map { .session($0.id) }
-            case .surveyResults:
-                vehicle.orderedSessions.first.map { .session($0.id) }
-            case .surveyResultsMissing:
-                vehicle.orderedSessions.first.map { .session($0.id) }
-            case .surveyResultsSearched:
-                vehicle.orderedSessions.first.map { .session($0.id) }
+            case .surveyResults, .surveyResultsMissing, .surveyResultsSearched: .overview
             }
         }
 

@@ -65,7 +65,7 @@ struct SpiaCommands: Commands {
     var body: some Commands {
         SidebarCommands()
         CommandGroup(replacing: .newItem) {
-            Button("New Session") { workspace?.newSession() }
+            Button("New Problem") { workspace?.newSession() }
                 .keyboardShortcut("n")
                 .disabled(workspace == nil)
             Button("New Vehicle…") { garage?.addVehicle() }
@@ -96,7 +96,7 @@ struct SpiaCommands: Commands {
                 .disabled(workspace == nil)
             Divider()
         }
-        CommandMenu("Session") {
+        CommandMenu("Problem") {
             Button(session?.connected == true ? "Connection…" : "Connect…") { session?.connect() }
                 .keyboardShortcut("k")
                 .disabled(session == nil)

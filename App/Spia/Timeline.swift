@@ -12,11 +12,11 @@ struct CaseFile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SectionHeading("Case file", note: session.entries.isEmpty ? nil : count)
+            SectionHeading("Log", note: session.entries.isEmpty ? nil : count)
                 .padding(.bottom, 10)
             if session.entries.isEmpty {
                 Hairline()
-                Text("Results and notes will appear here, oldest first.")
+                Text("Notes and readings taken for this problem appear here, oldest first.")
                     .font(.callout)
                     .foregroundStyle(Palette.secondary)
                     .padding(.vertical, 12)

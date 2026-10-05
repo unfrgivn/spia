@@ -189,7 +189,7 @@ public final class AssistantConversation {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !isResponding, !isCheckRunning, !trimmed.isEmpty || !photos.isEmpty else { return }
         guard !needsConsent(for: provider) else {
-            error = "Allow this session's data to be shared with \(provider.displayName) first."
+            error = "Allow this problem's data to be shared with \(provider.displayName) first."
             return
         }
         // Tool results first: providers require them to follow the calls they answer.

@@ -97,7 +97,7 @@ struct GarageView: View {
             VehicleEditor { vehicle in open(vehicle, vehicle.orderedSessions.first) }
         }
         .confirmationDialog(
-            "Delete \(deleting?.name ?? "this vehicle") and all its sessions?",
+            "Delete \(deleting?.name ?? "this vehicle") and all its problems?",
             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
             titleVisibility: .visible, presenting: deleting
         ) { vehicle in
@@ -111,8 +111,8 @@ struct GarageView: View {
     static func deletionMessage(sessions count: Int) -> String {
         let sessions =
             count == 1
-            ? "Its session, with its results, transcripts, photos, and conversation, is"
-            : "All \(count) sessions, with their results, transcripts, photos, and conversations, are"
+            ? "Its problem, with its results, transcripts, photos, and conversation, is"
+            : "All \(count) problems, with their results, transcripts, photos, and conversations, are"
         return
             "\(sessions) removed from \(PlatformText.thisDevice), along with its references. This can't be undone."
     }
@@ -128,7 +128,7 @@ struct GarageView: View {
 
     private func startSession(on vehicle: Vehicle) {
         do {
-            open(vehicle, try model.garage.addSession(to: vehicle, title: "New session"))
+            open(vehicle, try model.garage.addSession(to: vehicle, title: "New problem"))
         } catch {
             problem = error.readable
         }
@@ -276,14 +276,14 @@ private struct ShowroomBay: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 6) {
-                Text(vehicle.sessions.isEmpty ? "No sessions yet" : "No open sessions")
+                Text(vehicle.sessions.isEmpty ? "No problems yet" : "No open problems")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Palette.primary)
                 Text("Start one when something's wrong: what you notice, and what the car reports.")
                     .font(.system(size: 13.5))
                     .foregroundStyle(Palette.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Button(action: startSession) { PrimaryPill(title: "Start a Session") }
+                Button(action: startSession) { PrimaryPill(title: "Start a Problem") }
                     .buttonStyle(.plain)
                     .padding(.top, 10)
             }
@@ -434,7 +434,7 @@ private struct Welcome: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, compact ? 16 : 22)
             Text(
-                "Spia reads your car's modules through an OBD‑II adapter, looks up its recalls and service bulletins, and keeps it all beside what you've noticed, one session per problem."
+                "Spia reads your car's modules through an OBD‑II adapter, looks up its recalls and service bulletins, and keeps it all beside what you've noticed, one problem at a time."
             )
             .font(.system(size: compact ? 15 : 17))
             .lineSpacing(3)

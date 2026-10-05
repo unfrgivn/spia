@@ -30,8 +30,6 @@ final class AppModel {
     /// that must not count as a change to redraw for.
     @ObservationIgnored private var surveyCatalog: ModuleCatalog?
     @ObservationIgnored private var surveyCatalogError: String?
-    private var pendingSurveySessions: Set<UUID> = []
-    private var pendingThoroughSurveySessions: Set<UUID> = []
     private let savedChecksProvider: (() -> [SavedCheck])?
 
     init(
@@ -156,28 +154,6 @@ final class AppModel {
                 }
             },
             search: search ? ModuleSearch.standard(over: workbench.adapter.kind) : nil)
-    }
-
-    func requestSurvey(for session: DiagnosticSession, search: Bool = false) {
-        pendingSurveySessions.insert(session.id)
-        if search { pendingThoroughSurveySessions.insert(session.id) }
-    }
-
-    func consumeSurveyRequest(for session: DiagnosticSession) -> Bool {
-        pendingSurveySessions.remove(session.id) != nil
-    }
-
-    func hasSurveyRequest(for session: DiagnosticSession) -> Bool {
-        pendingSurveySessions.contains(session.id)
-    }
-
-    func cancelSurveyRequest(for session: DiagnosticSession) {
-        pendingSurveySessions.remove(session.id)
-        pendingThoroughSurveySessions.remove(session.id)
-    }
-
-    func consumeThoroughSurveyRequest(for session: DiagnosticSession) -> Bool {
-        pendingThoroughSurveySessions.remove(session.id) != nil
     }
 
     func delete(_ session: DiagnosticSession) throws {

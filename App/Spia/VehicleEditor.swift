@@ -73,10 +73,9 @@ struct VehicleEditor: View {
             vehicle.trim = trim.trimmed
             vehicle.color = color
             vehicle.colorName = colorName.trimmed
-            let session = try model.garage.addSession(
-                to: vehicle, title: problem.isEmpty ? "First session" : "New problem",
-                problem: problem)
-            if !vehicle.isDemo { model.requestSurvey(for: session) }
+            if !problem.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                _ = try model.garage.addSession(to: vehicle, title: "New problem", problem: problem)
+            }
             onCreate(vehicle)
             dismiss()
         } catch {

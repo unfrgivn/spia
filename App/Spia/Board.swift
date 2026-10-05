@@ -147,6 +147,29 @@ struct BoardHeader: View {
     }
 }
 
+struct BoardHeadline: View {
+    let headline: String
+    let summary: String
+    let compact: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(headline)
+                .font(.system(size: compact ? 32 : 46, weight: .bold))
+                .tracking(compact ? -0.6 : -1)
+                .foregroundStyle(Palette.primary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(summary)
+                .font(.system(size: compact ? 16 : 19))
+                .lineSpacing(compact ? 2 : 4)
+                .foregroundStyle(Palette.secondary)
+                .frame(maxWidth: 820, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 10)
+        }
+    }
+}
+
 /// One line per part of the car, most urgent first, like a departures board. A part nobody has
 /// read yet offers to read it.
 struct SessionBoardView: View {

@@ -151,7 +151,7 @@ struct ReferencesView: View {
         if references.isRefreshing { return "Looking up \(records)." }
         if vehicle.vin == nil {
             return
-                "Add the VIN, or read vehicle information in a session, and Spia looks up \(records)."
+                "Add the VIN, or read vehicle information from the Overview, and Spia looks up \(records)."
         }
         let problems = references.snapshot?.problems ?? []
         return problems.isEmpty

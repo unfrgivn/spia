@@ -76,7 +76,7 @@ struct VehicleWorkspace: View {
 
     private func newSession() {
         do {
-            let session = try model.garage.addSession(to: vehicle, title: "New session")
+            let session = try model.garage.addSession(to: vehicle, title: "New problem")
             selection = .session(session.id)
         } catch {
             problem = error.readable
@@ -120,16 +120,16 @@ private struct WorkspaceSidebar: View {
                     .tag(WorkspaceSection.photos)
             }
 
-            Section("Sessions") {
+            Section("Problems") {
                 ForEach(vehicle.orderedSessions) { session in
                     SessionRow(session: session)
                         .tag(WorkspaceSection.session(session.id))
                         .contextMenu {
-                            Button("Delete Session…", role: .destructive) { deleting = session }
+                            Button("Delete Problem…", role: .destructive) { deleting = session }
                         }
                 }
                 Button(action: newSession) {
-                    Label("New Session", systemImage: "plus")
+                    Label("New Problem", systemImage: "plus")
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)

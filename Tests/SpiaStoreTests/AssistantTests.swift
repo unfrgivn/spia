@@ -138,7 +138,7 @@ struct AssistantConversationTests {
 
         conversation.send("The horn is dead", using: .openAI)
         #expect(session.messages.isEmpty)
-        #expect(conversation.error?.contains("Allow this session's data") == true)
+        #expect(conversation.error?.contains("Allow this problem's data") == true)
 
         conversation.allowCloudSharing()
         #expect(session.cloudSharingAllowed)

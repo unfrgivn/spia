@@ -7,12 +7,10 @@ struct SessionView: View {
     @Environment(AppModel.self) private var model
     @Bindable var session: DiagnosticSession
     @State private var workbench: Workbench?
+    @State private var runner: DiagnosticRunCoordinator?
     @State private var showAssistant = false
-    @State private var showConnection = false
     @State private var editingModules = false
     @State private var transcript: TimelineEntry?
-    @State private var reviewReport: SurveyReport?
-    @State private var reviewVehicle: Vehicle?
     @State private var note = ""
     @State private var error: String?
     @State private var width: CGFloat = 1_000
@@ -35,19 +33,20 @@ struct SessionView: View {
             .inspector(isPresented: $showAssistant) {
                 AssistantPanel(
                     conversation: model.conversation(for: session),
-                    connect: { showConnection = true },
+                    connect: requestConnection,
                     question: $question
                 )
                 .inspectorColumnWidth(min: 300, ideal: 360, max: 520)
             }
-            .sheet(isPresented: $showConnection) {
+            .sheet(isPresented: connectionPresentation) {
                 if let workbench, let vehicle = session.vehicle {
                     ConnectionAssistant(
                         vehicle: vehicle, workbench: workbench,
-                        purpose: model.hasSurveyRequest(for: session)
+                        purpose: runner?.isSurveyPending == true
                             ? "Connect the adapter, and Spia will find this car's modules." : nil
                     ) { refreshed in
                         self.workbench = refreshed
+                        runner?.refresh(refreshed)
                     }
                 }
             }
@@ -57,45 +56,28 @@ struct SessionView: View {
             .sheet(item: $transcript) { entry in
                 TranscriptView(entry: entry)
             }
-            .sheet(
-                isPresented: Binding(
-                    get: { reviewReport != nil }, set: { if !$0 { reviewReport = nil } })
-            ) {
-                if let report = reviewReport, let vehicle = reviewVehicle {
-                    SurveyResultsView(
-                        report: report, vehicle: vehicle,
-                        searchMessage: thoroughSearchMessage(for: report),
-                        tryAgain: {
-                            reviewReport = nil
-                            requestSurveyInSession()
-                        },
-                        searchMoreThoroughly: {
-                            reviewReport = nil
-                            requestSurveyInSession(search: true)
-                        })
-                }
-            }
+            .surveyReview(runner: runner, vehicle: session.vehicle)
             .task(id: session.vehicle?.id) {
-                if let vehicle = session.vehicle { workbench = model.workbench(for: vehicle) }
-                startPendingSurveyIfReady()
-                if let workbench, workbench.connection.status == nil,
-                    model.hasSurveyRequest(for: session)
-                {
-                    showConnection = true
+                if let vehicle = session.vehicle {
+                    workbench = model.workbench(for: vehicle)
+                    runner = DiagnosticRunCoordinator(
+                        vehicle: vehicle, session: session, model: model)
                 }
                 #if DEBUG
                     if Fixture.screen == .recordings {
                         try? await Task.sleep(for: .milliseconds(500))
-                        showConnection = true
+                        requestConnection()
                     }
                 #endif
             }
             .onChange(of: workbench?.connection) { _, state in
-                if case .ready = state { startPendingSurveyIfReady() }
+                if case .ready = state { runner?.startPendingSurveyIfReady() }
             }
-            .onChange(of: showConnection) { wasShown, isShown in
-                if wasShown && !isShown && workbench?.connection.status == nil {
-                    model.cancelSurveyRequest(for: session)
+            .onChange(of: runner?.connectRequested) { wasRequested, isRequested in
+                if wasRequested == true && isRequested == false,
+                    workbench?.connection.status == nil
+                {
+                    runner?.cancelPendingSurveyIfDisconnected()
                 }
             }
             .onChange(of: workbench.map(ObjectIdentifier.init), initial: true) {
@@ -133,7 +115,14 @@ struct SessionView: View {
                 BoardHeader(
                     session: session, board: board, layout: layout,
                     connectionKind: workbench?.adapter.kind)
-                if showModuleDiscoveryCard { moduleDiscoveryCard(compact: !wide).padding(.top, 18) }
+                if let closedAt = session.closedAt {
+                    Text(
+                        "As of \(closedAt, format: .dateTime.month().day().year().hour().minute()), when this problem was \(session.status == .archived ? "archived" : "resolved")"
+                    )
+                    .font(.system(size: 13))
+                    .foregroundStyle(Palette.tertiary)
+                    .padding(.top, 10)
+                }
                 if let workbench, let activity = workbench.activity,
                     activity.sessionID == session.id,
                     activity.prompt != nil || SessionBoard.Subject(job: activity.job) == nil
@@ -141,16 +130,19 @@ struct SessionView: View {
                     ActivityPanel(activity: activity, workbench: workbench).padding(.top, 24)
                 }
                 SessionBoardView(
-                    board: board, layout: layout, read: reader, reading: reading,
-                    checking: checking, unreadable: unreadable(board), notes: notes,
-                    explain: { explain($0) }, openAssistant: { showAssistant = true }
+                    board: board, layout: layout,
+                    read: session.closedAt == nil ? runner?.reader : nil,
+                    reading: runner?.reading,
+                    checking: checking, unreadable: runner?.unreadable(for: board) ?? [:],
+                    notes: notes,
+                    explain: { explain($0) },
+                    openAssistant: { showAssistant = true }
                 )
                 .padding(.top, wide ? 32 : 22)
                 CaseFile(
                     session: session, layout: layout, showTranscript: { transcript = $0 },
                     reviewSurvey: {
-                        reviewReport = $0
-                        reviewVehicle = session.vehicle
+                        runner?.reviewReport = $0
                     }
                 )
                 .padding(.top, wide ? 40 : 30)
@@ -180,11 +172,9 @@ struct SessionView: View {
                 case .surveyResults, .surveyResultsMissing, .surveyResultsSearched:
                     try? await Task.sleep(for: .milliseconds(500))
                     if let entry = session.timeline.last,
-                        case .survey(let report) = entry.result?.payload,
-                        let vehicle = session.vehicle
+                        case .survey(let report) = entry.result?.payload
                     {
-                        reviewReport = report
-                        reviewVehicle = vehicle
+                        runner?.reviewReport = report
                     }
                 default: break
                 }
@@ -204,7 +194,7 @@ struct SessionView: View {
             if sizeClass == .compact {
                 ToolbarItemGroup(placement: .bottomBar) {
                     if let workbench {
-                        AdapterIndicator(workbench: workbench) { showConnection = true }
+                        AdapterIndicator(workbench: workbench) { requestConnection() }
                         Spacer()
                         runMenu(workbench)
                     }
@@ -218,7 +208,7 @@ struct SessionView: View {
 
     @ViewBuilder private var adapterAndRun: some View {
         if let workbench {
-            AdapterIndicator(workbench: workbench) { showConnection = true }
+            AdapterIndicator(workbench: workbench) { requestConnection() }
             runMenu(workbench)
         }
     }
@@ -226,7 +216,7 @@ struct SessionView: View {
     private func runMenu(_ workbench: Workbench) -> some View {
         RunMenu(
             vehicle: session.vehicle, workbench: workbench, run: { run($0) },
-            survey: surveyAction(workbench), connect: { showConnection = true },
+            survey: surveyAction(workbench), connect: requestConnection,
             editModules: { editingModules = true })
     }
 
@@ -248,42 +238,6 @@ struct SessionView: View {
         if workbench?.adapter.kind == .replay { return "\(vehicle.name) · Recordings" }
         return vehicle.name
     }
-
-    private var showModuleDiscoveryCard: Bool {
-        guard let vehicle = session.vehicle else { return false }
-        return !vehicle.isDemo && vehicle.modules.isEmpty
-    }
-
-    @ViewBuilder private func moduleDiscoveryCard(compact: Bool) -> some View {
-        FindModulesCard(
-            compact: compact, disabled: workbench?.activity != nil,
-            action: { requestSurveyInSession() })
-    }
-
-    /// Reads a board row's missing reading; nil while a check runs.
-    private var reader: ((SessionBoard.Subject) -> Void)? {
-        guard workbench?.activity == nil else { return nil }
-        return { read($0) }
-    }
-
-    /// Unread rows this adapter can't read, and why. Only the demo car says no, for the modules
-    /// nobody recorded.
-    private func unreadable(_ board: SessionBoard) -> [SessionBoard.Subject: String] {
-        guard let workbench else { return [:] }
-        var reasons: [SessionBoard.Subject: String] = [:]
-        for row in board.rows where row.status == .notRead && !workbench.canRun(row.subject.job) {
-            reasons[row.subject] =
-                switch workbench.adapter.kind {
-                case .demo: "Not in the demo"
-                case .replay: "Not recorded yet"
-                default: "Can't be read here"
-                }
-        }
-        return reasons
-    }
-
-    /// A board row's missing reading. Without an adapter, the connection assistant comes first.
-    private func read(_ subject: SessionBoard.Subject) { run(subject.job) }
 
     /// Opens the assistant on a row's question; it asks at once when it can, or waits in the
     /// composer while it needs setting up or the owner's consent.
@@ -310,14 +264,6 @@ struct SessionView: View {
         return notes
     }
 
-    /// The row the running check is filling in, unless it's waiting for the owner.
-    private var reading: (subject: SessionBoard.Subject, step: String?, cancel: () -> Void)? {
-        guard let workbench, let activity = workbench.activity, activity.sessionID == session.id,
-            activity.prompt == nil, let subject = SessionBoard.Subject(job: activity.job)
-        else { return nil }
-        return (subject, activity.currentStep, { Task { await workbench.cancel() } })
-    }
-
     private var link: AdapterLink {
         guard let workbench else { return .unknown }
         return workbench.connection.status == nil ? .disconnected : .connected
@@ -335,7 +281,7 @@ struct SessionView: View {
         return SessionActions(
             connected: workbench?.connection.status != nil,
             assistantShown: showAssistant,
-            toggleAssistant: { showAssistant.toggle() }, connect: { showConnection = true },
+            toggleAssistant: { showAssistant.toggle() }, connect: requestConnection,
             checks: RunMenu.jobs.map { check($0, $0.menuTitle) },
             survey: surveyAction(workbench),
             moduleChecks: (session.vehicle?.orderedModules ?? []).compactMap { module in
@@ -344,75 +290,25 @@ struct SessionView: View {
     }
 
     private func surveyAction(_ workbench: Workbench?) -> (() -> Void)? {
-        guard let workbench, let vehicle = session.vehicle else { return nil }
-        // The plan a click would run decides, so saved recordings offer only a survey they hold.
-        // When no plan can be made, the item stays on and the click says why.
-        if let plan = try? model.surveyPlan(for: vehicle, workbench: workbench),
-            !workbench.canRun(.survey(plan))
-        {
-            return nil
-        }
-        return { runSurvey(workbench) }
-    }
-
-    private func runSurvey(_ workbench: Workbench, search: Bool = false) {
-        guard let vehicle = session.vehicle else { return }
-        do {
-            let plan = try model.surveyPlan(for: vehicle, workbench: workbench, search: search)
-            run(.survey(plan))
-        } catch {
-            workbench.lastError = error.readable
-        }
-    }
-
-    private func requestSurveyInSession(search: Bool = false) {
-        guard let workbench, session.vehicle != nil else { return }
-        model.requestSurvey(for: session, search: search)
-        if workbench.connection.status == nil {
-            showConnection = true
-        } else {
-            startPendingSurveyIfReady()
-        }
-    }
-
-    private func startPendingSurveyIfReady() {
-        guard let workbench, workbench.connection.status != nil,
-            model.consumeSurveyRequest(for: session)
-        else { return }
-        showConnection = false
-        runSurvey(workbench, search: model.consumeThoroughSurveyRequest(for: session))
-    }
-
-    /// The confirmation for the plan a Search More Thoroughly click would run, or nil when it
-    /// can't run: the demo, no adapter, a protocol the search can't probe, or saved recordings
-    /// without that search.
-    private func thoroughSearchMessage(for report: SurveyReport) -> String? {
-        guard report.plan.search == nil, report.detectedProtocol?.surveyUnsupportedNote == nil,
-            let vehicle = session.vehicle, !vehicle.isDemo,
-            let workbench, workbench.connection.status != nil,
-            let plan = try? model.surveyPlan(for: vehicle, workbench: workbench, search: true),
-            workbench.canRun(.survey(plan)), let search = plan.search
-        else { return nil }
-        return search.confirmationMessage(
-            connection: workbench.adapter.kind, candidates: plan.candidates)
+        runner?.surveyAction()
     }
 
     private func run(_ job: DiagnosticJob) {
-        guard let workbench, let vehicle = session.vehicle else { return }
-        guard workbench.connection.status != nil else {
-            showConnection = true
-            return
-        }
-        Task {
-            let outcome = await workbench.run(job, for: vehicle, in: session)
-            if case .completed(let result) = outcome,
-                case .survey(let report) = result.payload
-            {
-                reviewReport = report
-                reviewVehicle = session.vehicle
-            }
-        }
+        runner?.run(job)
     }
+
+    private var connectionPresentation: Binding<Bool> {
+        Binding(
+            get: { runner?.connectRequested == true },
+            set: { isPresented in
+                if !isPresented {
+                    runner?.connectRequested = false
+                    runner?.cancelPendingSurveyIfDisconnected()
+                }
+            })
+    }
+
+    private func requestConnection() { runner?.connectRequested = true }
 
     private func addNote() {
         do {
