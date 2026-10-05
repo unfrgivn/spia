@@ -15,6 +15,7 @@ The app also runs on iPhone and iPad, where it reaches Bluetooth LE adapters (th
 | v1 scope | Generic OBD-II + raw terminal + CAN capture | Manufacturer-specific UDS module map is a later reverse-engineering effort. |
 | Module survey scope | By default the make's known modules plus the legislated range; a wider search only when the owner asks for it, behind a plain warning | Probing arbitrary IDs on a live car is the risky part. Owner's decision, 2026-09-28. |
 | Make knowledge | A bundled, versioned JSON catalog | Adding a make is a data change, not a code change. A hosted catalog may come later. Owner's decision, 2026-09-28. |
+| Who owns a reading | The car. A problem (the UI's word for `DiagnosticSession`) is a lens over the car's history, not a container for it | A reading is a fact about the car; an investigation is something a person does. Keeping readings inside sessions made the car's state depend on which session was open and forced the module survey to invent one. Owner's decision, 2026-10-04; see "Problems and the car's history". |
 
 ## Architecture
 
@@ -66,7 +67,7 @@ The CLI and the app share one engine. Layers, bottom up:
 
 Run it: open `App/SpiaApp.xcodeproj` and run the `Spia` scheme, or `xcodebuild -project App/SpiaApp.xcodeproj -scheme Spia build`. Choose "Explore the demo" to use the Ghibli recordings without a car. `scripts/screenshots.sh` captures `-SpiaFixture demo -SpiaScreen <screen> -SpiaAppearance <light|dark>` fixture screens.
 
-The app opens on the garage: every vehicle as a card with its photo, decoded model, open sessions, and recalls. Opening one scopes the window to it (kept per window across launches; ⇧⌘G returns to the garage): Overview (decoded details, recalls callout, adapter, modules, sessions), References (service bulletins with search and an in-app PDF viewer, recalls, complaints), Photos (the owner's photos and reference photos; the cover is the best reference match until the owner adds a photo, then theirs, and they can pick which of theirs), and its sessions. VINs don't encode paint, so the owner picks a colour (and optionally the maker's paint name), and may give the trim as they know it (the demo is `S Q4`; vPIC says `Sport`); both steer the photo search. The owner's photos are resized JPEGs without location data under `Vehicles/<vehicle>/Photos`, deleted with the vehicle. Typing a VIN in the vehicle editor decodes it with NHTSA straight away; the VIN is sent to NHTSA automatically (the user's choice), other lookups send only make, model, and year. A live "Read vehicle information" check fills in a missing VIN. Owner's manuals aren't fetched: makers publish them only through their own portals, with no public API.
+The app opens on the garage: every vehicle as a card with its photo, decoded model, open problems, and recalls. Opening one scopes the window to it (kept per window across launches; ⇧⌘G returns to the garage): Overview is the vehicle's dashboard, with its board, problems, references, and particulars. A problem is a lens over the car, with its board as of the problem, its log, and its assistant. Any board row opens that part's history, including its codes over time and which problem each reading was for. References still hold service bulletins with search and an in-app PDF viewer, recalls, and complaints; Photos still holds the owner's photos and reference photos. VINs don't encode paint, so the owner picks a colour (and optionally the maker's paint name), and may give the trim as they know it (the demo is `S Q4`; vPIC says `Sport`); both steer the photo search. The owner's photos are resized JPEGs without location data under `Vehicles/<vehicle>/Photos`, deleted with the vehicle. Typing a VIN in the vehicle editor decodes it with NHTSA straight away; the VIN is sent to NHTSA automatically (the user's choice), other lookups send only make, model, and year. A live "Read vehicle information" check fills in a missing VIN. Owner's manuals aren't fetched: makers publish them only through their own portals, with no public API.
 
 Each vehicle has one adapter profile. The Mac connect sheet switches it between the USB cable, the default for new Mac vehicles, and Bluetooth LE, while iPhone and iPad use Bluetooth LE.
 
@@ -85,6 +86,25 @@ App phases: 1 foundation (done), 2 assistant (built, see below), 3 media (camera
 - Safety rules in every briefing: no probing or unplugging SRS/airbag/clock-spring circuits, manufacturer-code mappings labelled as interpretations, warnings for fuel, high voltage, lifting, and running engines indoors.
 - Photos (attach or drop) are resized to 2000 px JPEG, which also strips location metadata, and stored under `Attachments/<session>`. The on-device model can't see them.
 - Verified: stream decoding and request shapes against the documented examples, tool validation, briefing and redaction, Keychain round trip, and approval running a real demo check through the Workbench. Live provider tests run when `SPIA_ANTHROPIC_API_KEY` / `SPIA_OPENAI_API_KEY` are set; not yet run. The on-device path compiles but is untested (this Mac runs macOS 15).
+
+## Problems and the car's history (2026-10-04)
+
+Schema v1 hung every `TimelineEntry` off a `DiagnosticSession`, and the board (`SessionBoard`) was a fold over one session's entries. So a new session opened at "Nothing read yet" however recently the car had been read, two open sessions could disagree about the car, the Overview knew the car's state only through the open session's headline, and "Find this car's modules" had to create a session called "Finding this car's modules" because `Workbench.run` had nowhere else to record. `Garage.record` copying a read VIN up to the vehicle, and `savedChecks(for:)` walking every session, were the code already treating readings as the car's.
+
+Decisions (owner, 2026-10-04):
+
+- **The car owns its readings.** `TimelineEntry.vehicle` is required in spirit (optional in the schema, as every SwiftData relationship here is); `TimelineEntry.session` is the problem the reading was taken for, if any. Notes belong to their problem.
+- **The Overview is the car's dashboard.** Hero, then the car's board (engine, each module, battery, with Read), then its problems, then references (recalls, bulletins, complaints), then particulars. Checks and the survey run from there with no problem attached.
+- **A problem's board is the car's state as of the problem.** Open: the car now. Resolved or archived: the car as of `closedAt`, a pure fold over readings dated at or before it. Nothing is snapshotted.
+- **Deleting a problem keeps the car's readings.** Its notes, conversation, and attachments go; results taken during it stay with the car, unlinked. Deleting the car removes everything, including transcripts under the old per-session folders.
+- **"Problem" is the word.** Type names stay `DiagnosticSession`; menus, headings, dialogs, and the garage say problem. The ledger under a problem is its log: notes and the readings taken for it, oldest first.
+- **Modules and codes get a history.** A board row opens that module's history: every read, each code's status flags, first and last seen, which problem it was taken for. `CodeHistory` is a pure derivation in SpiaKit. The log stays as the audit trail.
+
+Slices, each leaving the build green and the tests on real recordings passing:
+
+1. Done 2026-10-04. Schema v2 and ownership: `SpiaSchemaV2`, the custom migration stage backfilling `entry.vehicle` from `entry.session?.vehicle` and `closedAt` from `updatedAt` for sessions no longer open; `Garage` and `Workbench` record for a vehicle with an optional problem; transcripts under `Transcripts/<vehicle>/`; `vehicle.board(asOf:live:)`; deletion rules as decided. Verified by the migration test and the full store tests.
+2. Done 2026-10-04. The screens: the Overview as the dashboard with the adapter and Run in its toolbar, the survey from the Overview, the problem screen's board as-of, the log, and the wording. Verified by the macOS and iOS app builds and fixture screens.
+3. Done 2026-10-04. History: `ReadingHistory`, the module history screen from a board row, and the assistant's briefing fed from the car's board as of the problem plus the problem's notes. Verified by replay tests on the real Ghibli recordings and the history fixture.
 
 ## Vehicle onboarding: the survey
 
