@@ -171,6 +171,24 @@ struct SurveyReportTests {
         )
     }
 
+    @Test("survey result text says plainly when the thorough search did not run")
+    func skippedSearchResultText() throws {
+        let plan = SurveyPlan(
+            catalogVersion: "test", vehicle: nil, platform: nil, candidates: [try candidate()],
+            unreachable: [])
+        let search = SearchOutcome(
+            heardIDs: [], sweptCount: 0, confirmed: [], unconfirmed: [], engineRunning: false,
+            stopReason: "The bus is busy where module replies would come, so Spia didn't search.")
+        let report = SurveyReport(
+            plan: plan, voltage: nil, vehicleInfo: [], modules: [], unanswered: [], notProbed: [],
+            stop: nil, search: search)
+        let result = JobResult(
+            job: .survey(plan), payload: .survey(report), source: .live, transcript: nil)
+        #expect(
+            ResultText.summary(result)
+                == "No modules answered. The search didn't run: The bus is busy where module replies would come, so Spia didn't search.")
+    }
+
     @Test("a TesterPresent answer, a refusal, or a busy reply is a module; anything else isn't")
     func presenceFromReply() {
         #expect(SurveyPresence(TesterPresentReply(payload: [0x7E, 0x00])) == .present)
