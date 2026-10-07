@@ -83,7 +83,10 @@ struct CarSurveyReplayTests {
     private static func searchListen(_ name: String) throws -> SearchListen {
         let events = try transcript(name)
         let searchWrite = Array("ATMA\r".utf8)
-        guard let start = events.firstIndex(where: { $0.direction == .tx && $0.bytes == searchWrite })
+        guard
+            let start = events.firstIndex(where: {
+                $0.direction == .tx && $0.bytes == searchWrite
+            })
         else { throw ReplayFailure("\(name) has no ATMA") }
         var parser = MonitorStreamParser()
         var listen = SearchListen(
@@ -479,7 +482,7 @@ struct CarSurveyReplayTests {
     func ghibliOctoberSearches() throws {
         let allowed: Set<UInt32> = Set(0x400...0x44C)
         for name in [
-            "ghibli-app-search-again", "ghibli-app-mac-ble-search", "ghibli-app-ble-search"
+            "ghibli-app-search-again", "ghibli-app-mac-ble-search", "ghibli-app-ble-search",
         ] {
             let search = try #require(try Self.survey(name).search)
             #expect(search.sweptCount == 491)

@@ -186,7 +186,8 @@ struct SurveyReportTests {
             job: .survey(plan), payload: .survey(report), source: .live, transcript: nil)
         #expect(
             ResultText.summary(result)
-                == "The engine computers didn't answer. No modules answered. The search didn't run: The bus is busy where module replies would come, so Spia didn't search.")
+                == "The engine computers didn't answer. No modules answered. The search didn't run: "
+                + "The bus is busy where module replies would come, so Spia didn't search.")
     }
 
     @Test("a TesterPresent answer, a refusal, or a busy reply is a module; anything else isn't")
