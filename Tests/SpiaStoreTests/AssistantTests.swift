@@ -74,7 +74,10 @@ struct AssistantConversationTests {
         #expect(!airbag.labelConfirmed)
         let event = try #require(briefing.events.last)
         #expect(event.summary == "2 codes: B0001-1B, B0002-1B · 2 failing now")
-        #expect(event.codes.contains("B0001-1B (Driver Frontal Stage 1 Deployment Control)"))
+        #expect(
+            event.codes.contains(
+                "B0001-1B (Driver Frontal Stage 1 Deployment Control; 1B: resistance in the circuit is too high, which usually means a corroded, loose, or partly broken connection)"
+            ))
         #expect(event.fromRecording)
         guard case .moduleDTCs(let dtcs) = event.result else {
             Issue.record("expected module codes")

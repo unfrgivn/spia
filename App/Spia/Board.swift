@@ -490,6 +490,12 @@ private struct CodeNamesView: View {
                             .font(.system(size: 13))
                             .foregroundStyle(Palette.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                        if let failureType = item.1?.failureTypeLabel {
+                            Text(failureType)
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(Palette.tertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     if let interpretation = interpretations?.interpretation(
                         for: row.subject, code: item.0)

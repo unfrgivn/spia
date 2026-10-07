@@ -139,6 +139,11 @@ struct ReadingHistoryView: View {
                                 .font(.caption)
                                 .foregroundStyle(Palette.secondary)
                         }
+                        if let failureType = name.failureTypeLabel {
+                            Text(failureType)
+                                .font(.caption)
+                                .foregroundStyle(Palette.tertiary)
+                        }
                     }
                     if let interpretation = model.interpreter.interpretations(for: vehicle)
                         .interpretation(for: subject, code: code.name?.printed ?? code.code)

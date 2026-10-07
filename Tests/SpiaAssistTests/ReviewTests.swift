@@ -101,7 +101,13 @@ struct ReviewTests {
             briefing: briefing,
             scope: .problem(title: "Horn controls", text: "The horn stopped after rain."),
             answered: [(question: "Was the battery disconnected?", answer: "Yes, yesterday.")],
-            codes: [(printed: "B0001-1B", name: "Driver Frontal Stage 1 Deployment Control")],
+            codes: [
+                (
+                    printed: "B0001-1B", name: "Driver Frontal Stage 1 Deployment Control",
+                    failureType:
+                        "1B: resistance in the circuit is too high"
+                )
+            ],
             unread: ["Steering column"],
             provider: .anthropic, sharing: .init(includeVIN: false))
         let text = reviewText(request) + request.instructions
@@ -110,11 +116,25 @@ struct ReviewTests {
         #expect(text.contains("Yes, yesterday."))
         #expect(text.contains("B0001-1B"))
         #expect(text.contains("Driver Frontal Stage 1 Deployment Control"))
+        #expect(text.contains("failure type 1B: resistance"))
+        #expect(text.contains("use it as given"))
         #expect(text.contains("Not read yet:\n- Steering column"))
         #expect(text.contains("at most three sentences of plain prose, with no lists or headings"))
         #expect(!text.contains("SECRET"))
         #expect(request.toolChoice == .tool(ReviewTool.name))
         #expect(request.maxOutputTokens == 900)
+    }
+
+    @Test("review prompts identify an unknown failure type")
+    func unknownFailureTypePrompt() {
+        let briefing = SessionBriefing(
+            vehicle: .init(name: "Ghibli", vin: nil, notes: ""), problem: "", modules: [],
+            adapter: nil, events: [])
+        let request = ReviewRequest.make(
+            briefing: briefing, scope: .car, answered: [],
+            codes: [(printed: "B0001-E7", name: nil, failureType: "E7, not described by Spia")],
+            unread: [], provider: .anthropic, sharing: .init(includeVIN: false))
+        #expect(reviewText(request).contains("failure type E7, not described by Spia"))
     }
 
     @Test(
@@ -150,7 +170,8 @@ struct ReviewTests {
                     result: nil, codes: ["B0001-1B", "B0002-1B"], fromRecording: true, warnings: [])
             ])
         let request = ReviewRequest.make(
-            briefing: briefing, scope: .car, answered: [], codes: [], unread: [],
+            briefing: briefing, scope: .car, answered: [],
+            codes: [] as [(printed: String, name: String?, failureType: String?)], unread: [],
             provider: provider.id,
             sharing: .init(includeVIN: false))
         var call: ToolCall?

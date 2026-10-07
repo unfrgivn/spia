@@ -15,6 +15,14 @@ public struct CodeName: Equatable, Sendable, Hashable {
     public let system: System
     public let isGeneric: Bool
 
+    public var failureTypeMeaning: String? {
+        failureType.flatMap(FailureType.meaning(of:))
+    }
+
+    public var failureTypeLabel: String? {
+        failureType.map(FailureType.label(for:))
+    }
+
     public var printed: String {
         failureType.map { String(format: "%@-%02X", base, $0) } ?? base
     }

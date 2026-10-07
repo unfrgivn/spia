@@ -75,11 +75,15 @@ struct InterpretationTests {
         let request = InterpretationRequest.make(
             briefing: briefing, module: nil,
             codes: [
-                .init(code: "B0001-1B", catalogName: "Driver Frontal Stage 1 Deployment Control")
+                .init(
+                    code: "B0001-1B", catalogName: "Driver Frontal Stage 1 Deployment Control",
+                    failureType: "1B: resistance in the circuit is too high")
             ],
             provider: .anthropic, sharing: SharingPolicy(includeVIN: false))
         let prompt = promptText(from: request)
-        #expect(prompt.contains("- B0001-1B (Driver Frontal Stage 1 Deployment Control)"))
+        #expect(prompt.contains("- B0001-1B (Driver Frontal Stage 1 Deployment Control;"))
+        #expect(prompt.contains("failure type 1B: resistance"))
+        #expect(prompt.contains("use it as given"))
         #expect(prompt.contains("read from this module by this app"))
         #expect(prompt.contains("treat it as reliable, not as a guess"))
         #expect(prompt.contains("Use record_interpretations."))
@@ -105,6 +109,22 @@ struct InterpretationTests {
         #expect(
             promptText(from: placeholder).contains(
                 "Name this module: its only label is a placeholder."))
+    }
+
+    @Test("interpretation prompts identify an unknown failure type")
+    func unknownFailureTypePrompt() {
+        let briefing = SessionBriefing(
+            vehicle: .init(name: "Ghibli", vin: nil, notes: ""), problem: "", modules: [],
+            adapter: nil, events: [])
+        let request = InterpretationRequest.make(
+            briefing: briefing, module: nil,
+            codes: [
+                .init(
+                    code: "B0001-E7", catalogName: nil,
+                    failureType: "E7, not described by Spia")
+            ],
+            provider: .anthropic, sharing: .init(includeVIN: false))
+        #expect(promptText(from: request).contains("failure type E7, not described by Spia"))
     }
 
     @Test("batched interpretation prompts keep each module's codes under its heading")
