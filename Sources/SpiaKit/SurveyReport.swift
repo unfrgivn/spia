@@ -27,11 +27,11 @@ public enum SearchReplyClassifier {
         return TesterPresentReply(payload: response.payload).isModule
     }
 
-    /// No answer, or a frame the adapter flagged `<DATA ERROR` because its first byte isn't an
-    /// ISO-TP length: ordinary traffic, so neither is trouble. The Ghibli's bus flags about one
-    /// frame in three.
+    /// No answer, a normal monitor stop, or a frame the adapter flagged `<DATA ERROR` because its
+    /// first byte isn't an ISO-TP length: ordinary traffic, so neither is trouble. The Ghibli's
+    /// bus flags about one frame in three.
     static func isBenign(_ message: ELM327AdapterMessage) -> Bool {
-        message == .noData || message == .dataError || message == .ok
+        message == .noData || message == .dataError || message == .ok || message == .stopped
     }
 }
 

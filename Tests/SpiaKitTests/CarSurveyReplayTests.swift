@@ -50,6 +50,9 @@ struct CarSurveyReplayTests {
             name: "cx5-app-ble-vehicle-info-after-ignition", adapter: .bluetooth, prompts: []),
         Recording(name: "ghibli-app-search", adapter: .usbSerial, prompts: []),
         Recording(name: "ghibli-app-vehicle-info-after-search", adapter: .usbSerial, prompts: []),
+        Recording(name: "ghibli-app-search-again", adapter: .usbSerial, prompts: []),
+        Recording(name: "ghibli-app-mac-ble-search", adapter: .bluetooth, prompts: []),
+        Recording(name: "ghibli-app-ble-search", adapter: .bluetooth, prompts: []),
         Recording(name: "tiguan-app-vehicle-info-after-search", adapter: .usbSerial, prompts: []),
     ]
 
@@ -470,6 +473,20 @@ struct CarSurveyReplayTests {
         // The instrument cluster's U0001 and the tire pressure module's C0077.
         #expect(try records(0x742) == [ModuleDTCRecord(code: "C00100", status: 0x28)])
         #expect(try records(0x743) == [ModuleDTCRecord(code: "407700", status: 0x08)])
+    }
+
+    @Test("the three October searches swept 491 IDs without finding another module")
+    func ghibliOctoberSearches() throws {
+        let allowed: Set<UInt32> = Set(0x400...0x44C)
+        for name in [
+            "ghibli-app-search-again", "ghibli-app-mac-ble-search", "ghibli-app-ble-search"
+        ] {
+            let search = try #require(try Self.survey(name).search)
+            #expect(search.sweptCount == 491)
+            #expect(search.confirmed.isEmpty)
+            #expect(search.stopReason == nil)
+            #expect(Set(search.heardIDs).isSubset(of: allowed))
+        }
     }
 
     @Test("the Tiguan's 29-bit gateway traffic does not count as search traffic")
