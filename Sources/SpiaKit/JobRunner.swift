@@ -69,8 +69,8 @@ public actor JobRunner {
     private actor SearchListenState {
         var listen: SearchListen
 
-        init(maxFrames: Int) {
-            listen = SearchListen(maxFrames: maxFrames)
+        init(maxFrames: Int, replyWindow: ReceiveFilter) {
+            listen = SearchListen(maxFrames: maxFrames, replyWindow: replyWindow)
         }
 
         func receive(_ event: MonitorEvent) -> Bool {
@@ -472,7 +472,8 @@ public actor JobRunner {
             // `ATCRA` alone drops the last module's exact filter, so the window below applies.
             try await sendSearchCommand("ATCRA", session: session)
             try await configureSearchWindow(search.replyWindow, session: session)
-            let state = SearchListenState(maxFrames: search.maxListenFrames)
+            let state = SearchListenState(
+                maxFrames: search.maxListenFrames, replyWindow: search.replyWindow)
             try await session.monitor(for: .milliseconds(Int64(search.listenMilliseconds))) {
                 _, event in
                 await state.receive(event)

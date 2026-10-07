@@ -50,7 +50,6 @@ struct CarSurveyReplayTests {
             name: "cx5-app-ble-vehicle-info-after-ignition", adapter: .bluetooth, prompts: []),
         Recording(name: "ghibli-app-search", adapter: .usbSerial, prompts: []),
         Recording(name: "ghibli-app-vehicle-info-after-search", adapter: .usbSerial, prompts: []),
-        Recording(name: "tiguan-app-search-busy", adapter: .usbSerial, prompts: []),
         Recording(name: "tiguan-app-vehicle-info-after-search", adapter: .usbSerial, prompts: []),
     ]
 
@@ -76,6 +75,24 @@ struct CarSurveyReplayTests {
     private static func sent(_ name: String) throws -> [String] {
         try transcript(name).filter { $0.direction == .tx }
             .map { String(decoding: $0.bytes.dropLast(), as: UTF8.self) }
+    }
+
+    private static func searchListen(_ name: String) throws -> SearchListen {
+        let events = try transcript(name)
+        let searchWrite = Array("ATMA\r".utf8)
+        guard let start = events.firstIndex(where: { $0.direction == .tx && $0.bytes == searchWrite })
+        else { throw ReplayFailure("\(name) has no ATMA") }
+        var parser = MonitorStreamParser()
+        var listen = SearchListen(
+            maxFrames: ModuleSearch.standard(over: .usbSerial).maxListenFrames,
+            replyWindow: .window(mask: 0x400, pattern: 0x400))
+        for event in events[(start + 1)...] where event.direction == .rx {
+            for monitorEvent in parser.feed(event.bytes) {
+                if case .prompt = monitorEvent { return listen }
+                if !listen.receive(monitorEvent) { return listen }
+            }
+        }
+        return listen
     }
 
     private static func survey(_ name: String) throws -> SurveyReport {
@@ -455,18 +472,24 @@ struct CarSurveyReplayTests {
         #expect(try records(0x743) == [ModuleDTCRecord(code: "407700", status: 0x08)])
     }
 
-    @Test("the Tiguan's search stopped at VW's 29-bit traffic in the reply window")
-    func tiguanSearchBusy() throws {
-        let report = try Self.survey("tiguan-app-search-busy")
-        #expect(report.detectedProtocol == .can11bit500k)
-        #expect(report.modules.count == 19)
-        let search = try #require(report.search)
+    @Test("the Tiguan's 29-bit gateway traffic does not count as search traffic")
+    func tiguanSearchListenIgnoresExtendedTraffic() throws {
+        // Keep this fixture even though its saved result no longer replays after the listen fix.
+        let listen = try Self.searchListen("tiguan-app-search-busy")
+        #expect(listen.frames == 0)
+        #expect(listen.heard.isEmpty)
+        #expect(listen.reason == nil)
+    }
+
+    @Test("the Ghibli search listen counts exactly the reply-window traffic")
+    func ghibliSearchListenCountsReplyWindowTraffic() throws {
+        let listen = try Self.searchListen("ghibli-app-search-again")
+        #expect(listen.frames > 0)
         #expect(
-            search.stopReason
-                == "The bus is busy where module replies would come, so Spia didn't search.")
-        #expect(search.sweptCount == 0)
-        // 29-bit frames from 17F00010: the 11-bit window let them through, so they count.
-        #expect(search.heardIDs == [0x17F0_0010])
+            listen.heard == [
+                0x400, 0x401, 0x402, 0x403, 0x407, 0x409, 0x422, 0x423, 0x44A, 0x44C,
+            ])
+        #expect(listen.reason == nil)
     }
 
     @Test("vehicle information after each search reset the adapter in place and read the VIN")

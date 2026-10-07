@@ -43,14 +43,21 @@ public struct SearchListen: Sendable, Equatable {
     public private(set) var frames = 0
     public private(set) var reason: String?
 
-    public init(maxFrames: Int) {
+    /// The listen counts only 11-bit frames matching the sweep's reply window. A Tiguan's
+    /// `17F00010` gateway broadcast can otherwise arrive hundreds of times a second through
+    /// `ATMA`, even though it cannot collide with an 11-bit sweep or be a reply to one.
+    public init(maxFrames: Int, replyWindow: ReceiveFilter) {
         self.maxFrames = maxFrames
+        self.replyWindow = replyWindow
     }
+
+    private let replyWindow: ReceiveFilter
 
     /// Takes one monitor event; returns false when listening should stop.
     public mutating func receive(_ event: MonitorEvent) -> Bool {
         switch event {
         case .frame(let frame):
+            guard frame.header <= 0x7FF, matchesReplyWindow(frame.header) else { return true }
             heard.insert(frame.header)
             frames += 1
             guard frames <= maxFrames else {
@@ -68,6 +75,15 @@ public struct SearchListen: Sendable, Equatable {
         case .prompt:
             reason = "The adapter stopped listening on its own, so Spia didn't search."
             return false
+        }
+    }
+
+    private func matchesReplyWindow(_ header: UInt32) -> Bool {
+        switch replyWindow {
+        case .expectedReply:
+            return true
+        case .window(let mask, let pattern):
+            return header & mask == pattern
         }
     }
 }
