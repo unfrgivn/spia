@@ -36,13 +36,27 @@ struct AssistantSettingsView: View {
                 provider: .anthropic, modelID: $assistant.settings.anthropicModel,
                 defaultModel: AnthropicProvider.defaultModel,
                 fastModel: AnthropicProvider.fastModel,
+                backgroundModelID: $assistant.settings.anthropicBackgroundModel,
                 keysURL: URL(string: "https://platform.claude.com/settings/keys"))
             ProviderKeySection(
                 provider: .openAI, modelID: $assistant.settings.openAIModel,
                 defaultModel: OpenAIProvider.defaultModel, fastModel: OpenAIProvider.fastModel,
+                backgroundModelID: $assistant.settings.openAIBackgroundModel,
                 keysURL: URL(string: "https://platform.openai.com/api-keys"))
 
             Section("Privacy") {
+                Toggle(
+                    "Pause automatic explanations and reviews",
+                    isOn: $assistant.settings.automaticWorkPaused)
+                Text(
+                    "Codes still get their public names. Nothing is sent to a model until you turn this back on."
+                )
+                .font(.caption).foregroundStyle(.secondary)
+                Text(
+                    "Spia records tokens per car; see a vehicle's settings. Prices are the provider's."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 Toggle(
                     "Include the VIN when sharing with cloud models",
                     isOn: $assistant.settings.shareVIN)
@@ -65,6 +79,7 @@ private struct ProviderKeySection: View {
     @Environment(AppModel.self) private var app
     let provider: ProviderID
     @Binding var modelID: String
+    @Binding var backgroundModelID: String
     let defaultModel: String
     let fastModel: String
     let keysURL: URL?
@@ -73,10 +88,12 @@ private struct ProviderKeySection: View {
 
     init(
         provider: ProviderID, modelID: Binding<String>, defaultModel: String, fastModel: String,
+        backgroundModelID: Binding<String>,
         keysURL: URL?
     ) {
         self.provider = provider
         _modelID = modelID
+        _backgroundModelID = backgroundModelID
         self.defaultModel = defaultModel
         self.fastModel = fastModel
         self.keysURL = keysURL
@@ -106,6 +123,16 @@ private struct ProviderKeySection: View {
                     Link("Get an API key", destination: keysURL)
                         .font(.caption)
                 }
+            }
+            LabeledContent("Explanations and reviews") {
+                Picker("Explanations and reviews", selection: $backgroundModelID) {
+                    Text("Most capable (\(defaultModel))").tag(defaultModel)
+                    Text("Faster, cheaper (\(fastModel))").tag(fastModel)
+                    if modelID != defaultModel && modelID != fastModel {
+                        Text("Same as chat (\(modelID))").tag(modelID)
+                    }
+                }
+                .labelsHidden()
             }
             LabeledContent("Model") {
                 HStack {

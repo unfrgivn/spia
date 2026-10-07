@@ -81,18 +81,52 @@ public struct AssistantSettings: Codable, Sendable, Equatable {
     public var defaultProvider: ProviderID
     public var anthropicModel: String
     public var openAIModel: String
+    public var anthropicBackgroundModel: String
+    public var openAIBackgroundModel: String
+    public var automaticWorkPaused: Bool
     /// Whether the VIN may be sent to cloud providers. Off by default.
     public var shareVIN: Bool
 
     public init(
         defaultProvider: ProviderID = .anthropic,
         anthropicModel: String = AnthropicProvider.defaultModel,
-        openAIModel: String = OpenAIProvider.defaultModel, shareVIN: Bool = false
+        openAIModel: String = OpenAIProvider.defaultModel,
+        anthropicBackgroundModel: String = AnthropicProvider.fastModel,
+        openAIBackgroundModel: String = OpenAIProvider.fastModel,
+        automaticWorkPaused: Bool = false, shareVIN: Bool = false
     ) {
         self.defaultProvider = defaultProvider
         self.anthropicModel = anthropicModel
         self.openAIModel = openAIModel
+        self.anthropicBackgroundModel = anthropicBackgroundModel
+        self.openAIBackgroundModel = openAIBackgroundModel
+        self.automaticWorkPaused = automaticWorkPaused
         self.shareVIN = shareVIN
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case defaultProvider, anthropicModel, openAIModel, anthropicBackgroundModel,
+            openAIBackgroundModel, automaticWorkPaused, shareVIN
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            defaultProvider: try values.decodeIfPresent(ProviderID.self, forKey: .defaultProvider)
+                ?? .anthropic,
+            anthropicModel: try values.decodeIfPresent(String.self, forKey: .anthropicModel)
+                ?? AnthropicProvider.defaultModel,
+            openAIModel: try values.decodeIfPresent(String.self, forKey: .openAIModel)
+                ?? OpenAIProvider.defaultModel,
+            anthropicBackgroundModel: try values.decodeIfPresent(
+                String.self, forKey: .anthropicBackgroundModel)
+                ?? AnthropicProvider.fastModel,
+            openAIBackgroundModel: try values.decodeIfPresent(
+                String.self, forKey: .openAIBackgroundModel)
+                ?? OpenAIProvider.fastModel,
+            automaticWorkPaused: try values.decodeIfPresent(Bool.self, forKey: .automaticWorkPaused)
+                ?? false,
+            shareVIN: try values.decodeIfPresent(Bool.self, forKey: .shareVIN) ?? false)
     }
 
     static let defaultsKey = "assistant.settings"
@@ -118,8 +152,28 @@ public struct AssistantSettings: Codable, Sendable, Equatable {
         }
     }
 
+    public func backgroundModel(for provider: ProviderID) -> String {
+        switch provider {
+        case .onDevice: return "Apple on-device"
+        case .anthropic: return anthropicBackgroundModel
+        case .openAI: return openAIBackgroundModel
+        }
+    }
+
     /// A ready provider, or why it can't be used.
     public func provider(_ id: ProviderID, keys: APIKeyStore) throws -> any AssistantProvider {
+        try makeProvider(id, keys: keys, model: model(for: id))
+    }
+
+    public func backgroundProvider(_ id: ProviderID, keys: APIKeyStore) throws
+        -> any AssistantProvider
+    {
+        try makeProvider(id, keys: keys, model: backgroundModel(for: id))
+    }
+
+    private func makeProvider(
+        _ id: ProviderID, keys: APIKeyStore, model: String
+    ) throws -> any AssistantProvider {
         switch id {
         case .onDevice:
             if let reason = OnDeviceProvider.unavailableReason {
@@ -130,12 +184,12 @@ public struct AssistantSettings: Codable, Sendable, Equatable {
             guard let key = try keys.key(for: .anthropic) else {
                 throw AssistantError.missingAPIKey(.anthropic)
             }
-            return AnthropicProvider(apiKey: key, model: anthropicModel)
+            return AnthropicProvider(apiKey: key, model: model)
         case .openAI:
             guard let key = try keys.key(for: .openAI) else {
                 throw AssistantError.missingAPIKey(.openAI)
             }
-            return OpenAIProvider(apiKey: key, model: openAIModel)
+            return OpenAIProvider(apiKey: key, model: model)
         }
     }
 }

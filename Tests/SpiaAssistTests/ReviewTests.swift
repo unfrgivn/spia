@@ -114,6 +114,7 @@ struct ReviewTests {
         #expect(text.contains("at most three sentences of plain prose, with no lists or headings"))
         #expect(!text.contains("SECRET"))
         #expect(request.toolChoice == .tool(ReviewTool.name))
+        #expect(request.maxOutputTokens == 900)
     }
 
     @Test(
@@ -153,9 +154,17 @@ struct ReviewTests {
             provider: provider.id,
             sharing: .init(includeVIN: false))
         var call: ToolCall?
+        var usage: TokenUsage?
         for try await event in provider.respond(to: request) {
-            if case .toolCall(let value) = event { call = value }
+            switch event {
+            case .toolCall(let value): call = value
+            case .usage(let value): usage = value
+            default: break
+            }
         }
+        // A real stream must report what it cost; the ledger depends on it.
+        let cost = try #require(usage)
+        #expect(cost.input > 0 && cost.output > 0)
         let result = try ReviewTool.parse(try #require(call), modules: modules)
         #expect(!result.reading.isEmpty)
         #expect(result.questions.count <= 3)

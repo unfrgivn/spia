@@ -121,6 +121,7 @@ public struct AnthropicProvider: AssistantProvider {
 public struct AnthropicStreamDecoder: Sendable {
     private var tools: [Int: (id: String, name: String, json: String)] = [:]
     private var stopReason: StopReason = .endTurn
+    private var inputTokens: Int?
 
     public init() {}
 
@@ -133,6 +134,11 @@ public struct AnthropicStreamDecoder: Sendable {
         }
         let index = payload["index"].flatMap(Self.integer)
         switch payload["type"]?.string ?? event.event {
+        // Anthropic's message_start carries message.usage.input_tokens. Its message_delta
+        // carries cumulative usage.output_tokens. Cache fields are intentionally ignored.
+        case "message_start":
+            inputTokens = payload["message"]?["usage"]?["input_tokens"].flatMap(Self.integer)
+            return []
         case "content_block_start":
             if let block = payload["content_block"], block["type"]?.string == "tool_use", let index,
                 let id = block["id"]?.string, let name = block["name"]?.string
@@ -169,7 +175,10 @@ public struct AnthropicStreamDecoder: Sendable {
             case let other?: stopReason = .other(other)
             case nil: break
             }
-            return []
+            guard let inputTokens,
+                let outputTokens = payload["usage"]?["output_tokens"].flatMap(Self.integer)
+            else { return [] }
+            return [.usage(TokenUsage(input: inputTokens, output: outputTokens))]
         case "message_stop":
             return [.finished(stopReason)]
         case "error":

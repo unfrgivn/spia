@@ -30,6 +30,7 @@ public final class Interpreter {
             board: vehicle.board(), stored: interpretations.codes, modules: vehicle.orderedModules)
         let work = plan.filter { !interpretations.inFlight.contains($0.target) }
         guard !work.isEmpty else { return }
+        guard !configuration.settings.automaticWorkPaused else { return }
         let providerID = configuration.settings.defaultProvider
         if providerID.isCloud && interpretations.consent == nil {
             return
@@ -39,36 +40,57 @@ public final class Interpreter {
             return
         }
         let briefing = garage.briefing(for: vehicle, adapter: adapter)
-        for item in work {
-            guard !interpretations.inFlight.contains(item.target) else { continue }
-            interpretations.begin(item.target)
-            defer { interpretations.end(item.target) }
+        for batch in InterpretationPlan.batches(work, size: 8) {
+            for item in batch { interpretations.begin(item.target) }
+            defer { batch.forEach { interpretations.end($0.target) } }
             do {
-                let provider = try configuration.settings.provider(
+                let provider = try configuration.settings.backgroundProvider(
                     providerID, keys: configuration.keys)
+                let model = configuration.settings.backgroundModel(for: providerID)
+                var usage: TokenUsage?
+                defer {
+                    if let usage {
+                        interpretations.recordUsage(
+                            usage, kind: .interpretation, provider: providerID, model: model,
+                            modules: batch.count)
+                    }
+                }
                 let request = InterpretationRequest.make(
                     briefing: briefing,
-                    module: moduleFacts(for: item, vehicle: vehicle),
-                    codes: codeInputs(for: item),
-                    nameModule: item.needsName,
+                    modules: batch.map {
+                        InterpretationModuleInput(
+                            module: moduleFacts(for: $0, vehicle: vehicle),
+                            codes: codeInputs(for: $0),
+                            nameModule: $0.needsName)
+                    },
                     provider: providerID,
                     sharing: SharingPolicy(includeVIN: configuration.settings.shareVIN))
                 var call: ToolCall?
                 for try await event in provider.respond(to: request) {
-                    if case .toolCall(let toolCall) = event,
-                        toolCall.name == InterpretationTool.name
-                    {
+                    switch event {
+                    case .usage(let value): usage = value
+                    case .toolCall(let toolCall) where toolCall.name == InterpretationTool.name:
                         call = toolCall
+                    default: break
                     }
                 }
                 guard let call else {
                     throw InterpreterError.noStructuredAnswer
                 }
-                let result = try InterpretationTool.parse(call)
-                interpretations.store(
-                    result, target: item.target, provider: providerID,
-                    model: configuration.settings.model(for: providerID),
-                    module: item.needsName ? result.module : nil)
+                let labels = batch.map(\.label)
+                let result = try InterpretationTool.parse(call, modules: labels)
+                for item in batch {
+                    let codes = result.codes.filter {
+                        $0.module?.caseInsensitiveCompare(item.label) == .orderedSame
+                            || ($0.module == nil && item.target == nil)
+                    }
+                    let module = item.needsName && batch.count == 1 ? result.module : nil
+                    interpretations.store(
+                        InterpretationResult(codes: codes, module: module), target: item.target,
+                        provider: providerID,
+                        model: model,
+                        module: item.needsName ? module : nil)
+                }
                 interpretations.lastError = nil
             } catch {
                 interpretations.lastError = "Code explanation failed: \(error.readable)."
@@ -83,6 +105,7 @@ public final class Interpreter {
 
     public func review(_ vehicle: Vehicle, adapter: AdapterStatus?) async {
         let interpretations = interpretations(for: vehicle)
+        guard !configuration.settings.automaticWorkPaused else { return }
         let carBriefing = garage.briefing(for: vehicle, adapter: adapter)
         let scopes: [(ReviewScope, ReviewRequest.Scope, String)] =
             [
@@ -113,8 +136,17 @@ public final class Interpreter {
             interpretations.beginReview(scope)
             defer { interpretations.endReview(scope) }
             do {
-                let provider = try configuration.settings.provider(
+                let provider = try configuration.settings.backgroundProvider(
                     providerID, keys: configuration.keys)
+                let model = configuration.settings.backgroundModel(for: providerID)
+                var usage: TokenUsage?
+                defer {
+                    if let usage {
+                        interpretations.recordUsage(
+                            usage, kind: .review, provider: providerID, model: model, modules: 0,
+                            scope: scope)
+                    }
+                }
                 let request = ReviewRequest.make(
                     briefing: carBriefing, scope: requestScope, answered: answered,
                     codes: reviewCodes(for: vehicle.board()),
@@ -123,15 +155,18 @@ public final class Interpreter {
                     sharing: SharingPolicy(includeVIN: configuration.settings.shareVIN))
                 var call: ToolCall?
                 for try await event in provider.respond(to: request) {
-                    if case .toolCall(let toolCall) = event, toolCall.name == ReviewTool.name {
+                    switch event {
+                    case .usage(let value): usage = value
+                    case .toolCall(let toolCall) where toolCall.name == ReviewTool.name:
                         call = toolCall
+                    default: break
                     }
                 }
                 guard let call else { throw InterpreterError.noStructuredAnswer }
                 let result = try ReviewTool.parse(call, modules: carBriefing.modules.map(\.label))
                 interpretations.storeReview(
                     result, scope: scope, inputs: inputs, provider: providerID,
-                    model: configuration.settings.model(for: providerID),
+                    model: model,
                     modules: vehicle.assistantModules)
                 interpretations.lastError = nil
             } catch {

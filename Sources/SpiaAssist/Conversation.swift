@@ -62,6 +62,17 @@ public struct ToolResult: Codable, Sendable, Equatable {
     }
 }
 
+/// Token counts reported by a provider for one completed request.
+public struct TokenUsage: Sendable, Equatable {
+    public let input: Int
+    public let output: Int
+
+    public init(input: Int, output: Int) {
+        self.input = input
+        self.output = output
+    }
+}
+
 public enum MessagePart: Codable, Sendable, Equatable {
     case text(String)
     case image(ImageInput)
@@ -114,6 +125,7 @@ public enum StopReason: Sendable, Equatable {
 public enum AssistantEvent: Sendable, Equatable {
     case text(String)
     case toolCall(ToolCall)
+    case usage(TokenUsage)
     case finished(StopReason)
 }
 

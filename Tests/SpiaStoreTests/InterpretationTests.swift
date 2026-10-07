@@ -37,8 +37,44 @@ struct InterpretationTests {
         let loaded = VehicleInterpretations(vehicleID: vehicle.id, files: files)
         #expect(loaded.consent?.provider == .anthropic)
         #expect(loaded.codes.first?.meaning == "A body fault.")
+        cache.recordUsage(
+            TokenUsage(input: 100, output: 20), kind: .interpretation, provider: .anthropic,
+            model: "test", modules: 2)
+        let usageLoaded = VehicleInterpretations(vehicleID: vehicle.id, files: files)
+        #expect(usageLoaded.usage.count == 1)
+        #expect(usageLoaded.usage.first?.input == 100)
         loaded.withdraw()
         #expect(loaded.consent == nil)
+    }
+
+    @Test("old interpretation files decode without a usage key")
+    func oldFileDecodes() throws {
+        let vehicle = try garage.addVehicle(name: "Old file")
+        let url = garage.files.interpretationsURL(vehicle: vehicle.id)
+        let data = Data(#"{"codes":[],"modules":[],"reviews":[],"consent":null}"#.utf8)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: url)
+        #expect(VehicleInterpretations(vehicleID: vehicle.id, files: garage.files).usage.isEmpty)
+    }
+
+    @Test("usage summary groups totals by model and recent date")
+    func usageSummary() throws {
+        let vehicle = try garage.addVehicle(name: "Summary")
+        let cache = VehicleInterpretations(vehicleID: vehicle.id, files: garage.files)
+        cache.recordUsage(
+            TokenUsage(input: 10, output: 4), kind: .interpretation, provider: .anthropic,
+            model: "haiku", modules: 1)
+        cache.recordUsage(
+            TokenUsage(input: 20, output: 8), kind: .review, provider: .anthropic,
+            model: "haiku", modules: 0, scope: .car)
+        cache.recordUsage(
+            TokenUsage(input: 30, output: 12), kind: .interpretation, provider: .openAI,
+            model: "gpt", modules: 2)
+        let summary = cache.usageSummary
+        #expect(summary.total == UsageTotals(requests: 3, input: 60, output: 24))
+        #expect(summary.byModel["haiku"] == UsageTotals(requests: 2, input: 30, output: 12))
+        #expect(summary.last30Days == summary.total)
     }
 
     @Test("car briefing includes open problems and interpretations")
@@ -67,6 +103,63 @@ struct InterpretationTests {
         let interpreter = Interpreter(configuration: configuration, garage: garage)
         await interpreter.catchUp(vehicle, adapter: nil)
         #expect(interpreter.interpretations(for: vehicle).lastError == nil)
+    }
+
+    @Test("automatic work pauses without an error, request, or stored result")
+    func pausedAutomaticWork() async throws {
+        let vehicle = try garage.addDemoVehicle()
+        let defaults = UserDefaults(suiteName: "spia-paused-\(UUID().uuidString)")!
+        let configuration = AssistantConfiguration(
+            keys: APIKeyStore(service: "spia-paused-\(UUID().uuidString)"), defaults: defaults)
+        configuration.settings.automaticWorkPaused = true
+        let interpreter = Interpreter(configuration: configuration, garage: garage)
+        let cache = interpreter.interpretations(for: vehicle)
+        cache.allow(.anthropic)
+        await interpreter.refresh(vehicle, adapter: nil)
+        let result = interpreter.interpretations(for: vehicle)
+        #expect(result.lastError == nil)
+        #expect(result.inFlight.isEmpty)
+        #expect(result.reviewInFlight.isEmpty)
+        #expect(result.codes.isEmpty)
+        #expect(result.reviews.isEmpty)
+    }
+
+    @Test("eleven interpretation modules form sequential batches of eight and three")
+    func interpretationBatches() async throws {
+        let vehicle = try garage.addVehicle(name: "Batch test car")
+        let session = try garage.addSession(to: vehicle, title: "Batch test")
+        for index in 0..<11 {
+            let target = try ModuleTarget(
+                bus: .highSpeed, request: UInt32(0x700 + index), response: UInt32(0x600 + index))
+            vehicle.modules.append(
+                ModulePreset(
+                    label: "Module \(index)", target: target, position: index, confirmed: true))
+            try garage.record(
+                JobResult(
+                    job: .moduleDTCs(target),
+                    payload: .moduleDTCs(
+                        ModuleDTCs(
+                            target: target,
+                            outcome: .records(
+                                availability: 0xFF,
+                                [ModuleDTCRecord(code: "100900", status: 0x08)]))),
+                    source: .live, transcript: nil),
+                warnings: [], transcriptPath: nil, for: vehicle, in: session)
+        }
+        let plan = InterpretationPlan.missing(
+            board: vehicle.board(), stored: [], modules: vehicle.orderedModules)
+        #expect(plan.count == 11)
+        let work = plan
+        let configuration = AssistantConfiguration(
+            keys: APIKeyStore(service: "spia-batch-\(UUID().uuidString)"))
+        let interpreter = Interpreter(configuration: configuration, garage: garage)
+        interpreter.interpretations(for: vehicle).allow(.anthropic)
+        await interpreter.catchUp(vehicle, adapter: nil)
+        #expect(interpreter.interpretations(for: vehicle).lastError != nil)
+        let batches = InterpretationPlan.batches(work, size: 8)
+        #expect(batches.map(\.count) == [8, 3])
+        #expect(batches[0].first?.label == plan[0].label)
+        #expect(batches[1].first?.label == plan[8].label)
     }
 
     @Test("the plan finds new airbag and body computer codes")
