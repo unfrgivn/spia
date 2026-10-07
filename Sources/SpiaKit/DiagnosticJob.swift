@@ -1,33 +1,54 @@
 import OBDCore
 
-/// A diagnostic module addressed with 11-bit IDs, e.g. the Ghibli's airbag controller at
-/// request `744`, reply `4C4`. Reply IDs are not always request + 8 on manufacturer modules,
-/// so both are stored explicitly.
+/// A diagnostic module addressed with either standard 11-bit IDs or normal-fixed 29-bit IDs.
+/// Reply IDs are not always request + 8 on manufacturer modules, so both are stored explicitly.
 public struct ModuleTarget: Codable, Sendable, Hashable {
     public let bus: CANBus
     public let request: UInt32
     public let response: UInt32
+    public var isExtended: Bool { request > 0x7FF }
     /// UDS status mask for ReadDTCInformation 19 02. `09` = failing now or confirmed.
     public let statusMask: UInt8
 
     public enum Invalid: Error, Equatable, Sendable, CustomStringConvertible {
-        case notElevenBit(UInt32)
+        case invalidCANID(UInt32)
+        case mixedAddressWidth(request: UInt32, response: UInt32)
+        case extendedOnMediumSpeed
         case functionalBroadcast
+        case extendedFunctionalBroadcast
         case sameRequestAndResponse
 
         public var description: String {
             switch self {
-            case .notElevenBit(let id): return String(format: "%X is not an 11-bit CAN ID", id)
+            case .invalidCANID(let id): return String(format: "%X is not a valid CAN ID", id)
+            case .mixedAddressWidth(let request, let response):
+                return String(
+                    format: "request %X and reply %X must use the same CAN ID width", request,
+                    response)
+            case .extendedOnMediumSpeed:
+                return "29-bit module addresses are only supported on the 500k bus"
             case .functionalBroadcast: return "7DF is the broadcast ID, not a module"
+            case .extendedFunctionalBroadcast:
+                return "18DB33F1 is the functional broadcast ID, not a module"
             case .sameRequestAndResponse: return "request and reply IDs must differ"
             }
         }
     }
 
     public init(bus: CANBus, request: UInt32, response: UInt32, statusMask: UInt8 = 0x09) throws {
-        for id in [request, response] where id > 0x7FF { throw Invalid.notElevenBit(id) }
-        guard request != 0x7DF else { throw Invalid.functionalBroadcast }
         guard request != response else { throw Invalid.sameRequestAndResponse }
+        for id in [request, response] where id > 0x1FFF_FFFF { throw Invalid.invalidCANID(id) }
+        let requestIsExtended = request > 0x7FF
+        guard requestIsExtended == (response > 0x7FF) else {
+            throw Invalid.mixedAddressWidth(request: request, response: response)
+        }
+        guard request != 0x7DF, response != 0x7DF else { throw Invalid.functionalBroadcast }
+        guard request != 0x18DB_33F1, response != 0x18DB_33F1 else {
+            throw Invalid.extendedFunctionalBroadcast
+        }
+        guard !requestIsExtended || bus == .highSpeed else {
+            throw Invalid.extendedOnMediumSpeed
+        }
         self.bus = bus
         self.request = request
         self.response = response
@@ -56,18 +77,23 @@ public struct ModuleTarget: Codable, Sendable, Hashable {
     /// Adapter setup that precedes the flow-control configuration. Sent exactly as listed and
     /// each must answer `OK`. This is the order proven on the car.
     public var setupCommands: [String] {
-        [bus.protocolCommand(extended: false), "ATST 64", "ATCFC 1"]
+        [bus.protocolCommand(extended: isExtended), "ATST 64", "ATCFC 1"]
     }
 
     /// What `ELM327Session.configureDiagnosticHeaders` sends for this target.
     public var headerCommands: [String] {
         [
-            String(format: "ATSH %03X", request), String(format: "ATCRA %03X", response),
-            "ATFCSD 30 00 00", String(format: "ATFCSH %03X", request), "ATFCSM 1",
+            String(format: "ATSH %0\(isExtended ? 8 : 3)X", request),
+            String(format: "ATCRA %0\(isExtended ? 8 : 3)X", response),
+            "ATFCSD 30 00 00",
+            String(format: "ATFCSH %0\(isExtended ? 8 : 3)X", request), "ATFCSM 1",
         ]
     }
 
     public var readCommand: String { String(format: "1902%02X", statusMask) }
+
+    /// What a module is called until something names it: its request ID.
+    public var fallbackLabel: String { String(format: "Module %03X", request) }
 }
 
 /// What the car has to be doing for a check to work.
@@ -84,6 +110,7 @@ public enum DiagnosticJob: Codable, Sendable, Hashable {
     case vehicleInfo
     case genericScan
     case moduleDTCs(ModuleTarget)
+    case survey(SurveyPlan)
 
     public var id: String {
         switch self {
@@ -94,6 +121,7 @@ public enum DiagnosticJob: Codable, Sendable, Hashable {
             return String(
                 format: "module-dtcs-%@-%03X-%03X", target.bus.rawValue, target.request,
                 target.response)
+        case .survey: return "survey"
         }
     }
 
@@ -103,6 +131,7 @@ public enum DiagnosticJob: Codable, Sendable, Hashable {
         case .vehicleInfo: return "Read vehicle information"
         case .genericScan: return "Scan for engine and transmission codes"
         case .moduleDTCs: return "Read module trouble codes"
+        case .survey: return "Survey the car"
         }
     }
 
@@ -117,13 +146,15 @@ public enum DiagnosticJob: Codable, Sendable, Hashable {
             return "Reads the standard emissions codes, readiness monitors, and freeze frame."
         case .moduleDTCs:
             return "Asks one module, such as the airbag controller, for its trouble codes."
+        case .survey:
+            return "Finds the car's diagnostic modules, asks what they are, and reads their codes."
         }
     }
 
     public var requirement: VehicleRequirement {
         switch self {
         case .adapterCheck: return .none
-        case .vehicleInfo, .genericScan, .moduleDTCs: return .ignitionOn
+        case .vehicleInfo, .genericScan, .moduleDTCs, .survey: return .ignitionOn
         }
     }
 
@@ -142,6 +173,7 @@ public enum DiagnosticJob: Codable, Sendable, Hashable {
                 ]).map(\.hex)
         case .moduleDTCs(let target):
             return ["ATRV"] + target.setupCommands + target.headerCommands + [target.readCommand]
+        case .survey(let plan): return plan.plannedCommands
         }
     }
 }

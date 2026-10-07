@@ -61,7 +61,8 @@ struct AssistantConversationTests {
     @Test("the briefing carries the modules and each result, marked as from a recording")
     func briefing() async throws {
         let (_, session, workbench) = try await demo()
-        await workbench.run(.moduleDTCs(DemoGarage.airbag.target), in: session)
+        await workbench.run(
+            .moduleDTCs(DemoGarage.airbag.target), for: session.vehicle!, in: session)
 
         let briefing = garage.briefing(for: session, adapter: workbench.connection.status)
 
@@ -72,7 +73,8 @@ struct AssistantConversationTests {
         #expect(airbag.bus == "hs")
         #expect(!airbag.labelConfirmed)
         let event = try #require(briefing.events.last)
-        #expect(event.summary == "2 codes: 80011B, 80021B · 2 failing now")
+        #expect(event.summary == "2 codes: B0001-1B, B0002-1B · 2 failing now")
+        #expect(event.codes.contains("B0001-1B (Driver Frontal Stage 1 Deployment Control)"))
         #expect(event.fromRecording)
         guard case .moduleDTCs(let dtcs) = event.result else {
             Issue.record("expected module codes")
@@ -93,8 +95,8 @@ struct AssistantConversationTests {
 
         #expect(
             message.resolutions["toolu_1"]
-                == .completed(summary: "2 codes: 80011B, 80021B · 2 failing now"))
-        #expect(session.timeline.last?.body == "2 codes: 80011B, 80021B · 2 failing now")
+                == .completed(summary: "2 codes: B0001-1B, B0002-1B · 2 failing now"))
+        #expect(session.timeline.last?.body == "2 codes: B0001-1B, B0002-1B · 2 failing now")
         let result = try #require(session.conversation.last)
         #expect(result.role == .user && result.isToolResultsOnly)
         guard case .toolResult(let toolResult) = result.parts.first else {
@@ -137,7 +139,7 @@ struct AssistantConversationTests {
 
         conversation.send("The horn is dead", using: .openAI)
         #expect(session.messages.isEmpty)
-        #expect(conversation.error?.contains("Allow this session's data") == true)
+        #expect(conversation.error?.contains("Allow this problem's data") == true)
 
         conversation.allowCloudSharing()
         #expect(session.cloudSharingAllowed)

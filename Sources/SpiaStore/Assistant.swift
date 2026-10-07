@@ -5,16 +5,62 @@ import SpiaKit
 import SpiaReference
 
 extension Garage {
-    /// What the assistant is told about `session`: the vehicle, the problem, its modules, and
-    /// every note and check result so far.
+    /// What the assistant is told about `session`: the vehicle, the problem, its modules, the
+    /// problem's own notes and readings, and the newest reading of every other part of the car at
+    /// the problem's point in time.
     public func briefing(for session: DiagnosticSession, adapter: AdapterStatus?) -> SessionBriefing
     {
         let vehicle = session.vehicle
-        return SessionBriefing(
+        let cutoff = session.closedAt ?? .now
+        var entries = session.timeline
+        var entryIDs = Set(entries.map(\.id))
+        if let vehicle {
+            let subjects =
+                [.engine]
+                + vehicle.orderedModules.compactMap { preset in
+                    preset.target.map(SessionBoard.Subject.module)
+                } + [.battery]
+            for subject in subjects {
+                guard let reading = vehicle.history(for: subject, asOf: cutoff).readings.first,
+                    !entryIDs.contains(reading.id), let entry = vehicle.entry(for: reading)
+                else { continue }
+                entries.append(entry)
+                entryIDs.insert(entry.id)
+            }
+        }
+        entries.sort { $0.date < $1.date }
+        return makeBriefing(
+            vehicle: vehicle, problem: session.problem, adapter: adapter, entries: entries,
+            reviewScope: session.id)
+    }
+
+    /// What the assistant is told about the whole car, including its open problems and latest readings.
+    public func briefing(for vehicle: Vehicle, adapter: AdapterStatus?) -> SessionBriefing {
+        let subjects = vehicle.board().rows.map(\.subject)
+        var entries: [TimelineEntry] = []
+        var entryIDs = Set<UUID>()
+        for subject in subjects {
+            guard let reading = vehicle.history(for: subject).readings.first,
+                let entry = vehicle.entry(for: reading), entryIDs.insert(entry.id).inserted
+            else { continue }
+            entries.append(entry)
+        }
+        let problem = vehicle.sessions
+            .filter { $0.status == .open }
+            .map { "\($0.title): \($0.problem)" }
+            .joined(separator: "\n")
+        return makeBriefing(vehicle: vehicle, problem: problem, adapter: adapter, entries: entries)
+    }
+
+    private func makeBriefing(
+        vehicle: Vehicle?, problem: String, adapter: AdapterStatus?, entries: [TimelineEntry],
+        reviewScope: UUID? = nil
+    ) -> SessionBriefing {
+        SessionBriefing(
             vehicle: .init(
                 name: vehicle?.name ?? "Unnamed vehicle", vin: vehicle?.vin,
                 notes: vehicle?.notes ?? ""),
-            problem: session.problem,
+            problem: problem,
             modules: (vehicle?.orderedModules ?? []).compactMap { preset in
                 guard let target = preset.target else { return nil }
                 return .init(
@@ -24,19 +70,92 @@ extension Garage {
                 )
             },
             adapter: adapter,
-            events: session.timeline.map { entry in
-                let result = entry.result
-                let fromRecording: Bool
-                if case .recording = result?.source {
-                    fromRecording = true
-                } else {
-                    fromRecording = false
+            events: entries.sorted { $0.date < $1.date }.map(event),
+            references: vehicle.flatMap(references(for:)).flatMap(Self.facts),
+            interpretations: vehicle.map { interpretationLines(for: $0) } ?? [],
+            reviews: vehicle.map { reviewLines(for: $0, scope: reviewScope) } ?? [])
+    }
+
+    private func event(_ entry: TimelineEntry) -> SessionBriefing.Event {
+        let result = entry.result
+        let fromRecording: Bool
+        if case .recording = result?.source {
+            fromRecording = true
+        } else if case .replay = result?.source {
+            fromRecording = true
+        } else {
+            fromRecording = false
+        }
+        let summary: String
+        if case .replay(let recorded) = result?.source {
+            summary =
+                "Replayed from a recording of this car made on "
+                + recorded.formatted(date: .abbreviated, time: .omitted) + ". " + entry.body
+        } else {
+            summary = entry.body
+        }
+        return .init(
+            date: entry.date, kind: entry.kindRaw, title: entry.title, summary: summary,
+            result: result?.payload, codes: namedCodes(in: result?.payload),
+            fromRecording: fromRecording, warnings: entry.warnings)
+    }
+
+    private func interpretationLines(for vehicle: Vehicle) -> [String] {
+        let stored = VehicleInterpretations(vehicleID: vehicle.id, files: files)
+        return stored.codes.map { item in
+            let module =
+                item.target.map { target in
+                    vehicle.orderedModules.first { $0.target == target }?.label ?? "Module"
+                } ?? "Engine"
+            return "\(module), \(item.code), \(item.name): \(item.meaning)"
+        }
+    }
+
+    private func reviewLines(for vehicle: Vehicle, scope: UUID? = nil) -> [String] {
+        let stored = VehicleInterpretations(vehicleID: vehicle.id, files: files)
+        return stored.reviews.filter { review in
+            switch review.scope {
+            case .car: return true
+            case .problem(let id): return scope == nil || id == scope
+            }
+        }.flatMap { review in
+            ["Review: \(review.reading)"]
+                + review.questions.map { question in
+                    let answer = question.answer.map { " Answer: \($0)" } ?? " Open question."
+                    return "Question: \(question.text).\(answer)"
                 }
-                return .init(
-                    date: entry.date, kind: entry.kindRaw, title: entry.title, summary: entry.body,
-                    result: result?.payload, fromRecording: fromRecording, warnings: entry.warnings)
-            },
-            references: vehicle.flatMap(references(for:)).flatMap(Self.facts))
+        }
+    }
+
+    private func namedCodes(in payload: JobPayload?) -> [String] {
+        let rawCodes: [String]
+        switch payload {
+        case .genericScan(let reports):
+            rawCodes = reports.flatMap { report in
+                [report.stored, report.pending, report.permanent].compactMap(\.value).flatMap { $0 }
+            }
+        case .moduleDTCs(let module):
+            if case .records(_, let records) = module.outcome {
+                rawCodes = records.map(\.code)
+            } else {
+                rawCodes = []
+            }
+        case .survey(let report):
+            rawCodes = report.modules.flatMap { module in
+                guard case .outcome(.records(_, let records)) = module.codes else {
+                    return [String]()
+                }
+                return records.map(\.code)
+            }
+        default:
+            rawCodes = []
+        }
+        let catalog = CodeCatalog.bundledCatalog
+        return Array(Set(rawCodes)).sorted().map { raw in
+            guard let name = CodeName(raw) else { return raw }
+            let title = catalog?.entry(for: name)?.title
+            return title.map { "\(name.printed) (\($0))" } ?? name.printed
+        }
     }
 
     /// What the assistant is told about the vehicle's public records.
@@ -179,7 +298,7 @@ public final class AssistantConversation {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !isResponding, !isCheckRunning, !trimmed.isEmpty || !photos.isEmpty else { return }
         guard !needsConsent(for: provider) else {
-            error = "Allow this session's data to be shared with \(provider.displayName) first."
+            error = "Allow this problem's data to be shared with \(provider.displayName) first."
             return
         }
         // Tool results first: providers require them to follow the calls they answer.
@@ -211,7 +330,11 @@ public final class AssistantConversation {
         }
         message.resolutions[callID] = .running
         save()
-        let outcome = await workbench.run(job, in: session)
+        guard let vehicle = session.vehicle else {
+            error = "This problem has no vehicle."
+            return
+        }
+        let outcome = await workbench.run(job, for: vehicle, in: session)
         guard let (resolution, result) = Self.feedback(for: outcome, callID: callID) else {
             message.resolutions[callID] = .pending
             error = "Another check is running. Approve this one when it finishes."
@@ -517,6 +640,11 @@ public final class AssistantConversation {
             var content = summary
             if case .recording(let name) = result.source {
                 content = "From the demo recording \"\(name)\", not a live car. " + content
+            } else if case .replay(let recorded) = result.source {
+                content =
+                    "Replayed from a recording of this car made on "
+                    + recorded.formatted(date: .abbreviated, time: .omitted)
+                    + ", not a new reading. " + content
             }
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]

@@ -13,8 +13,8 @@ struct UDSDTCs: AsyncParsableCommand {
 
     @OptionGroup var global: GlobalOptions
     @Option var bus: CANBus = .highSpeed
-    @Option(help: "11-bit request CAN ID, hexadecimal.") var tx: String
-    @Option(help: "11-bit response CAN ID, hexadecimal.") var rx: String
+    @Option(help: "11-bit or 29-bit request CAN ID, hexadecimal.") var tx: String
+    @Option(help: "11-bit or 29-bit response CAN ID, hexadecimal.") var rx: String
     @Option(help: "One-byte UDS status mask, hexadecimal (default: 09).") var statusMask = "09"
     @Option(help: "Finite transaction timeout in seconds (default: 10, maximum: 120).")
     var timeout = 10.0
@@ -22,6 +22,23 @@ struct UDSDTCs: AsyncParsableCommand {
     func run() async throws {
         let requestHeader = try parseHeader(tx, name: "--tx")
         let responseHeader = try parseHeader(rx, name: "--rx")
+        let extended = requestHeader > 0x7FF
+        guard extended == (responseHeader > 0x7FF) else {
+            throw ValidationError(
+                "--tx and --rx must use the same width: each must be an 11-bit hexadecimal CAN ID or both 29-bit"
+            )
+        }
+        guard !extended || bus == .highSpeed else {
+            throw ValidationError("29-bit module addresses are only supported on the 500k bus")
+        }
+        guard requestHeader != responseHeader else {
+            throw ValidationError("--tx and --rx must differ")
+        }
+        guard requestHeader != 0x7DF, responseHeader != 0x7DF,
+            requestHeader != 0x18DB_33F1, responseHeader != 0x18DB_33F1
+        else {
+            throw ValidationError("functional broadcast IDs cannot be module addresses")
+        }
         let mask = try parseByte(statusMask, name: "--status-mask")
         guard timeout.isFinite, timeout > 0, timeout <= 120 else {
             throw ValidationError("--timeout must be finite, positive, and at most 120 seconds")
@@ -29,7 +46,7 @@ struct UDSDTCs: AsyncParsableCommand {
 
         try await Connection.with(global) { connection in
             let session = connection.session
-            let protocolCommand = bus.protocolCommand(extended: false)
+            let protocolCommand = bus.protocolCommand(extended: extended)
             let protocolResponse = try await session.send(protocolCommand)
             guard protocolResponse.contains("OK") else {
                 throw ELM327Error.unexpectedResponse(
@@ -51,8 +68,8 @@ struct UDSDTCs: AsyncParsableCommand {
     }
 
     private func parseHeader(_ value: String, name: String) throws -> UInt32 {
-        guard let parsed = UInt32(value, radix: 16), parsed <= 0x7FF else {
-            throw ValidationError("\(name) must be an 11-bit hexadecimal CAN ID")
+        guard let parsed = UInt32(value, radix: 16), parsed <= 0x1FFF_FFFF else {
+            throw ValidationError("\(name) must be an 11-bit or 29-bit hexadecimal CAN ID")
         }
         return parsed
     }

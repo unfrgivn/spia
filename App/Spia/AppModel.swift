@@ -1,4 +1,5 @@
 import Foundation
+import OBDCore
 import Observation
 import SpiaAssist
 import SpiaKit
@@ -19,17 +20,31 @@ final class AppModel {
     let container: ModelContainer
     let garage: Garage
     let assistant: AssistantConfiguration
+    let interpreter: Interpreter
+    let replayTiming: ReplayTiming
     private var workbenches: [UUID: Workbench] = [:]
+    private var recordingWorkbenches: [UUID: Workbench] = [:]
+    private var recordingsActive: Set<UUID> = []
     private var conversations: [UUID: AssistantConversation] = [:]
     private var referenceSets: [UUID: VehicleReferences] = [:]
+    /// Loaded on first use. Not observed: building a plan while a menu is drawn fills it in, and
+    /// that must not count as a change to redraw for.
+    @ObservationIgnored private var surveyCatalog: ModuleCatalog?
+    @ObservationIgnored private var surveyCatalogError: String?
+    private let savedChecksProvider: (() -> [SavedCheck])?
 
     init(
         container: ModelContainer, files: SpiaFiles,
-        assistant: AssistantConfiguration = AssistantConfiguration()
+        assistant: AssistantConfiguration = AssistantConfiguration(),
+        replayTiming: ReplayTiming = .recorded,
+        savedChecksProvider: (() -> [SavedCheck])? = nil
     ) {
         self.container = container
         self.assistant = assistant
+        self.replayTiming = replayTiming
+        self.savedChecksProvider = savedChecksProvider
         garage = Garage(context: container.mainContext, files: files)
+        interpreter = Interpreter(configuration: assistant, garage: garage)
     }
 
     static func live() throws -> AppModel {
@@ -40,10 +55,61 @@ final class AppModel {
     /// The workbench for the vehicle's primary adapter, created on first use.
     func workbench(for vehicle: Vehicle) -> Workbench? {
         guard let profile = vehicle.adapters.first else { return nil }
+        if recordingsActive.contains(vehicle.id) {
+            return recordingWorkbenches[vehicle.id]
+        }
         if let existing = workbenches[profile.id] { return existing }
-        let workbench = Workbench(backend: Self.backend(for: profile), garage: garage)
+        let workbench = Workbench(
+            backend: Self.backend(for: profile, replayTiming: replayTiming), garage: garage)
         workbenches[profile.id] = workbench
         return workbench
+    }
+
+    func savedChecks(for vehicle: Vehicle) -> [SavedCheck] {
+        #if DEBUG
+            savedChecksProvider?() ?? garage.savedChecks(for: vehicle)
+        #else
+            garage.savedChecks(for: vehicle)
+        #endif
+    }
+
+    func useRecordings(for vehicle: Vehicle) async -> Workbench? {
+        guard let profile = vehicle.adapters.first else { return nil }
+        let checks = savedChecks(for: vehicle)
+        guard !checks.isEmpty else { return nil }
+        if let existing = recordingWorkbenches[vehicle.id] {
+            recordingsActive.insert(vehicle.id)
+            return existing
+        }
+        if let existing = workbenches.removeValue(forKey: profile.id) {
+            await existing.disconnect()
+        }
+        return prepareRecordings(for: vehicle, checks: checks)
+    }
+
+    func prepareRecordings(for vehicle: Vehicle) -> Workbench? {
+        let checks = savedChecks(for: vehicle)
+        guard !checks.isEmpty else { return nil }
+        return prepareRecordings(for: vehicle, checks: checks)
+    }
+
+    private func prepareRecordings(for vehicle: Vehicle, checks: [SavedCheck]) -> Workbench {
+        let workbench = Workbench(
+            backend: ReplayBackend(
+                displayName: "Saved recordings", checks: checks, timing: replayTiming),
+            garage: garage)
+        recordingWorkbenches[vehicle.id] = workbench
+        recordingsActive.insert(vehicle.id)
+        return workbench
+    }
+
+    func useProfile(for vehicle: Vehicle) async -> Workbench? {
+        guard vehicle.adapters.first != nil else { return nil }
+        recordingsActive.remove(vehicle.id)
+        if let existing = recordingWorkbenches.removeValue(forKey: vehicle.id) {
+            await existing.disconnect()
+        }
+        return workbench(for: vehicle)
     }
 
     func conversation(for session: DiagnosticSession) -> AssistantConversation {
@@ -61,6 +127,37 @@ final class AppModel {
         return references
     }
 
+    func surveyPlan(
+        for vehicle: Vehicle, workbench: Workbench, search: Bool = false
+    ) throws -> SurveyPlan {
+        let catalog: ModuleCatalog
+        if let surveyCatalog {
+            catalog = surveyCatalog
+        } else if let surveyCatalogError {
+            throw SurveySetupError(surveyCatalogError)
+        } else {
+            do {
+                catalog = try ModuleCatalog.bundled()
+                surveyCatalog = catalog
+            } catch {
+                let message = "The vehicle survey catalog couldn't be loaded: \(error.readable)"
+                surveyCatalogError = message
+                throw SurveySetupError(message)
+            }
+        }
+        let identity = references(for: vehicle).identity
+        return try SurveyPlanner.plan(
+            catalog: catalog,
+            vehicle: identity.map(CatalogVehicle.init),
+            reachableBuses: SurveyPlanner.reachableBuses(for: workbench.connection.status),
+            savedModules: vehicle.orderedModules.compactMap { module in
+                module.target.map {
+                    ModuleChoice(target: $0, label: module.label, confirmed: module.confirmed)
+                }
+            },
+            search: search ? ModuleSearch.standard(over: workbench.adapter.kind) : nil)
+    }
+
     func delete(_ session: DiagnosticSession) throws {
         conversations.removeValue(forKey: session.id)?.stop()
         try garage.delete(session)
@@ -68,6 +165,8 @@ final class AppModel {
 
     func delete(_ vehicle: Vehicle) throws {
         for session in vehicle.sessions { conversations.removeValue(forKey: session.id)?.stop() }
+        recordingsActive.remove(vehicle.id)
+        recordingWorkbenches.removeValue(forKey: vehicle.id)
         referenceSets.removeValue(forKey: vehicle.id)
         try garage.delete(vehicle)
     }
@@ -79,10 +178,12 @@ final class AppModel {
         }
     }
 
-    private static func backend(for profile: AdapterProfile) -> any DiagnosticsBackend {
+    private static func backend(
+        for profile: AdapterProfile, replayTiming: ReplayTiming
+    ) -> any DiagnosticsBackend {
         switch profile.kind {
         case .demo:
-            return DemoBackend()
+            return DemoBackend(timing: replayTiming)
         case .usbSerial:
             #if os(iOS)
                 return LiveBackend(adapter: profile.descriptor, baud: profile.baud) {
@@ -130,4 +231,12 @@ enum AdapterSetupError: Error, CustomStringConvertible {
                 "USB adapters work with Spia on a Mac. iPhone and iPad need a Bluetooth LE adapter such as the vLinker FS in BLE+BT mode."
         }
     }
+}
+
+private struct SurveySetupError: Error, CustomStringConvertible {
+    let message: String
+
+    init(_ message: String) { self.message = message }
+
+    var description: String { message }
 }

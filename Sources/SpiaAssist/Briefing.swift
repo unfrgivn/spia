@@ -42,11 +42,13 @@ public struct SessionBriefing: Codable, Sendable, Equatable {
         public var title: String
         public var summary: String
         public var result: JobPayload?
+        public var codes: [String]
         public var fromRecording: Bool
         public var warnings: [String]
 
         public init(
             date: Date, kind: String, title: String, summary: String, result: JobPayload?,
+            codes: [String] = [],
             fromRecording: Bool,
             warnings: [String]
         ) {
@@ -55,6 +57,7 @@ public struct SessionBriefing: Codable, Sendable, Equatable {
             self.title = title
             self.summary = summary
             self.result = result
+            self.codes = codes
             self.fromRecording = fromRecording
             self.warnings = warnings
         }
@@ -106,10 +109,13 @@ public struct SessionBriefing: Codable, Sendable, Equatable {
     public var adapter: AdapterStatus?
     public var events: [Event]
     public var references: ReferenceFacts?
+    public var interpretations: [String]
+    public var reviews: [String]
 
     public init(
         vehicle: VehicleFacts, problem: String, modules: [ModuleFacts], adapter: AdapterStatus?,
-        events: [Event], references: ReferenceFacts? = nil
+        events: [Event], references: ReferenceFacts? = nil, interpretations: [String] = [],
+        reviews: [String] = []
     ) {
         self.vehicle = vehicle
         self.problem = problem
@@ -117,6 +123,8 @@ public struct SessionBriefing: Codable, Sendable, Equatable {
         self.adapter = adapter
         self.events = events
         self.references = references
+        self.interpretations = interpretations
+        self.reviews = reviews
     }
 }
 

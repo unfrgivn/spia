@@ -8,22 +8,23 @@ struct CaseFile: View {
     let session: DiagnosticSession
     let layout: BoardLayout
     let showTranscript: (TimelineEntry) -> Void
+    let reviewSurvey: (SurveyReport) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SectionHeading("Case file", note: session.entries.isEmpty ? nil : count)
+            SectionHeading("Log", note: session.entries.isEmpty ? nil : count)
                 .padding(.bottom, 10)
             if session.entries.isEmpty {
                 Hairline()
-                Text("Results and notes will appear here, oldest first.")
+                Text("Notes and readings taken for this problem appear here, oldest first.")
                     .font(.callout)
                     .foregroundStyle(Palette.secondary)
                     .padding(.vertical, 12)
             }
             ForEach(session.timeline) { entry in
-                LedgerRow(entry: entry, modules: modules, layout: layout) {
-                    showTranscript(entry)
-                }
+                LedgerRow(
+                    entry: entry, modules: modules, layout: layout,
+                    showTranscript: { showTranscript(entry) }, reviewSurvey: reviewSurvey)
             }
             if !session.entries.isEmpty { Hairline() }
         }
@@ -41,6 +42,7 @@ private struct LedgerRow: View {
     let modules: [ModulePreset]
     let layout: BoardLayout
     let showTranscript: () -> Void
+    let reviewSurvey: (SurveyReport) -> Void
     @State private var expanded = false
 
     var body: some View {
@@ -74,7 +76,13 @@ private struct LedgerRow: View {
             case .wide:
                 HStack(alignment: .firstTextBaseline, spacing: 0) {
                     time.frame(width: 84, alignment: .leading)
-                    title.frame(width: 250, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 3) {
+                        title
+                        if let recorded = entry.result?.source.replayDate {
+                            ReplayChip(recorded: recorded)
+                        }
+                    }
+                    .frame(width: 250, alignment: .leading)
                     text.lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
                     chevron
                 }
@@ -84,6 +92,9 @@ private struct LedgerRow: View {
                     time
                     VStack(alignment: .leading, spacing: 3) {
                         title.font(.system(size: 15))
+                        if let recorded = entry.result?.source.replayDate {
+                            ReplayChip(recorded: recorded)
+                        }
                         text.font(.system(size: 13.5)).lineLimit(3)
                     }
                     Spacer(minLength: 0)
@@ -116,7 +127,8 @@ private struct LedgerRow: View {
                 .foregroundStyle(Palette.secondary)
         case .result:
             if let result = entry.result {
-                ResultDetail(payload: result.payload, modules: modules)
+                ResultDetail(
+                    payload: result.payload, modules: modules, reviewSurvey: reviewSurvey)
             } else {
                 Text("This result was saved by a newer version of Spia.")
                     .font(.caption)
@@ -159,7 +171,7 @@ private struct LedgerSummary {
         case .genericScan, .moduleDTCs:
             let board = SessionBoard(
                 modules: modules.boardModules,
-                results: [SessionBoard.Result(date: entry.date, payload: payload)])
+                results: entry.boardResult.map { [$0] } ?? [])
             let row = board.rows.first { $0.date != nil }
             title = row?.name ?? entry.title
             text =
@@ -167,6 +179,12 @@ private struct LedgerSummary {
                     ([row.codes.joined(separator: " ")].filter { !$0.isEmpty } + [row.detail])
                         .joined(separator: " · ")
                 } ?? entry.body
+        case .survey(let report):
+            title = "Survey"
+            text = ResultText.summary(
+                JobResult(
+                    job: .survey(report.plan), payload: .survey(report), source: .live,
+                    transcript: nil))
         }
     }
 }
@@ -181,6 +199,9 @@ private struct EntryStamp: View {
                 Chip(text: "From recording")
                     .help("Produced from a real recording of the car, not a live connection")
             }
+            if let recorded = entry.result?.source.replayDate {
+                ReplayChip(recorded: recorded)
+            }
             Text(entry.date, format: .dateTime.hour().minute())
                 .font(.caption)
                 .foregroundStyle(Palette.tertiary)
@@ -188,9 +209,21 @@ private struct EntryStamp: View {
     }
 }
 
+/// Marks a result replayed from a saved recording, with when the car said it, so it can't pass
+/// for a new reading.
+private struct ReplayChip: View {
+    let recorded: Date
+
+    var body: some View {
+        let stamp = recorded.formatted(date: .abbreviated, time: .shortened)
+        Chip(text: "Replay of \(stamp)")
+            .help("Replayed from a recording of this car made on \(stamp), not a new reading")
+    }
+}
+
 /// Requests that went unanswered, and the transcript of every byte, when there is one. Reading
 /// cards keep their headline's row to themselves, so where and when goes here too.
-private struct EntryFooter: View {
+struct EntryFooter: View {
     let entry: TimelineEntry
     let showTranscript: () -> Void
     var showsStamp = false
@@ -216,9 +249,10 @@ private struct EntryFooter: View {
     }
 }
 
-private struct ResultDetail: View {
+struct ResultDetail: View {
     let payload: JobPayload
     let modules: [ModulePreset]
+    let reviewSurvey: (SurveyReport) -> Void
 
     var body: some View {
         switch payload {
@@ -238,6 +272,18 @@ private struct ResultDetail: View {
                     status.voltage.map { String(format: "%.1f V", $0) } ?? "no power detected")
             }
             .font(.callout)
+        case .survey(let report):
+            VStack(alignment: .leading, spacing: 10) {
+                Text(
+                    ResultText.summary(
+                        JobResult(
+                            job: .survey(report.plan), payload: .survey(report), source: .live,
+                            transcript: nil))
+                )
+                .font(.callout)
+                Button("Review Modules") { reviewSurvey(report) }
+                    .buttonStyle(.borderedProminent)
+            }
         }
     }
 
@@ -263,7 +309,7 @@ private struct ModuleCodesView: View {
             case .records(let availability, let records):
                 ForEach(records, id: \.code) { record in
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(record.code)
+                        Text(CodeName(record.code)?.printed ?? record.code)
                             .font(.body.monospaced().weight(.semibold))
                             .textSelection(.enabled)
                         FlowChips(
@@ -271,7 +317,7 @@ private struct ModuleCodesView: View {
                     }
                 }
                 Text(
-                    "Codes are the module's raw bytes. Manufacturer descriptions aren't verified yet."
+                    "Generic code names and descriptions are from OBDex (CC0). Manufacturer-specific codes aren't described publicly."
                 )
                 .font(.caption)
                 .foregroundStyle(Palette.secondary)
@@ -282,7 +328,7 @@ private struct ModuleCodesView: View {
     }
 }
 
-private struct FlowChips: View {
+struct FlowChips: View {
     let flags: [DTCStatus.Flag]
 
     var body: some View {

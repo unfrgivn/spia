@@ -93,6 +93,12 @@ public struct OpenAIProvider: AssistantProvider {
             }
             flushContent()
         }
+        let choice: JSONValue = {
+            switch request.toolChoice {
+            case .auto: return .string("auto")
+            case .tool(let name): return ["type": "function", "name": .string(name)]
+            }
+        }()
         return [
             "model": .string(model),
             "instructions": .string(request.instructions),
@@ -108,6 +114,7 @@ public struct OpenAIProvider: AssistantProvider {
                         "parameters": tool.parameters, "strict": true,
                     ]
                 }),
+            "tool_choice": choice,
         ]
     }
 }

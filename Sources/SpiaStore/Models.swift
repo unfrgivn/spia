@@ -5,6 +5,12 @@ import SpiaKit
 import SpiaReference
 import SwiftData
 
+extension CatalogVehicle {
+    public init(_ identity: VehicleIdentity) {
+        self.init(make: identity.make, model: identity.model, year: identity.modelYear)
+    }
+}
+
 /// Version 1 of the on-disk store. Future versions add a new schema and a migration stage;
 /// existing users' garages must always open.
 public enum SpiaSchemaV1: VersionedSchema {
@@ -107,7 +113,14 @@ public enum SpiaSchemaV1: VersionedSchema {
         }
 
         public var descriptor: AdapterDescriptor {
-            AdapterDescriptor(kind: kind, displayName: name, devicePath: devicePath)
+            let connectionKind: ConnectionKind
+            switch kind {
+            case .usbSerial: connectionKind = .usbSerial
+            case .bluetooth: connectionKind = .bluetooth
+            case .demo: connectionKind = .demo
+            }
+            return AdapterDescriptor(
+                kind: connectionKind, displayName: name, devicePath: devicePath)
         }
     }
 
@@ -325,15 +338,88 @@ public enum EntryKind: String, Codable, Sendable {
     case note, result, failure
 }
 
-public typealias Vehicle = SpiaSchemaV1.Vehicle
-public typealias AdapterProfile = SpiaSchemaV1.AdapterProfile
-public typealias ModulePreset = SpiaSchemaV1.ModulePreset
-public typealias DiagnosticSession = SpiaSchemaV1.DiagnosticSession
-public typealias TimelineEntry = SpiaSchemaV1.TimelineEntry
-public typealias ChatMessage = SpiaSchemaV1.ChatMessage
-public typealias VehicleImage = SpiaSchemaV1.VehicleImage
+public typealias Vehicle = SpiaSchemaV2.Vehicle
+public typealias AdapterProfile = SpiaSchemaV2.AdapterProfile
+public typealias ModulePreset = SpiaSchemaV2.ModulePreset
+public typealias DiagnosticSession = SpiaSchemaV2.DiagnosticSession
+public typealias TimelineEntry = SpiaSchemaV2.TimelineEntry
+public typealias ChatMessage = SpiaSchemaV2.ChatMessage
+public typealias VehicleImage = SpiaSchemaV2.VehicleImage
+
+extension TimelineEntry {
+    /// Maps a stored result for the board, preserving the car's original replay date.
+    public var boardResult: SessionBoard.Result? {
+        result.map {
+            SessionBoard.Result(date: $0.source.replayDate ?? date, payload: $0.payload)
+        }
+    }
+}
+
+extension [ModulePreset] {
+    /// The modules the board names, in the owner's order. Invalid module targets are omitted.
+    public var boardModules: [SessionBoard.Module] {
+        compactMap { preset in
+            preset.target.map { SessionBoard.Module(label: preset.label, target: $0) }
+        }
+    }
+}
+
+extension Vehicle {
+    /// Folds readings belonging to the car, optionally stopping at a historical date.
+    public func board(asOf: Date? = nil, live: AdapterStatus? = nil) -> SessionBoard {
+        let results: [SessionBoard.Result] = orderedEntries.compactMap { entry in
+            guard let result = entry.boardResult, asOf.map({ result.date <= $0 }) ?? true else {
+                return nil
+            }
+            return result
+        }
+        return SessionBoard(modules: orderedModules.boardModules, results: results, live: live)
+    }
+
+    /// Folds every reading for one part of the car, optionally stopping at a historical date.
+    public func history(for subject: SessionBoard.Subject, asOf: Date? = nil) -> ReadingHistory {
+        let results: [(id: UUID, result: SessionBoard.Result)] = orderedEntries.compactMap {
+            entry in
+            guard let result = entry.boardResult, asOf.map({ result.date <= $0 }) ?? true else {
+                return nil
+            }
+            return (entry.id, result)
+        }
+        return ReadingHistory(
+            subject: subject, modules: orderedModules.boardModules, results: results)
+    }
+
+    /// Finds the car entry that produced a history reading.
+    public func entry(for reading: ReadingHistory.Reading) -> TimelineEntry? {
+        entries.first { $0.id == reading.id }
+    }
+}
+
+extension DiagnosticSession {
+    /// This problem's board is the vehicle's state when the problem was closed, or now while open.
+    public func board(live: AdapterStatus? = nil) -> SessionBoard {
+        vehicle?.board(asOf: closedAt, live: closedAt == nil ? live : nil)
+            ?? SessionBoard(modules: [], results: [], live: live)
+    }
+}
 
 public enum SpiaMigrationPlan: SchemaMigrationPlan {
-    public static var schemas: [any VersionedSchema.Type] { [SpiaSchemaV1.self] }
-    public static var stages: [MigrationStage] { [] }
+    public static var schemas: [any VersionedSchema.Type] {
+        [SpiaSchemaV1.self, SpiaSchemaV2.self]
+    }
+    public static var stages: [MigrationStage] {
+        [
+            .custom(fromVersion: SpiaSchemaV1.self, toVersion: SpiaSchemaV2.self, willMigrate: nil)
+            {
+                context in
+                let entries = try context.fetch(FetchDescriptor<SpiaSchemaV2.TimelineEntry>())
+                for entry in entries { entry.vehicle = entry.session?.vehicle }
+                let sessions = try context.fetch(FetchDescriptor<SpiaSchemaV2.DiagnosticSession>())
+                for session in sessions where session.status != .open {
+                    session.closedAt = session.updatedAt
+                }
+                try context.save()
+            }
+        ]
+    }
 }

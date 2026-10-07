@@ -1,9 +1,11 @@
+import CryptoKit
 import Foundation
+import OBDCore
 import SpiaKit
 import SwiftData
 
-/// Where the app keeps files that don't belong in the database: per session, the raw
-/// transcripts (so every result can be replayed or inspected later) and attached photos.
+/// Where the app keeps files that don't belong in the database: per vehicle transcripts and
+/// per-problem attachments.
 public struct SpiaFiles: Sendable {
     public let root: URL
 
@@ -17,8 +19,8 @@ public struct SpiaFiles: Sendable {
         return SpiaFiles(root: support.appendingPathComponent("Spia", isDirectory: true))
     }
 
-    public func transcriptPath(session: UUID, entry: UUID) -> String {
-        "Transcripts/\(session.uuidString)/\(entry.uuidString).txt"
+    public func transcriptPath(vehicle: UUID, entry: UUID) -> String {
+        "Transcripts/\(vehicle.uuidString)/\(entry.uuidString).txt"
     }
 
     /// The database of vehicles, sessions, and conversations.
@@ -41,11 +43,20 @@ public struct SpiaFiles: Sendable {
         "Vehicles/\(vehicle.uuidString)/Photos/\(name)"
     }
 
-    /// Every folder holding a session's files.
+    /// Every folder holding files that belong to the session alone. Transcripts are the car's
+    /// and are not here.
     public func folders(for session: UUID) -> [URL] {
-        ["Transcripts", "Attachments"].map {
-            root.appendingPathComponent("\($0)/\(session.uuidString)", isDirectory: true)
-        }
+        [root.appendingPathComponent("Attachments/\(session.uuidString)", isDirectory: true)]
+    }
+
+    public func transcriptFolder(for vehicle: UUID) -> URL {
+        root.appendingPathComponent("Transcripts/\(vehicle.uuidString)", isDirectory: true)
+    }
+
+    /// Where schema v1 kept a session's transcripts. Entries still point into these folders
+    /// by path; the folder goes when the vehicle does.
+    public func legacyTranscriptFolder(for session: UUID) -> URL {
+        root.appendingPathComponent("Transcripts/\(session.uuidString)", isDirectory: true)
     }
 }
 
@@ -73,7 +84,7 @@ public final class Garage {
         try container(ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
     }
 
-    private static let schema = Schema(versionedSchema: SpiaSchemaV1.self)
+    private static let schema = Schema(versionedSchema: SpiaSchemaV2.self)
 
     private static func container(_ configuration: ModelConfiguration) throws -> ModelContainer {
         try ModelContainer(
@@ -132,53 +143,108 @@ public final class Garage {
     public func addNote(_ text: String, to session: DiagnosticSession) throws {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        append(TimelineEntry(kind: .note, title: "Note", body: trimmed), to: session)
+        let entry = TimelineEntry(kind: .note, title: "Note", body: trimmed)
+        entry.vehicle = session.vehicle
+        append(entry, to: session)
         try context.save()
     }
 
     /// Reserves the transcript file for a check that is about to run.
-    public func newTranscript(for session: DiagnosticSession) -> (path: String, url: URL) {
-        let path = files.transcriptPath(session: session.id, entry: UUID())
+    public func newTranscript(for vehicle: Vehicle) -> (path: String, url: URL) {
+        let path = files.transcriptPath(vehicle: vehicle.id, entry: UUID())
         return (path, files.url(for: path))
+    }
+
+    /// Finds the newest valid live transcript for each exact job on the vehicle.
+    public func savedChecks(for vehicle: Vehicle) -> [SavedCheck] {
+        var newest: [DiagnosticJob: SavedCheck] = [:]
+        for entry in vehicle.entries where entry.kind == .result {
+            guard let result = entry.result, result.source == .live,
+                let reference = result.transcript, let path = entry.transcriptPath,
+                let data = try? Data(contentsOf: files.url(for: path)),
+                data.count == reference.byteCount,
+                Self.sha256(data) == reference.sha256,
+                Self.isStandaloneTranscript(data)
+            else { continue }
+            let check = SavedCheck(
+                job: result.job, recorded: entry.date, transcript: files.url(for: path))
+            if newest[result.job]?.recorded ?? .distantPast < check.recorded {
+                newest[result.job] = check
+            }
+        }
+        return newest.values.sorted { $0.recorded < $1.recorded }
+    }
+
+    private static func sha256(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func isStandaloneTranscript(_ data: Data) -> Bool {
+        guard let events = try? Transcript.decodeFile(String(decoding: data, as: UTF8.self)),
+            let first = events.first
+        else { return false }
+        return first.direction == .tx && first.bytes == Array("ATZ\r".utf8)
     }
 
     public func record(
         _ result: JobResult, warnings: [String], transcriptPath: String?,
-        in session: DiagnosticSession
+        for vehicle: Vehicle, in session: DiagnosticSession? = nil
     ) throws {
         let entry = TimelineEntry(
             kind: .result, title: result.job.title, body: ResultText.summary(result))
         entry.resultData = try JSONEncoder().encode(result)
         entry.warnings = warnings
         entry.transcriptPath = result.transcript == nil ? nil : transcriptPath
-        append(entry, to: session)
-        if let vehicle = session.vehicle, vehicle.vin == nil, let vin = Self.reportedVIN(result) {
+        entry.vehicle = vehicle
+        if let session { append(entry, to: session) }
+        if vehicle.vin == nil, let vin = Self.reportedVIN(result) {
             vehicle.vin = vin
         }
         try context.save()
     }
 
-    /// The VIN a live vehicle-information check read, if the car reported one. Recordings are
-    /// never copied into a vehicle.
-    static func reportedVIN(_ result: JobResult) -> String? {
-        guard result.source == .live, case .vehicleInfo(let ecus) = result.payload else {
-            return nil
+    public func apply(_ choices: [ModuleChoice], to vehicle: Vehicle) throws {
+        var nextPosition = (vehicle.modules.map(\.position).max() ?? -1) + 1
+        for choice in choices {
+            if let existing = vehicle.modules.first(where: { $0.target == choice.target }) {
+                existing.label = choice.label
+                existing.confirmed = choice.confirmed
+            } else {
+                vehicle.modules.append(
+                    ModulePreset(
+                        label: choice.label, target: choice.target, position: nextPosition,
+                        confirmed: choice.confirmed))
+                nextPosition += 1
+            }
+        }
+        try context.save()
+    }
+
+    /// The VIN a live vehicle-information check or survey read, if the car reported one.
+    /// Recordings are never copied into a vehicle.
+    public static func reportedVIN(_ result: JobResult) -> String? {
+        guard result.source == .live else { return nil }
+        let ecus: [ECUIdentity]
+        switch result.payload {
+        case .vehicleInfo(let reports): ecus = reports
+        case .survey(let report): ecus = report.vehicleInfo
+        default: return nil
         }
         return ecus.lazy.compactMap { ecu in
-            ecu.vin.value.map {
-                $0.trimmingCharacters(in: .whitespacesAndNewlines.union(.controlCharacters))
-            }
+            ecu.vin.value?.trimmingCharacters(
+                in: .whitespacesAndNewlines.union(.controlCharacters))
         }.first { $0.count == 17 }
     }
 
     public func recordFailure(
         of job: DiagnosticJob, _ failure: JobFailure, warnings: [String], transcriptPath: String?,
-        in session: DiagnosticSession
+        for vehicle: Vehicle, in session: DiagnosticSession? = nil
     ) throws {
         let entry = TimelineEntry(kind: .failure, title: job.title, body: failure.message)
         entry.warnings = warnings
         entry.transcriptPath = failure.transcript == nil ? nil : transcriptPath
-        append(entry, to: session)
+        entry.vehicle = vehicle
+        if let session { append(entry, to: session) }
         try context.save()
     }
 
@@ -186,16 +252,22 @@ public final class Garage {
     /// references.
     public func delete(_ vehicle: Vehicle) throws {
         let folders =
-            vehicle.sessions.flatMap { files.folders(for: $0.id) }
+            [files.transcriptFolder(for: vehicle.id)]
+            + vehicle.sessions.flatMap { files.folders(for: $0.id) }
+            + vehicle.sessions.map { files.legacyTranscriptFolder(for: $0.id) }
             + [files.referencesFolder(vehicle: vehicle.id), files.vehicleFolder(vehicle.id)]
         context.delete(vehicle)
         try context.save()
         try removeFolders(folders)
     }
 
-    /// Deletes the session, its history and conversation, and its transcript and photo files.
+    /// Deletes the session, its notes, its conversation, and its attachments. Readings taken
+    /// during it are the car's and stay, no longer linked to any session.
     public func delete(_ session: DiagnosticSession) throws {
         let folders = files.folders(for: session.id)
+        for entry in session.entries where entry.kind == .note {
+            context.delete(entry)
+        }
         context.delete(session)
         try context.save()
         try removeFolders(folders)

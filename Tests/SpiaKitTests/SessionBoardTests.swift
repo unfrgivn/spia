@@ -40,6 +40,17 @@ struct SessionBoardTests {
         ])
     }
 
+    private func survey(_ modules: [SurveyModule]) -> JobPayload {
+        let candidates = modules.map(\.candidate)
+        let plan = SurveyPlan(
+            catalogVersion: "test", vehicle: nil, platform: nil, candidates: candidates,
+            unreachable: [])
+        return .survey(
+            SurveyReport(
+                plan: plan, voltage: nil, vehicleInfo: [], modules: modules,
+                unanswered: [], notProbed: [], stop: nil))
+    }
+
     @Test("the Ghibli: two airbag faults lead, and the steering column is still to read")
     func ghibli() async throws {
         let results = try await demoResults([
@@ -81,11 +92,11 @@ struct SessionBoardTests {
         }
         #expect(
             question("Airbag controller")
-                == "What do 80011B and 80021B from the airbag controller (ORC) mean on this car, and what should I check first?"
+                == "What do B0001-1B and B0002-1B from the airbag controller (ORC) mean on this car, and what should I check first?"
         )
         #expect(
             question("Body computer")
-                == "What does 100900 from the body computer (BCM) mean on this car, and what should I check first?"
+                == "What does P1009-00 from the body computer (BCM) mean on this car, and what should I check first?"
         )
         #expect(
             question("Battery")
@@ -192,6 +203,76 @@ struct SessionBoardTests {
             ModuleDTCs(target: target, outcome: .records(availability: 0xFF, [])))
         let board = SessionBoard(modules: [], results: [result(1, read)])
         #expect(board.rows.contains { $0.name == "Module 7A1" && $0.status == .clear })
+    }
+
+    @Test("survey code outcomes populate, update, and preserve module rows")
+    func surveyOutcomes() throws {
+        let unknownTarget = try ModuleTarget(bus: .highSpeed, request: 0x7A1, response: 0x7A9)
+        let candidates = [
+            SurveyCandidate(target: DemoGarage.airbag.target, origin: .legislated),
+            SurveyCandidate(target: DemoGarage.abs.target, origin: .legislated),
+            SurveyCandidate(target: DemoGarage.bodyComputer.target, origin: .legislated),
+            SurveyCandidate(target: DemoGarage.steeringColumn.target, origin: .legislated),
+            SurveyCandidate(target: unknownTarget, origin: .legislated),
+            SurveyCandidate(
+                target: try ModuleTarget(bus: .highSpeed, request: 0x760, response: 0x768),
+                origin: .legislated),
+        ]
+        let modules = [
+            SurveyModule(
+                candidate: candidates[0], presence: .present, identification: [],
+                codes: .outcome(
+                    .records(availability: 0xFF, [ModuleDTCRecord(code: "80011B", status: 0x80)]))),
+            SurveyModule(
+                candidate: candidates[1], presence: .present, identification: [],
+                codes: .outcome(.records(availability: 0xFF, []))),
+            SurveyModule(
+                candidate: candidates[2], presence: .present, identification: [],
+                codes: .outcome(.negative(service: 0x19, code: 0x22))),
+            SurveyModule(
+                candidate: candidates[3], presence: .present, identification: [], codes: .noAnswer),
+            SurveyModule(
+                candidate: candidates[4], presence: .present, identification: [],
+                codes: .outcome(
+                    .records(
+                        availability: 0xFF,
+                        [ModuleDTCRecord(code: "900001", status: 0x80)]))),
+            SurveyModule(
+                candidate: candidates[5], presence: .present, identification: [],
+                codes: .unreadable("bad response")),
+        ]
+        let surveyResult = result(1, survey(modules))
+        let board = SessionBoard(modules: self.modules, results: [surveyResult])
+        #expect(
+            board.rows.first { $0.subject == .module(DemoGarage.airbag.target) }?.status == .fault)
+        #expect(board.rows.first { $0.subject == .module(DemoGarage.abs.target) }?.status == .clear)
+        #expect(
+            board.rows.first { $0.subject == .module(DemoGarage.bodyComputer.target) }?.status
+                == .noAnswer)
+        #expect(
+            board.rows.first { $0.subject == .module(DemoGarage.steeringColumn.target) }?.status
+                == .notRead)
+        #expect(board.rows.first { $0.name == "Module 7A1" }?.status == .fault)
+        #expect(!board.rows.contains { $0.name == "Module 760" })
+
+        let laterClear = result(
+            2,
+            .moduleDTCs(
+                ModuleDTCs(
+                    target: DemoGarage.airbag.target,
+                    outcome: .records(availability: 0xFF, []))))
+        #expect(
+            SessionBoard(modules: self.modules, results: [surveyResult, laterClear])
+                .rows.first { $0.subject == .module(DemoGarage.airbag.target) }?.status == .clear)
+        let laterRefusal = result(
+            3,
+            .moduleDTCs(
+                ModuleDTCs(
+                    target: DemoGarage.airbag.target,
+                    outcome: .negative(service: 0x19, code: 0x22))))
+        #expect(
+            SessionBoard(modules: self.modules, results: [surveyResult, laterRefusal])
+                .rows.first { $0.subject == .module(DemoGarage.airbag.target) }?.status == .fault)
     }
 
     @Test("each check fills one row, and each row names the check that reads it")

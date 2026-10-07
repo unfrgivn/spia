@@ -136,7 +136,7 @@ struct ReferenceStoreTests {
         await workbench.connect()
         guard
             case .completed(let recorded) = await workbench.run(
-                .vehicleInfo, in: try #require(demo.sessions.first))
+                .vehicleInfo, for: demo, in: try #require(demo.sessions.first))
         else {
             Issue.record("the vehicle-information recording should replay")
             return
@@ -144,12 +144,12 @@ struct ReferenceStoreTests {
         let car = try garage.addVehicle(name: "My car")
         let session = try garage.addSession(to: car, title: "Check")
 
-        try garage.record(recorded, warnings: [], transcriptPath: nil, in: session)
+        try garage.record(recorded, warnings: [], transcriptPath: nil, for: car, in: session)
         #expect(car.vin == nil)
 
         let live = JobResult(
             job: recorded.job, payload: recorded.payload, source: .live, transcript: nil)
-        try garage.record(live, warnings: [], transcriptPath: nil, in: session)
+        try garage.record(live, warnings: [], transcriptPath: nil, for: car, in: session)
         #expect(car.vin == "ZAM57RTS4H1249941")
     }
 

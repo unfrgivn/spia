@@ -3,15 +3,22 @@ import SpiaStore
 import SwiftUI
 
 struct ConnectionAssistant: View {
+    private enum ConnectionChoice: Hashable {
+        case usbSerial, bluetooth, recordings
+    }
+
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let vehicle: Vehicle
     let workbench: Workbench
+    let purpose: String?
     /// Called with a new workbench when the chosen port changes.
     let replaced: (Workbench) -> Void
 
     @State private var ports: [String] = []
     @State private var chosenPort: String?
+    @State private var savedChecks: [SavedCheck] = []
+    @State private var choice: ConnectionChoice = .bluetooth
 
     private var profile: AdapterProfile? { vehicle.adapters.first }
 
@@ -20,6 +27,12 @@ struct ConnectionAssistant: View {
             Text("Connect to your car")
                 .font(.title2.weight(.semibold))
 
+            if let purpose {
+                Text(purpose)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if workbench.adapter.kind == .demo {
                 Text(
                     "This vehicle uses real recordings from a 2017 Maserati Ghibli, made with a vLinker FS on 2026-09-26. Connecting replays the recorded adapter check; every result is labeled as coming from a recording."
@@ -30,28 +43,39 @@ struct ConnectionAssistant: View {
                     Picker(
                         "Adapter",
                         selection: Binding(
-                            get: { profile?.kind ?? .usbSerial },
-                            set: { switchAdapter(to: $0) })
+                            get: { choice },
+                            set: { select($0) })
                     ) {
-                        Text("USB cable").tag(AdapterKind.usbSerial)
-                        Text("Bluetooth").tag(AdapterKind.bluetooth)
+                        Text("USB cable").tag(ConnectionChoice.usbSerial)
+                        Text("Bluetooth").tag(ConnectionChoice.bluetooth)
+                        if !savedChecks.isEmpty {
+                            Text("Recordings").tag(ConnectionChoice.recordings)
+                        }
                     }
                     .labelsHidden()
                     .pickerStyle(.segmented)
                     .disabled(workbench.isBusy)
-                    if workbench.adapter.kind == .bluetooth {
+                    if choice == .recordings {
+                        recordingsExplanation
+                    } else if workbench.adapter.kind == .bluetooth {
                         bluetoothSteps
                     } else {
                         steps
                     }
                 #else
-                    if workbench.adapter.kind == .bluetooth {
+                    if choice == .recordings {
+                        recordingsExplanation
+                        Button("Use Bluetooth instead") { select(.bluetooth) }
+                    } else if workbench.adapter.kind == .bluetooth {
                         bluetoothSteps
                     } else {
                         VStack(alignment: .leading, spacing: 12) {
                             Text(AdapterSetupError.needsMac.description)
                                 .fixedSize(horizontal: false, vertical: true)
-                            Button("Use Bluetooth instead") { switchAdapter(to: .bluetooth) }
+                            if !savedChecks.isEmpty {
+                                Button("Use saved recordings") { select(.recordings) }
+                            }
+                            Button("Use Bluetooth instead") { select(.bluetooth) }
                         }
                     }
                 #endif
@@ -76,11 +100,35 @@ struct ConnectionAssistant: View {
         .padding(24)
         .platformSheetFrame(width: 540)
         .onAppear {
+            savedChecks = model.savedChecks(for: vehicle)
+            choice =
+                workbench.adapter.kind == .replay
+                ? .recordings
+                : (profile?.kind == .usbSerial ? .usbSerial : .bluetooth)
             #if os(macOS)
                 refreshPorts()
             #endif
             chosenPort = profile?.devicePath
         }
+    }
+
+    private var recordingsExplanation: some View {
+        let newest = savedChecks.max(by: { $0.recorded < $1.recorded })?.recorded
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("Use saved recordings")
+                .font(.headline)
+            Text(
+                "\(savedChecks.count) check\(savedChecks.count == 1 ? "" : "s") saved"
+                    + (newest.map {
+                        ", newest from \($0.formatted(date: .abbreviated, time: .omitted))"
+                    } ?? ".")
+            )
+            Text(
+                "Each result is marked with the date the car said it. Nothing is sent to a car."
+            )
+            .foregroundStyle(.secondary)
+        }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var steps: some View {
@@ -218,8 +266,7 @@ struct ConnectionAssistant: View {
 
     private func switchAdapter(to kind: AdapterKind) {
         guard let profile else { return }
-        guard profile.kind != kind else { return }
-        profile.use(kind)
+        if profile.kind != kind { profile.use(kind) }
         #if os(macOS)
             if kind == .usbSerial {
                 chosenPort = nil
@@ -228,7 +275,19 @@ struct ConnectionAssistant: View {
         #endif
         Task {
             await model.resetConnection(for: profile)
-            if let fresh = model.workbench(for: vehicle) { replaced(fresh) }
+            if let fresh = await model.useProfile(for: vehicle) { replaced(fresh) }
+        }
+    }
+
+    private func select(_ choice: ConnectionChoice) {
+        self.choice = choice
+        switch choice {
+        case .recordings:
+            Task {
+                if let fresh = await model.useRecordings(for: vehicle) { replaced(fresh) }
+            }
+        case .usbSerial: switchAdapter(to: .usbSerial)
+        case .bluetooth: switchAdapter(to: .bluetooth)
         }
     }
 }

@@ -3,9 +3,7 @@ import SpiaReference
 import SpiaStore
 import SwiftUI
 
-/// The vehicle's home, as a board: the car in its bay, then one line for each thing known about
-/// it (the open session, recalls, service bulletins, owner complaints, the adapter, and the
-/// modules), each with where to go next, then its sessions and particulars.
+/// The car's dashboard, followed by its problems, references, and particulars.
 struct VehicleOverview: View {
     @Environment(AppModel.self) private var model
     let vehicle: Vehicle
@@ -14,28 +12,106 @@ struct VehicleOverview: View {
     let browse: (ReferencesView.Shelf) -> Void
     let newSession: () -> Void
 
-    @State private var workbench: Workbench?
+    @State private var runner: DiagnosticRunCoordinator?
     @State private var editing = false
     @State private var editingModules = false
-    @State private var connecting = false
     @State private var uploadingCover = false
     @State private var problem: String?
     @State private var width: CGFloat = 1_000
+    @State private var interpretationDismissed = false
 
     var body: some View {
         let compact = BoardLayout(width: width) == .compact
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 hero(compact: compact)
-                VehicleBoard(readouts: readouts, compact: compact)
+                if !vehicle.isDemo && vehicle.modules.isEmpty {
+                    FindModulesCard(
+                        compact: compact, disabled: workbench?.activity != nil, action: findModules
+                    )
+                    .padding(.top, compact ? 18 : 24)
+                }
+                BoardHeadline(headline: board.headline, summary: board.summary, compact: compact)
                     .padding(.top, compact ? 18 : 28)
-                referenceStatus
-                    .padding(.top, 12)
+                if interpretations.review(for: .car) != nil
+                    || interpretations.reviewInFlight.contains(.car)
+                {
+                    ReviewView(
+                        review: interpretations.review(for: .car),
+                        inFlight: interpretations.reviewInFlight.contains(.car),
+                        untaggedQuestions: interpretations.review(for: .car)?.questions.filter {
+                            $0.module == nil && $0.codes.isEmpty
+                        } ?? [],
+                        moduleLabels: moduleLabels,
+                        answer: answer,
+                        checks: reviewChecks(for: interpretations.review(for: .car)),
+                        run: { runner?.run($0) }
+                    )
+                    .padding(.top, compact ? 18 : 24)
+                }
+                if shouldShowInterpretationConsent {
+                    InterpretationConsentCard(
+                        compact: compact, board: board, vehicle: vehicle,
+                        interpretations: interpretations,
+                        allow: {
+                            interpretations.allow(model.assistant.settings.defaultProvider)
+                            Task {
+                                await model.interpreter.refresh(
+                                    vehicle, adapter: workbench?.liveStatus)
+                            }
+                        }, dismiss: { interpretationDismissed = true }
+                    )
+                    .padding(.top, compact ? 18 : 24)
+                }
+                if let workbench, let activity = workbench.activity,
+                    activity.vehicleID == vehicle.id,
+                    activity.prompt != nil || SessionBoard.Subject(job: activity.job) == nil
+                {
+                    ActivityPanel(activity: activity, workbench: workbench)
+                        .padding(.top, 24)
+                }
+                SessionBoardView(
+                    board: board, layout: BoardLayout(width: width), read: runner?.reader,
+                    reading: runner?.reading,
+                    unreadable: runner?.unreadable(for: board) ?? [:],
+                    interpretations: interpretations,
+                    scope: .car,
+                    answer: answer,
+                    open: { runner?.historySubject = $0.subject }
+                )
+                .padding(.top, compact ? 18 : 22)
+                if let error = interpretations.lastError {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(Palette.secondary)
+                        Button("Try again") {
+                            Task {
+                                await model.interpreter.refresh(
+                                    vehicle, adapter: workbench?.liveStatus)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Palette.accent)
+                    }
+                    .padding(.top, 8)
+                }
                 SessionLedger(
-                    vehicle: vehicle, compact: compact, open: { show(.session($0.id)) },
+                    vehicle: vehicle, interpretations: interpretations, compact: compact,
+                    open: { show(.session($0.id)) },
                     newSession: newSession
                 )
                 .padding(.top, compact ? 30 : 40)
+                VStack(alignment: .leading, spacing: 14) {
+                    SectionHeading("References")
+                    VehicleBoard(
+                        readouts: [recalls, bulletins, complaints].compactMap { $0 },
+                        compact: compact
+                    )
+                }
+                .padding(.top, compact ? 30 : 40)
+                referenceStatus
+                    .padding(.top, 12)
                 Particulars(vehicle: vehicle, identity: references.identity, compact: compact)
                     .padding(.top, compact ? 30 : 40)
             }
@@ -49,14 +125,37 @@ struct VehicleOverview: View {
         .navigationTitle(vehicle.name)
         .platformSubtitle("Overview")
         .platformInlineTitle()
-        .task(id: vehicle.id) { workbench = model.workbench(for: vehicle) }
+        .toolbar { overviewToolbar }
+        .task(id: vehicle.id) {
+            runner = DiagnosticRunCoordinator(vehicle: vehicle, session: nil, model: model)
+            await model.interpreter.refresh(vehicle, adapter: workbench?.liveStatus)
+            #if DEBUG
+                if Fixture.screen == .onboarding { runner?.requestSurvey() }
+                if Fixture.screen == .surveyResults || Fixture.screen == .surveyResultsMissing
+                    || Fixture.screen == .surveyResultsSearched,
+                    let entry = vehicle.entries.sorted(by: { $0.date < $1.date }).last,
+                    case .survey(let report) = entry.result?.payload
+                {
+                    runner?.reviewReport = report
+                }
+            #endif
+        }
+        .onChange(of: runner?.workbench?.connection) { _, state in
+            if case .ready = state { runner?.startPendingSurveyIfReady() }
+        }
         .sheet(isPresented: $editing) { VehicleSettings(vehicle: vehicle, references: references) }
         .sheet(isPresented: $editingModules) { ModulesEditor(vehicle: vehicle) }
-        .sheet(isPresented: $connecting) {
+        .sheet(isPresented: connectionPresentation) {
             if let workbench {
-                ConnectionAssistant(vehicle: vehicle, workbench: workbench) { self.workbench = $0 }
+                ConnectionAssistant(
+                    vehicle: vehicle, workbench: workbench,
+                    purpose: runner?.isSurveyPending == true
+                        ? "Connect the adapter, and Spia will find this car's modules." : nil
+                ) { runner?.refresh($0) }
             }
         }
+        .surveyReview(runner: runner, vehicle: vehicle)
+        .readingHistory(runner: runner, vehicle: vehicle)
         .fileImporter(isPresented: $uploadingCover, allowedContentTypes: [.image]) { result in
             switch result {
             case .success(let url):
@@ -71,6 +170,88 @@ struct VehicleOverview: View {
 
     // MARK: - The bay
 
+    private func findModules() {
+        runner?.requestSurvey()
+    }
+
+    private var workbench: Workbench? { runner?.workbench }
+
+    private var connectionPresentation: Binding<Bool> {
+        Binding(
+            get: { runner?.connectRequested == true },
+            set: { isPresented in
+                if !isPresented {
+                    runner?.connectRequested = false
+                    runner?.cancelPendingSurveyIfDisconnected()
+                }
+            })
+    }
+
+    private func requestConnection() { runner?.connectRequested = true }
+
+    @ToolbarContentBuilder private var overviewToolbar: some ToolbarContent {
+        #if os(macOS)
+            ToolbarItemGroup(placement: .primaryAction) {
+                if let workbench {
+                    AdapterIndicator(workbench: workbench) { requestConnection() }
+                    RunMenu(
+                        vehicle: vehicle, workbench: workbench, run: { runner?.run($0) },
+                        survey: runner?.surveyAction(), connect: requestConnection,
+                        editModules: { editingModules = true })
+                }
+            }
+        #else
+            ToolbarItemGroup(placement: .bottomBar) {
+                if let workbench {
+                    AdapterIndicator(workbench: workbench) { requestConnection() }
+                    Spacer()
+                    RunMenu(
+                        vehicle: vehicle, workbench: workbench, run: { runner?.run($0) },
+                        survey: runner?.surveyAction(), connect: requestConnection,
+                        editModules: { editingModules = true })
+                }
+            }
+        #endif
+    }
+
+    private var board: SessionBoard { vehicle.board(live: workbench?.liveStatus) }
+    private var interpretations: VehicleInterpretations {
+        model.interpreter.interpretations(for: vehicle)
+    }
+
+    private var moduleLabels: [ModuleTarget: String] {
+        Dictionary(
+            uniqueKeysWithValues: vehicle.orderedModules.compactMap { module in
+                module.target.map { ($0, module.label) }
+            })
+    }
+
+    private func answer(_ id: UUID, _ text: String) {
+        Task {
+            await model.interpreter.answer(
+                vehicle, questionID: id, text: text, adapter: workbench?.liveStatus)
+        }
+    }
+
+    private func reviewChecks(for review: StoredReview?) -> [(StoredCheck, Bool)] {
+        review?.checks.compactMap { check in
+            guard let job = check.job, runner?.workbench?.canRun(job) == true else { return nil }
+            let read = board.rows.contains { row in
+                switch (check.kind, check.module, row.subject) {
+                case (.moduleCodes, let module?, .module(let target)): module == target
+                case (.genericScan, _, .engine), (.vehicleInfo, _, .engine),
+                    (.adapterCheck, _, .battery):
+                    true
+                default: false
+                }
+            }
+            return (check, !read)
+        } ?? []
+    }
+    private var shouldShowInterpretationConsent: Bool {
+        !interpretationDismissed && !board.rows.allSatisfy { $0.codes.isEmpty }
+            && model.assistant.settings.defaultProvider.isCloud && interpretations.consent == nil
+    }
     /// The car as the garage shows it, always drawn dark: beside its photo when there's room,
     /// under it when there isn't, so the name never sits on the car.
     private func hero(compact: Bool) -> some View {
@@ -151,25 +332,6 @@ struct VehicleOverview: View {
 
     // MARK: - The board
 
-    private var readouts: [Readout] {
-        [session, recalls, bulletins, complaints, adapter, modules].compactMap { $0 }
-    }
-
-    private var session: Readout {
-        guard let open = vehicle.orderedSessions.first(where: { $0.status == .open }) else {
-            return Readout(
-                id: "session", word: "None", tone: .neutral, name: "Sessions",
-                detail: vehicle.sessions.isEmpty
-                    ? "Start one when something's wrong: what you notice, and what the car reports."
-                    : "No open sessions.",
-                actions: [.init("New Session", perform: newSession)])
-        }
-        return Readout(
-            id: "session", word: "Open", tone: open.lamp ?? .neutral, name: open.title,
-            detail: open.board().headline,
-            actions: [.init("Continue") { show(.session(open.id)) }])
-    }
-
     private var recalls: Readout {
         let title = references.identity?.title ?? "this model"
         guard let recalls = references.safety?.recalls else {
@@ -177,7 +339,7 @@ struct VehicleOverview: View {
                 return Readout(
                     id: "recalls", word: "No VIN", tone: .neutral, name: "Recalls",
                     detail:
-                        "Add the VIN, or read vehicle information in a session, to look up recalls and service bulletins.",
+                        "Add the VIN, or read vehicle information from the Overview, to look up recalls and service bulletins.",
                     actions: [.init("Edit Vehicle…") { editing = true }])
             }
             return Readout(
@@ -219,42 +381,6 @@ struct VehicleOverview: View {
             id: "complaints", word: "\(count)", tone: .neutral, name: "Owner complaints",
             detail: "Reported to NHTSA by other owners of this model.",
             actions: count > 0 ? [.init("Browse") { browse(.complaints) }] : [])
-    }
-
-    private var adapter: Readout? {
-        guard let workbench else { return nil }
-        let summary = ConnectionSummary(adapter: workbench.adapter, state: workbench.connection)
-        let (word, tone): (String, Tone) =
-            if workbench.activity != nil {
-                ("Reading", .working)
-            } else {
-                switch workbench.connection {
-                case .disconnected: ("Offline", .neutral)
-                case .connecting: ("Linking", .working)
-                case .ready: ("Ready", .working)
-                case .reconnectRequired: ("Lost", summary.tone)
-                case .failed: ("Failed", summary.tone)
-                }
-            }
-        let status = workbench.connection.status
-        return Readout(
-            id: "adapter", word: word, tone: tone,
-            pulsing: workbench.activity != nil || workbench.connection == .connecting,
-            name: status?.hardware ?? workbench.adapter.displayName,
-            // The word already says it's ready.
-            detail: status.map { ConnectionSummary.voltageText($0.voltage) } ?? summary.detail,
-            actions: [.init(status == nil ? "Connect…" : "Connection…") { connecting = true }])
-    }
-
-    private var modules: Readout {
-        let labels = vehicle.orderedModules.map(\.label)
-        return Readout(
-            id: "modules", word: "\(labels.count)", tone: .neutral,
-            name: labels.count == 1 ? "Module" : "Modules",
-            detail: labels.isEmpty
-                ? "None yet. Add the modules you want to read codes from."
-                : labels.joined(separator: ", "),
-            actions: [.init("Edit Modules…") { editingModules = true }])
     }
 
     private var referenceStatus: some View {
@@ -400,19 +526,20 @@ private struct VehicleBoard: View {
 /// about, what its board says, and when it was last touched.
 private struct SessionLedger: View {
     let vehicle: Vehicle
+    let interpretations: VehicleInterpretations
     let compact: Bool
     let open: (DiagnosticSession) -> Void
     let newSession: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SectionHeading("Sessions", note: count) {
-                Button("New Session", action: newSession)
+            SectionHeading("Problems", note: count) {
+                Button("New Problem", action: newSession)
             }
             .padding(.bottom, 10)
             Hairline()
             if vehicle.sessions.isEmpty {
-                Text("Start a session to work on a problem with this car.")
+                Text("Start a problem to work on this car.")
                     .font(.callout)
                     .foregroundStyle(Palette.secondary)
                     .padding(.vertical, 12)
@@ -432,8 +559,8 @@ private struct SessionLedger: View {
     private var count: String? {
         switch vehicle.sessions.count {
         case 0: nil
-        case 1: "1 session"
-        case let count: "\(count) sessions"
+        case 1: "1 problem"
+        case let count: "\(count) problems"
         }
     }
 
@@ -457,6 +584,12 @@ private struct SessionLedger: View {
                         .font(.system(size: 13.5))
                         .foregroundStyle(Palette.secondary)
                         .lineLimit(compact ? 2 : 1)
+                }
+                let questions = session.openQuestionCount(in: interpretations)
+                if questions > 0 {
+                    Text(questions == 1 ? "1 question" : "\(questions) questions")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(Palette.caution)
                 }
             }
             Spacer(minLength: 8)

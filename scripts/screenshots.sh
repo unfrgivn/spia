@@ -10,8 +10,12 @@ cd "$(dirname "$0")/.."
 mac=false
 if [[ ${1:-} == "--mac" ]]; then mac=true; shift; fi
 timestamp=$(date +%Y%m%d-%H%M%S)
-root=${SPIA_SCREENSHOTS_DIR:-"${TMPDIR:-/tmp}/spia-screenshots/$timestamp"}
-derived=${SPIA_DERIVED_DATA:-"${TMPDIR:-/tmp}/spia-screenshots/DerivedData"}
+# macOS sets TMPDIR with a trailing slash; a doubled slash in the app path would stop pgrep
+# from finding the running app below.
+tmp=${TMPDIR:-/tmp}
+tmp=${tmp%/}
+root=${SPIA_SCREENSHOTS_DIR:-"$tmp/spia-screenshots/$timestamp"}
+derived=${SPIA_DERIVED_DATA:-"$tmp/spia-screenshots/DerivedData"}
 mkdir -p "$root"
 
 project=App/SpiaApp.xcodeproj

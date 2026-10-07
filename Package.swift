@@ -37,7 +37,8 @@ let package = Package(
                 ])
             ]),
         .target(
-            name: "SpiaKit", dependencies: ["OBDCore"], resources: [.copy("Recordings")]),
+            name: "SpiaKit", dependencies: ["OBDCore"],
+            resources: [.copy("Recordings"), .copy("Catalog")]),
         .target(name: "SpiaAssist", dependencies: ["SpiaKit"]),
         .target(name: "SpiaReference"),
         .target(

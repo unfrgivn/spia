@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import OBDCore
 
@@ -34,6 +33,7 @@ public enum DemoError: Error, Equatable, Sendable, CustomStringConvertible {
     case missingRecording(String)
     case noRecording(DiagnosticJob)
     case recordingHasNoAnswer(String)
+    case surveyUnavailable
 
     public var description: String {
         switch self {
@@ -44,6 +44,8 @@ public enum DemoError: Error, Equatable, Sendable, CustomStringConvertible {
                 + "Connect the adapter to the car to run it."
         case .recordingHasNoAnswer(let name):
             return "the recording \(name) contains no answer for this check"
+        case .surveyUnavailable:
+            return "The demo recordings do not include a car survey. Connect the adapter to run it."
         }
     }
 }
@@ -88,8 +90,10 @@ public actor DemoBackend: DiagnosticsBackend {
     }
     private var observers: [UUID: AsyncStream<ConnectionState>.Continuation] = [:]
     private var runner: JobRunner?
+    private var pacedTask: Task<Void, Never>?
+    private let timing: ReplayTiming
 
-    public init() {}
+    public init(timing: ReplayTiming = .immediate) { self.timing = timing }
 
     public func currentState() -> ConnectionState { state }
 
@@ -108,7 +112,7 @@ public actor DemoBackend: DiagnosticsBackend {
     public func connect() async throws {
         state = .connecting
         do {
-            let (_, connection) = try await replay(.adapterProbe)
+            let (_, connection) = try await replay(.adapterProbe, timing: timing)
             for await event in await JobRunner(connection: connection).run(.adapterCheck) {
                 if case .failed(let failure) = event { throw failure }
             }
@@ -128,7 +132,7 @@ public actor DemoBackend: DiagnosticsBackend {
         let (stream, continuation) = AsyncStream.makeStream(of: JobEvent.self)
         guard case .ready = state else {
             continuation.yield(.started(job))
-            continuation.yield(.failed(Self.failure(ConnectionError.notConnected)))
+            continuation.yield(.failed(ReplaySupport.failure(ConnectionError.notConnected)))
             continuation.finish()
             return stream
         }
@@ -142,7 +146,7 @@ public actor DemoBackend: DiagnosticsBackend {
                     job, recording: .airbagCodes, transcript: transcript, to: continuation)
             case .moduleDTCs(let target)
             where target == DemoGarage.abs.target || target == DemoGarage.bodyComputer.target:
-                try decoded(
+                startDecoded(
                     job, recording: .absAndBodyCodes, transcript: transcript, to: continuation
                 ) { report in
                     let answers = report.uds.filter { answer in
@@ -156,21 +160,25 @@ public actor DemoBackend: DiagnosticsBackend {
                     return .moduleDTCs(ModuleDTCs(target: target, response: answer.response))
                 }
             case .vehicleInfo:
-                try decoded(job, recording: .genericReads, transcript: transcript, to: continuation)
-                {
+                startDecoded(
+                    job, recording: .genericReads, transcript: transcript, to: continuation
+                ) {
                     .vehicleInfo($0.obdInfo.map(ECUIdentity.init))
                 }
             case .genericScan:
-                try decoded(job, recording: .genericReads, transcript: transcript, to: continuation)
-                {
+                startDecoded(
+                    job, recording: .genericReads, transcript: transcript, to: continuation
+                ) {
                     .genericScan($0.obdScan.map(ECUScan.init))
                 }
+            case .survey:
+                throw DemoError.surveyUnavailable
             case .moduleDTCs:
                 throw DemoError.noRecording(job)
             }
         } catch {
             continuation.yield(.started(job))
-            continuation.yield(.failed(Self.failure(error)))
+            continuation.yield(.failed(ReplaySupport.failure(error)))
             continuation.finish()
         }
         return stream
@@ -181,19 +189,23 @@ public actor DemoBackend: DiagnosticsBackend {
     public nonisolated func canRun(_ job: DiagnosticJob) -> Bool {
         switch job {
         case .adapterCheck, .vehicleInfo, .genericScan: true
+        case .survey: false
         case .moduleDTCs(let target): DemoGarage.recorded.contains { $0.target == target }
         }
     }
 
     public func confirm(_ id: UUID) async { await runner?.confirm(id) }
-    public func cancel() async { await runner?.cancel() }
+    public func cancel() async {
+        pacedTask?.cancel()
+        await runner?.cancel()
+    }
 
     /// A fresh connection on a replay of `recording`; each replay can only be played once.
-    private func replay(_ recording: DemoRecording) async throws -> (
+    private func replay(_ recording: DemoRecording, timing: ReplayTiming) async throws -> (
         ReplayTransport, ConnectionManager
     ) {
-        let transport = try ReplayTransport(contentsOf: recording.url())
-        let connection = ConnectionManager(adapter: adapter) { transport }
+        let (transport, connection) = try ReplaySupport.connection(
+            adapter: adapter, transcript: recording.url(), timing: timing)
         try await connection.connect()
         return (transport, connection)
     }
@@ -202,7 +214,8 @@ public actor DemoBackend: DiagnosticsBackend {
         _ job: DiagnosticJob, recording: DemoRecording, transcript: URL?,
         to continuation: AsyncStream<JobEvent>.Continuation
     ) async throws {
-        let (_, connection) = try await replay(recording)
+        let (transport, connection) = try await replay(recording, timing: .immediate)
+        await transport.setTiming(timing)
         let runner = JobRunner(connection: connection)
         self.runner = runner
         let events = await runner.run(job, transcript: transcript)
@@ -223,17 +236,51 @@ public actor DemoBackend: DiagnosticsBackend {
         }
     }
 
+    private func startDecoded(
+        _ job: DiagnosticJob, recording: DemoRecording, transcript: URL?,
+        to continuation: AsyncStream<JobEvent>.Continuation,
+        _ extract: @escaping (TranscriptInspectionReport) throws -> JobPayload
+    ) {
+        pacedTask = Task { [self] in
+            do {
+                try await decoded(
+                    job, recording: recording, transcript: transcript, to: continuation, extract)
+            } catch {
+                continuation.yield(.failed(ReplaySupport.failure(error)))
+            }
+            continuation.finish()
+            pacedTask = nil
+        }
+    }
+
     private func decoded(
         _ job: DiagnosticJob, recording: DemoRecording, transcript: URL?,
         to continuation: AsyncStream<JobEvent>.Continuation,
         _ extract: (TranscriptInspectionReport) throws -> JobPayload
-    ) throws {
+    ) async throws {
+        continuation.yield(.started(job))
         let events = try recording.events()
         let report = TranscriptInspection.inspect(events)
         let payload = try extract(report)
-        let reference = try transcript.map { try Self.copy(recording, to: $0) }
-        continuation.yield(.started(job))
-        for exchange in report.exchanges where exchange.kind == "OBD" || exchange.kind == "UDS" {
+        let reference = try transcript.map { try ReplaySupport.copy(recording.url(), to: $0) }
+        let pacedExchanges = report.exchanges.filter {
+            $0.kind == "OBD" || $0.kind == "UDS"
+        }
+        let firstExchange = pacedExchanges.first?.started ?? 0
+        let started = ContinuousClock().now
+        for exchange in pacedExchanges {
+            if timing == .recorded {
+                let offset: UInt64
+                if exchange.started >= firstExchange {
+                    offset = exchange.started - firstExchange
+                } else {
+                    offset = 0
+                }
+                let clampedOffset = min(offset, UInt64(Int64.max))
+                let due = started + .milliseconds(Int64(clampedOffset))
+                let remaining = ContinuousClock().now.duration(to: due)
+                if remaining > .zero { try await Task.sleep(for: remaining) }
+            }
             continuation.yield(.step("Recorded answer to \(hex(exchange.request))"))
         }
         continuation.yield(
@@ -241,24 +288,6 @@ public actor DemoBackend: DiagnosticsBackend {
                 JobResult(
                     job: job, payload: payload, source: .recording(recording.rawValue),
                     transcript: reference)))
-        continuation.finish()
     }
 
-    /// Saves the original recording as the check's transcript, unchanged.
-    private static func copy(_ recording: DemoRecording, to url: URL) throws -> TranscriptReference
-    {
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let data = try Data(contentsOf: recording.url())
-        try data.write(to: url)
-        return TranscriptReference(
-            fileName: url.lastPathComponent, byteCount: data.count,
-            sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined())
-    }
-
-    private static func failure(_ error: any Error) -> JobFailure {
-        JobFailure(
-            message: error.readable, reconnectRequired: false, cancelled: false,
-            transcript: nil)
-    }
 }

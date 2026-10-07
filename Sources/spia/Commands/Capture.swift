@@ -94,20 +94,14 @@ struct Capture: AsyncParsableCommand {
             stderr("Monitoring with \(command); Ctrl-C to stop.")
 
             let work = Task {
-                try await connection.session.monitor(command) { elapsed, event in
+                try await connection.session.monitor(
+                    command, for: duration.map { .seconds($0) }
+                ) { elapsed, event in
                     await recorder.handle(elapsed, event)
                 }
             }
             let interrupt = installInterruptHandler { work.cancel() }
             defer { interrupt.cancel() }
-            var timer: Task<Void, Never>?
-            if let duration {
-                timer = Task {
-                    try? await Task.sleep(for: .seconds(duration))
-                    if !Task.isCancelled { work.cancel() }
-                }
-            }
-            defer { timer?.cancel() }
             try await work.value
 
             if let failure = await recorder.failure() { throw failure }

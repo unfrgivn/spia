@@ -69,7 +69,7 @@ public struct AnthropicProvider: AssistantProvider {
             "max_tokens": .number(Double(request.maxOutputTokens)),
             "system": .string(request.instructions),
             "stream": true,
-            "tool_choice": ["type": "auto"],
+            "tool_choice": toolChoice(for: request.toolChoice),
             "tools": .array(
                 request.tools.map { tool in
                     [
@@ -80,6 +80,13 @@ public struct AnthropicProvider: AssistantProvider {
             "messages": .array(
                 messages.map { ["role": .string($0.role.rawValue), "content": .array($0.content)] }),
         ]
+    }
+
+    private static func toolChoice(for choice: AssistantRequest.ToolChoice) -> JSONValue {
+        switch choice {
+        case .auto: return ["type": "auto"]
+        case .tool(let name): return ["type": "tool", "name": .string(name)]
+        }
     }
 
     private static func block(_ part: MessagePart) throws -> JSONValue {

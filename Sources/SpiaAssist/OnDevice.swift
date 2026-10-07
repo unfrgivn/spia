@@ -5,7 +5,8 @@ import Foundation
 #endif
 
 /// Apple's on-device model. Private and free, but smaller than the cloud models, it cannot see
-/// images, and it needs macOS 26 on Apple silicon with Apple Intelligence turned on.
+/// images, and it needs macOS 26 on Apple silicon with Apple Intelligence turned on. It cannot
+/// force a requested tool, so forced-tool requests may produce text instead.
 public struct OnDeviceProvider: AssistantProvider {
     public let id = ProviderID.onDevice
 

@@ -47,7 +47,7 @@ struct AssistantSettingsView: View {
                     "Include the VIN when sharing with cloud models",
                     isOn: $assistant.settings.shareVIN)
                 Text(
-                    "Each session asks before its data is first sent to Claude or OpenAI. The VIN identifies your car; it's rarely needed for diagnosis."
+                    "Each problem asks before its data is first sent to Claude or OpenAI. The VIN identifies your car; it's rarely needed for diagnosis."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)

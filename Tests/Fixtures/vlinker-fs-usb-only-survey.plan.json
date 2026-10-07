@@ -1,0 +1,194 @@
+{
+  "candidates" : [
+    {
+      "origin" : {
+        "catalog" : {
+          "label" : "Airbag controller (ORC)",
+          "provenance" : "observed",
+          "source" : "Complete DTC read recorded on the 2017 Ghibli S Q4, 2026-09-26 (ghibli-orc-flowcontrol)"
+        }
+      },
+      "target" : {
+        "bus" : "hs",
+        "request" : 1860,
+        "response" : 1220,
+        "statusMask" : 9
+      }
+    },
+    {
+      "origin" : {
+        "catalog" : {
+          "label" : "ABS",
+          "provenance" : "observed",
+          "source" : "Complete DTC read recorded on the 2017 Ghibli S Q4, 2026-09-26 (ghibli-abs-bcm-flowcontrol)"
+        }
+      },
+      "target" : {
+        "bus" : "hs",
+        "request" : 1863,
+        "response" : 1223,
+        "statusMask" : 9
+      }
+    },
+    {
+      "origin" : {
+        "catalog" : {
+          "label" : "Body computer (BCM)",
+          "provenance" : "observed",
+          "source" : "Complete DTC read recorded on the 2017 Ghibli S Q4, 2026-09-26 (ghibli-abs-bcm-flowcontrol)"
+        }
+      },
+      "target" : {
+        "bus" : "hs",
+        "request" : 1568,
+        "response" : 1284,
+        "statusMask" : 9
+      }
+    },
+    {
+      "origin" : {
+        "catalog" : {
+          "label" : "Steering column (SCCM)",
+          "provenance" : "reference",
+          "source" : "FCA references, not yet read on the car"
+        }
+      },
+      "target" : {
+        "bus" : "hs",
+        "request" : 1891,
+        "response" : 1251,
+        "statusMask" : 9
+      }
+    },
+    {
+      "origin" : {
+        "catalog" : {
+          "label" : "Engine",
+          "provenance" : "observed",
+          "source" : "Answered 7DF on the 2017 Ghibli S Q4, 2026-09-26 (ghibli-ignition-on-term)"
+        }
+      },
+      "target" : {
+        "bus" : "hs",
+        "request" : 2016,
+        "response" : 2024,
+        "statusMask" : 9
+      }
+    },
+    {
+      "origin" : {
+        "catalog" : {
+          "label" : "Transmission",
+          "provenance" : "observed",
+          "source" : "Answered 7DF on the 2017 Ghibli S Q4, 2026-09-26 (ghibli-ignition-on-term)"
+        }
+      },
+      "target" : {
+        "bus" : "hs",
+        "request" : 2017,
+        "response" : 2025,
+        "statusMask" : 9
+      }
+    },
+    {
+      "origin" : {
+        "legislated" : {
+
+        }
+      },
+      "target" : {
+        "bus" : "hs",
+        "request" : 2018,
+        "response" : 2026,
+        "statusMask" : 9
+      }
+    },
+    {
+      "origin" : {
+        "legislated" : {
+
+        }
+      },
+      "target" : {
+        "bus" : "hs",
+        "request" : 2019,
+        "response" : 2027,
+        "statusMask" : 9
+      }
+    },
+    {
+      "origin" : {
+        "legislated" : {
+
+        }
+      },
+      "target" : {
+        "bus" : "hs",
+        "request" : 2020,
+        "response" : 2028,
+        "statusMask" : 9
+      }
+    },
+    {
+      "origin" : {
+        "legislated" : {
+
+        }
+      },
+      "target" : {
+        "bus" : "hs",
+        "request" : 2021,
+        "response" : 2029,
+        "statusMask" : 9
+      }
+    },
+    {
+      "origin" : {
+        "legislated" : {
+
+        }
+      },
+      "target" : {
+        "bus" : "hs",
+        "request" : 2022,
+        "response" : 2030,
+        "statusMask" : 9
+      }
+    },
+    {
+      "origin" : {
+        "legislated" : {
+
+        }
+      },
+      "target" : {
+        "bus" : "hs",
+        "request" : 2023,
+        "response" : 2031,
+        "statusMask" : 9
+      }
+    }
+  ],
+  "catalogVersion" : "2026.09.29",
+  "identification" : [
+    61840,
+    61847,
+    61831,
+    61841,
+    61842,
+    61844,
+    61845,
+    61854
+  ],
+  "platform" : "M157",
+  "probeTimeoutMilliseconds" : 100,
+  "readTimeoutMilliseconds" : 400,
+  "unreachable" : [
+
+  ],
+  "vehicle" : {
+    "make" : "MASERATI",
+    "model" : "Ghibli",
+    "year" : 2017
+  }
+}

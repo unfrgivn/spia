@@ -3,27 +3,7 @@ import SpiaKit
 import SpiaStore
 import SwiftUI
 
-extension [ModulePreset] {
-    /// The modules the board names, in the owner's order. A preset whose IDs were edited into
-    /// something that isn't one module is left out.
-    var boardModules: [SessionBoard.Module] {
-        compactMap { preset in
-            preset.target.map { SessionBoard.Module(label: preset.label, target: $0) }
-        }
-    }
-}
-
 extension DiagnosticSession {
-    /// What this session's results say about the car. `live` is the connected adapter's status,
-    /// newer than any saved adapter check.
-    func board(live: AdapterStatus? = nil) -> SessionBoard {
-        let results = timeline.compactMap { entry in
-            entry.result.map { SessionBoard.Result(date: entry.date, payload: $0.payload) }
-        }
-        return SessionBoard(
-            modules: vehicle?.orderedModules.boardModules ?? [], results: results, live: live)
-    }
-
     /// The lamp a list of sessions shows beside this one: the colour of its most urgent problem,
     /// green once everything is read and clear, and none while there's nothing to say.
     var lamp: Tone? {
@@ -34,6 +14,25 @@ extension DiagnosticSession {
             return problem.status.tone
         }
         return rows.allSatisfy { $0.status == .clear || $0.status == .ok } ? .good : nil
+    }
+
+    @MainActor func openQuestionCount(in interpretations: VehicleInterpretations) -> Int {
+        interpretations.openQuestions(for: .problem(id)).count
+            + messages.reduce(0) { count, message in
+                count
+                    + message.toolCalls.filter {
+                        $0.name == "ask_user" && message.resolutions[$0.id] == .pending
+                    }.count
+            }
+    }
+}
+
+extension SessionBoard.Row {
+    var target: ModuleTarget? {
+        if case .module(let target) = subject {
+            return target
+        }
+        return nil
     }
 }
 
@@ -66,6 +65,7 @@ struct BoardHeader: View {
     @Bindable var session: DiagnosticSession
     let board: SessionBoard
     let layout: BoardLayout
+    let connectionKind: ConnectionKind?
 
     var body: some View {
         let wide = layout == .wide
@@ -122,7 +122,16 @@ struct BoardHeader: View {
         var parts = ["Opened \(Self.opened(session.startedAt))"]
         #if os(iOS)
             if let vehicle = session.vehicle {
-                parts.insert(vehicle.isDemo ? "\(vehicle.name) · Demo" : vehicle.name, at: 0)
+                let suffix: String?
+                if vehicle.isDemo {
+                    suffix = "Demo"
+                } else if connectionKind == .replay {
+                    suffix = "Recordings"
+                } else {
+                    suffix = nil
+                }
+                parts.insert(
+                    suffix.map { "\(vehicle.name) · \($0)" } ?? vehicle.name, at: 0)
             }
         #endif
         return parts.joined(separator: " · ")
@@ -157,6 +166,29 @@ struct BoardHeader: View {
     }
 }
 
+struct BoardHeadline: View {
+    let headline: String
+    let summary: String
+    let compact: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(headline)
+                .font(.system(size: compact ? 32 : 46, weight: .bold))
+                .tracking(compact ? -0.6 : -1)
+                .foregroundStyle(Palette.primary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(summary)
+                .font(.system(size: compact ? 16 : 19))
+                .lineSpacing(compact ? 2 : 4)
+                .foregroundStyle(Palette.secondary)
+                .frame(maxWidth: 820, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 10)
+        }
+    }
+}
+
 /// One line per part of the car, most urgent first, like a departures board. A part nobody has
 /// read yet offers to read it.
 struct SessionBoardView: View {
@@ -172,8 +204,13 @@ struct SessionBoardView: View {
     var unreadable: [SessionBoard.Subject: String] = [:]
     /// The assistant's answers, under the rows they're about.
     var notes: [SessionBoard.Subject: BoardNote] = [:]
-    /// Asks the assistant about a row.
-    var explain: ((SessionBoard.Row) -> Void)?
+    var interpretations: VehicleInterpretations?
+    var scope: ReviewScope = .car
+    var answer: ((UUID, String) -> Void)?
+    var runCheck: ((StoredCheck) -> Void)?
+    var askMore: ((String) -> Void)?
+    /// Opens the reading history for a row.
+    var open: ((SessionBoard.Row) -> Void)?
     var openAssistant: (() -> Void)?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -185,6 +222,19 @@ struct SessionBoardView: View {
                     switch layout {
                     case .wide: wide(row)
                     case .compact: compact(row)
+                    }
+                    if hasQuestions(row) {
+                        Chip(text: "Needs your answer", color: Palette.caution)
+                            .padding(.leading, layout == .wide ? 140 : 104)
+                            .padding(.top, -4)
+                    }
+                    if !row.codes.isEmpty, row.subject != reading?.subject {
+                        CodeNamesView(
+                            row: row, interpretations: interpretations, askMore: askMore,
+                            scope: scope, answer: answer
+                        )
+                        .padding(.leading, layout == .wide ? 140 : 104)
+                        .padding(.bottom, 12)
                     }
                     if let note = notes[row.subject] {
                         BoardNoteView(note: note, open: openAssistant)
@@ -200,6 +250,16 @@ struct SessionBoardView: View {
         }
         // Rows re-sort by urgency as results arrive; they slide to their new place.
         .animation(reduceMotion ? nil : .snappy(duration: 0.4), value: board.rows.map(\.id))
+    }
+
+    private func hasQuestions(_ row: SessionBoard.Row) -> Bool {
+        guard let interpretations else { return false }
+        if !interpretations.openQuestions(about: row.subject, code: nil, scope: scope).isEmpty {
+            return true
+        }
+        return row.printedCodes.contains {
+            !interpretations.openQuestions(about: row.subject, code: $0, scope: scope).isEmpty
+        }
     }
 
     private func word(_ row: SessionBoard.Row, size: CGFloat) -> StatusWord {
@@ -272,9 +332,26 @@ struct SessionBoardView: View {
 
     private func name(_ row: SessionBoard.Row) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(row.name)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Palette.primary)
+            Group {
+                if let open, row.date != nil {
+                    Button {
+                        open(row)
+                    } label: {
+                        HStack(spacing: 7) {
+                            Text(row.name)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Palette.tertiary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help("Show history")
+                } else {
+                    Text(row.name)
+                }
+            }
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(Palette.primary)
             if let short = row.shortName, layout == .wide {
                 Text(short)
                     .font(.system(size: 11.5, weight: .medium, design: .monospaced))
@@ -288,7 +365,7 @@ struct SessionBoardView: View {
         let mono = Font.system(size: size, weight: .semibold, design: .monospaced)
         if !row.codes.isEmpty {
             HStack(spacing: 14) {
-                ForEach(row.codes, id: \.self) { Text($0) }
+                ForEach(row.printedCodes, id: \.self) { Text($0) }
             }
             .font(mono)
             .foregroundStyle(row.status.tone.color)
@@ -328,13 +405,6 @@ struct SessionBoardView: View {
             Button("Read") { read(row.subject) }
                 .buttonStyle(OutlineButtonStyle())
                 .accessibilityLabel("Read \(row.name)")
-        } else if row.question != nil, notes[row.subject] == nil, let explain {
-            Button("Explain") { explain(row) }
-                .buttonStyle(.plain)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Palette.accent)
-                .help("Ask the assistant about this")
-                .accessibilityLabel("Explain \(row.name)")
         }
     }
 
@@ -398,6 +468,153 @@ struct StatusWord: View {
     }
 }
 
+/// What a row's codes are called, one line each, under the row: the printed code, then the
+/// public title where SAE defines one, else why there isn't one.
+private struct CodeNamesView: View {
+    let row: SessionBoard.Row
+    let interpretations: VehicleInterpretations?
+    let askMore: ((String) -> Void)?
+    let scope: ReviewScope
+    let answer: ((UUID, String) -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(zip(row.printedCodes, row.names).enumerated()), id: \.offset) {
+                _, item in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(item.0)
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundStyle(Palette.secondary)
+                        Text(Self.title(for: item.1))
+                            .font(.system(size: 13))
+                            .foregroundStyle(Palette.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let interpretation = interpretations?.interpretation(
+                        for: row.subject, code: item.0)
+                    {
+                        interpretationView(interpretation, catalogTitle: Self.title(for: item.1))
+                    }
+                    ForEach(questions(for: item.0), id: \.id) { question in
+                        QuestionView(question: question, answer: answer)
+                    }
+                }
+            }
+            if let target = row.target, let module = interpretations?.interpretation(for: target),
+                row.name == target.fallbackLabel
+            {
+                Text("\(module.provider.displayName): likely the \(module.name); \(module.role)")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Palette.secondary)
+            }
+            ForEach(moduleQuestions, id: \.id) { question in
+                QuestionView(question: question, answer: answer)
+            }
+            if let question = row.question, let askMore,
+                interpretations?.codes.contains(where: { $0.target == row.target }) == true
+            {
+                Button("Ask more") { askMore(question) }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(Palette.accent)
+            }
+            if let target = row.target, interpretations?.inFlight.contains(target) == true {
+                Text("Looking up…")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Palette.tertiary)
+                    .modifier(Breathing(active: true))
+            } else if row.target == nil, interpretations?.inFlight.contains(nil) == true {
+                Text("Looking up…")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Palette.tertiary)
+                    .modifier(Breathing(active: true))
+            }
+        }
+        .frame(maxWidth: 720, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func questions(for code: String) -> [StoredQuestion] {
+        interpretations?.questions(about: row.subject, code: code, scope: scope).filter {
+            $0.codes.count == 1
+        } ?? []
+    }
+
+    private var moduleQuestions: [StoredQuestion] {
+        interpretations?.questions(about: row.subject, code: nil, scope: scope).filter {
+            $0.codes.count != 1
+        } ?? []
+    }
+
+    private func interpretationView(
+        _ interpretation: StoredCodeInterpretation, catalogTitle: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if interpretation.name.caseInsensitiveCompare(catalogTitle) != .orderedSame {
+                Text(interpretation.name)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Palette.primary)
+            }
+            Text(interpretation.meaning)
+                .font(.system(size: 13))
+                .foregroundStyle(Palette.secondary)
+            Text("Check first: \(interpretation.firstCheck)")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Palette.secondary)
+            Text(stamp(interpretation))
+                .font(.system(size: 11.5))
+                .foregroundStyle(Palette.tertiary)
+        }
+    }
+
+    private func stamp(_ interpretation: StoredCodeInterpretation) -> String {
+        let confidence =
+            interpretation.confidence == "high"
+            ? "" : ", \(interpretation.confidence) confidence"
+        return
+            "Interpretation · \(interpretation.provider.displayName) · \(interpretation.date.formatted(date: .abbreviated, time: .omitted))\(confidence)"
+    }
+
+    private static func title(for name: CodeName?) -> String {
+        guard let name else { return "Not a standard code" }
+        if let entry = CodeCatalog.bundledCatalog?.entry(for: name) { return entry.title }
+        return name.isGeneric
+            ? "Not in the public code list" : "Manufacturer-specific; no public description"
+    }
+}
+
+private struct QuestionView: View {
+    let question: StoredQuestion
+    let answer: ((UUID, String) -> Void)?
+    @State private var text = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("Q: \(question.text)")
+                .font(.system(size: 13.5))
+                .foregroundStyle(Palette.primary)
+            if let response = question.answer {
+                Text("A: \(response)")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Palette.tertiary)
+            } else if let answer {
+                HStack(alignment: .bottom, spacing: 8) {
+                    TextField("Your answer", text: $text, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .lineLimit(1...4)
+                        .padding(8)
+                        .background(Palette.card, in: RoundedRectangle(cornerRadius: 8))
+                    Button("Answer") { answer(question.id, text) }
+                        .buttonStyle(OutlineButtonStyle())
+                        .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .padding(.top, 5)
+    }
+}
+
 /// The assistant's answer about a board row, or the one it's writing.
 struct BoardNote: Equatable {
     let text: String
@@ -449,6 +666,70 @@ private struct BoardNoteView: View {
     }
 }
 
+struct ReviewView: View {
+    let review: StoredReview?
+    let inFlight: Bool
+    let untaggedQuestions: [StoredQuestion]
+    let moduleLabels: [ModuleTarget: String]
+    let answer: (UUID, String) -> Void
+    let checks: [(StoredCheck, Bool)]
+    let run: (StoredCheck) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(Palette.accent)
+                    .frame(width: 3)
+                    .modifier(Breathing(active: inFlight))
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(heading)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Palette.accent)
+                    if let review, !inFlight {
+                        Text(review.reading)
+                            .font(.system(size: 14))
+                            .lineSpacing(2)
+                            .foregroundStyle(Palette.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("Read \(review.date, format: .dateTime.month().day().year())")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Palette.tertiary)
+                    }
+                }
+            }
+            ForEach(untaggedQuestions, id: \.id) { question in
+                QuestionView(question: question, answer: answer)
+            }
+            ForEach(Array(checks.enumerated()), id: \.offset) { _, item in
+                let check = item.0
+                if item.1 {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("Would read: \(label(for: check)), \(check.reason)")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Palette.secondary)
+                        Button("Read") { run(check) }
+                            .buttonStyle(OutlineButtonStyle())
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: 720, alignment: .leading)
+    }
+
+    private var heading: String {
+        if inFlight {
+            return "\(review?.provider.displayName ?? "The assistant") is reading the board…"
+        }
+        return review.map { "\($0.provider.displayName)'s reading" } ?? ""
+    }
+
+    private func label(for check: StoredCheck) -> String {
+        if let module = check.module, let label = moduleLabels[module] { return label }
+        return check.kind.rawValue.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+}
+
 /// Fades in and out while something is at work.
 private struct Breathing: ViewModifier {
     let active: Bool
@@ -471,6 +752,7 @@ struct RunMenu: View {
     let vehicle: Vehicle?
     let workbench: Workbench
     let run: (DiagnosticJob) -> Void
+    let survey: (() -> Void)?
     let connect: () -> Void
     let editModules: () -> Void
 
@@ -478,6 +760,7 @@ struct RunMenu: View {
         if workbench.connection.status == nil {
             Button(action: connect) { PrimaryPill(title: "Connect", menu: false) }
                 .buttonStyle(.plain)
+                .fixedSize()
                 .help("Connect the adapter to run checks")
         } else {
             Menu {
@@ -486,6 +769,11 @@ struct RunMenu: View {
                         ForEach(Self.jobs.filter { $0.requirement == requirement }, id: \.title) {
                             job in
                             Button(job.menuTitle) { run(job) }
+                        }
+                        if requirement == .ignitionOn, vehicle != nil {
+                            // Off for the demo, and for saved recordings without this survey.
+                            Button("Survey This Car") { survey?() }
+                                .disabled(survey == nil)
                         }
                         // Module reads always need the ignition on.
                         if requirement == .ignitionOn { modules }
@@ -574,10 +862,14 @@ struct AdapterIndicator: View {
         Button(action: open) {
             HStack(spacing: 7) {
                 Lamp(tone: tone)
-                Text(workbench.activity == nil ? summary.title : "Reading")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Palette.secondary)
-                    .lineLimit(1)
+                Text(
+                    workbench.activity == nil
+                        ? (workbench.adapter.kind == .replay ? "Saved recordings" : summary.title)
+                        : "Reading"
+                )
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Palette.secondary)
+                .lineLimit(1)
             }
             .fixedSize()
             .contentShape(Rectangle())

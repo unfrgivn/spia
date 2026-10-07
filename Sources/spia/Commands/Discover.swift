@@ -166,25 +166,13 @@ struct Discover: AsyncParsableCommand {
             return []
         }
         for response in responses
-        where response.payload.count >= 3
-            && response.payload[0] == 0x7F && response.payload[1] == 0x3E
-            && response.payload[2] == 0x78
-        {
+        where TesterPresentReply(payload: response.payload) == .pending {
             stderr("  \(address): response pending (provisional, not counted)")
         }
-        let valid = responses.filter(Self.isTesterPresentResponse)
+        let valid = responses.filter { TesterPresentReply(payload: $0.payload).isModule }
         for response in valid {
             print("  \(address) answered: \(PIDValue.raw(response.payload).formatted)")
         }
         return valid.map { (address, $0) }
-    }
-
-    private static func isTesterPresentResponse(_ response: ECUResponse) -> Bool {
-        guard response.payload.count >= 2 else { return false }
-        if response.payload[0] == 0x7E && response.payload[1] == 0x00 { return true }
-        return response.payload.count >= 3
-            && response.payload[0] == 0x7F
-            && response.payload[1] == 0x3E
-            && response.payload[2] != 0x78
     }
 }

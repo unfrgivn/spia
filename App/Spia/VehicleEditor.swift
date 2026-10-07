@@ -73,9 +73,9 @@ struct VehicleEditor: View {
             vehicle.trim = trim.trimmed
             vehicle.color = color
             vehicle.colorName = colorName.trimmed
-            try model.garage.addSession(
-                to: vehicle, title: problem.isEmpty ? "First session" : "New problem",
-                problem: problem)
+            if !problem.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                _ = try model.garage.addSession(to: vehicle, title: "New problem", problem: problem)
+            }
             onCreate(vehicle)
             dismiss()
         } catch {
@@ -132,6 +132,36 @@ struct VehicleSettings: View {
                 Section {
                     TextField("Notes", text: $notes, axis: .vertical)
                         .lineLimit(2...6)
+                }
+                Section("Code explanations") {
+                    let interpretations = model.interpreter.interpretations(for: vehicle)
+                    if let consent = interpretations.consent {
+                        HStack {
+                            Text(
+                                "Allowed with \(consent.provider.displayName) since \(consent.grantedAt.formatted(date: .abbreviated, time: .omitted))"
+                            )
+                            Spacer()
+                            Button("Stop") { interpretations.withdraw() }
+                        }
+                    } else {
+                        HStack {
+                            Text("Not allowed")
+                            Spacer()
+                            Button("Allow…") {
+                                interpretations.allow(model.assistant.settings.defaultProvider)
+                            }
+                            .disabled(
+                                model.assistant.unavailableReason(
+                                    model.assistant.settings.defaultProvider) != nil)
+                        }
+                        if let reason = model.assistant.unavailableReason(
+                            model.assistant.settings.defaultProvider)
+                        {
+                            Text(reason)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
             .formStyle(.grouped)

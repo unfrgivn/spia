@@ -24,6 +24,41 @@ struct SpiaKitTests {
             .appendingPathComponent("transcript.txt")
     }
 
+    private func sameWireEvents(_ first: [TranscriptEvent], _ second: [TranscriptEvent]) -> Bool {
+        first.count == second.count
+            && zip(first, second).allSatisfy {
+                $0.0.direction == $0.1.direction && $0.0.bytes == $0.1.bytes
+            }
+    }
+
+    @Test("adapter addressing decisions cover every job from both states")
+    func adapterAddressing() {
+        let survey = DiagnosticJob.survey(
+            SurveyPlan(
+                catalogVersion: "test", vehicle: nil, platform: nil, candidates: [],
+                unreachable: []))
+        let cases: [(job: DiagnosticJob, needsPostConnect: Bool, leavesModule: Bool)] = [
+            (.adapterCheck, false, false),
+            (.vehicleInfo, true, false),
+            (.genericScan, true, false),
+            (survey, true, true),
+            (.moduleDTCs(Self.airbag), false, true),
+        ]
+        for (job, needsPostConnect, leavesModule) in cases {
+            #expect(!AdapterAddressing.postConnect.needsReinitialization(for: job))
+            #expect(
+                AdapterAddressing.moduleAddressed.needsReinitialization(for: job)
+                    == needsPostConnect)
+            #expect(
+                AdapterAddressing.postConnect.state(after: job)
+                    == (leavesModule ? .moduleAddressed : .postConnect))
+            // An adapter check leaves the addressing as it found it.
+            #expect(
+                AdapterAddressing.moduleAddressed.state(after: job)
+                    == (leavesModule || job == .adapterCheck ? .moduleAddressed : .postConnect))
+        }
+    }
+
     @Test("bundled demo recordings are byte-identical to the test fixtures")
     func recordingsMatchFixtures() throws {
         let fixtures = URL(fileURLWithPath: #filePath)
@@ -62,15 +97,16 @@ struct SpiaKitTests {
         #expect(await transport.isFinished)
         #expect(await connection.state.status?.voltage == 14.3)
 
-        // The transcript holds exactly what the check sent, which is exactly what was sent on the car.
+        // The transcript holds initialization followed by the check, exactly as sent on the car.
         let recorded = try Transcript.decodeFile(String(contentsOf: url, encoding: .utf8))
         let sent = recorded.filter { $0.direction == .tx }.map {
             String(decoding: $0.bytes.dropLast(), as: UTF8.self)
         }
-        #expect(sent == DiagnosticJob.moduleDTCs(Self.airbag).plannedCommands)
+        let planned = DiagnosticJob.moduleDTCs(Self.airbag).plannedCommands
+        #expect(Array(sent.suffix(planned.count)) == planned)
         let onCar = try DemoRecording.airbagCodes.events().filter { $0.direction == .tx }
             .map { String(decoding: $0.bytes.dropLast(), as: UTF8.self) }
-        #expect(Array(onCar.suffix(sent.count)) == sent)
+        #expect(sent == onCar)
 
         let data = try Data(contentsOf: url)
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
@@ -78,6 +114,63 @@ struct SpiaKitTests {
             result.transcript
                 == TranscriptReference(
                     fileName: "transcript.txt", byteCount: data.count, sha256: digest))
+    }
+
+    @Test("airbag transcript includes initialization and replays standalone")
+    func airbagTranscriptRoundTrip() async throws {
+        let (_, connection) = try await connected(.airbagCodes)
+        let url = temporaryFile()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let events = await collect(
+            JobRunner(connection: connection).run(.moduleDTCs(Self.airbag), transcript: url))
+        #expect(events.compactMap(\.result).first?.payload != nil)
+        let saved = try Transcript.decodeFile(String(contentsOf: url, encoding: .utf8))
+        let original = try DemoRecording.airbagCodes.events()
+        #expect(sameWireEvents(saved, original))
+        #expect(saved.first?.direction == .tx)
+        #expect(saved.first?.bytes == Array("ATZ\r".utf8))
+        #expect(
+            zip(saved, saved.dropFirst()).allSatisfy {
+                $0.0.milliseconds <= $0.1.milliseconds
+            })
+
+        let replay = try ReplayTransport(contentsOf: url)
+        let fresh = ConnectionManager(adapter: DemoGarage.adapter) { replay }
+        try await fresh.connect()
+        let replayEvents = await collect(
+            JobRunner(connection: fresh).run(.moduleDTCs(Self.airbag)))
+        #expect(
+            replayEvents.compactMap(\.result).first?.payload
+                == events.compactMap(\.result).first?.payload)
+        #expect(await replay.isFinished)
+    }
+
+    @Test("adapter check transcript stops before the trailing generic probe")
+    func adapterCheckTranscriptRoundTrip() async throws {
+        let (_, connection) = try await connected(.adapterProbe)
+        let url = temporaryFile()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        _ = await collect(JobRunner(connection: connection).run(.adapterCheck, transcript: url))
+        let saved = try Transcript.decodeFile(String(contentsOf: url, encoding: .utf8))
+        let original = try DemoRecording.adapterProbe.events()
+        let trailing = try #require(
+            original.firstIndex {
+                $0.direction == .tx && String(decoding: $0.bytes, as: UTF8.self) == "0100\r"
+            })
+        #expect(sameWireEvents(saved, Array(original[..<trailing])))
+        #expect(saved.first?.direction == .tx)
+        #expect(saved.first?.bytes == Array("ATZ\r".utf8))
+        #expect(
+            zip(saved, saved.dropFirst()).allSatisfy {
+                $0.0.milliseconds <= $0.1.milliseconds
+            })
+
+        let replay = try ReplayTransport(contentsOf: url)
+        let fresh = ConnectionManager(adapter: DemoGarage.adapter) { replay }
+        try await fresh.connect()
+        let replayEvents = await collect(JobRunner(connection: fresh).run(.adapterCheck))
+        #expect(replayEvents.compactMap(\.result).first?.payload != nil)
+        #expect(await replay.isFinished)
     }
 
     @Test("adapter check reads firmware, hardware, and the car's voltage into the connection state")
@@ -166,6 +259,15 @@ struct SpiaKitTests {
         #expect(throws: JobResult.DecodingFailure.unsupportedSchemaVersion(2)) {
             try JSONDecoder().decode(JobResult.self, from: Data(future.utf8))
         }
+        let liveJSON =
+            #"{"schemaVersion":1,"job":{"genericScan":{}},"payload":{"genericScan":{"_0":[]}},"source":{"live":{}}}"#
+        let decodedLive = try JSONDecoder().decode(JobResult.self, from: Data(liveJSON.utf8))
+        #expect(decodedLive.source == .live)
+        let replay = JobResult(
+            job: .genericScan, payload: .genericScan([]),
+            source: .replay(recorded: Date(timeIntervalSince1970: 1_700_000_000)), transcript: nil)
+        #expect(
+            try JSONDecoder().decode(JobResult.self, from: JSONEncoder().encode(replay)) == replay)
     }
 
     @Test("no check can send a service that changes the car")
@@ -177,13 +279,24 @@ struct SpiaKitTests {
         ]
         var jobs: [DiagnosticJob] = [.adapterCheck, .vehicleInfo, .genericScan]
         jobs += DemoGarage.modules.map { .moduleDTCs($0.target) }
+        let bundled = try ModuleCatalog.bundled()
+        jobs += try bundled.makes.flatMap { make in
+            try make.platforms.map { platform in
+                .survey(
+                    try SurveyPlanner.plan(
+                        catalog: bundled,
+                        vehicle: CatalogVehicle(
+                            make: make.make, model: platform.models[0], year: platform.firstYear),
+                        reachableBuses: [.highSpeed, .mediumSpeed]))
+            }
+        }
         jobs.append(
             .moduleDTCs(
                 try ModuleTarget(
                     bus: .mediumSpeed, request: 0x7BF, response: 0x53F, statusMask: 0xFF)))
         for job in jobs {
             for command in job.plannedCommands
-            where !command.hasPrefix("AT") && !command.hasPrefix("ST") {
+            where command != "ATRV" && !command.hasPrefix("AT") && !command.hasPrefix("ST") {
                 let service = try #require(
                     UInt8(command.prefix(2), radix: 16), "\(command) is not hex")
                 #expect(!forbidden.contains(service), "\(job.id) would send \(command)")
@@ -191,9 +304,9 @@ struct SpiaKitTests {
         }
     }
 
-    @Test("module targets reject IDs that are not a single 11-bit module")
-    func moduleTargetValidation() {
-        #expect(throws: ModuleTarget.Invalid.notElevenBit(0x800)) {
+    @Test("module targets validate standard and extended CAN addresses")
+    func moduleTargetValidation() throws {
+        #expect(throws: ModuleTarget.Invalid.mixedAddressWidth(request: 0x800, response: 0x4C4)) {
             try ModuleTarget(bus: .highSpeed, request: 0x800, response: 0x4C4)
         }
         #expect(throws: ModuleTarget.Invalid.functionalBroadcast) {
@@ -202,6 +315,35 @@ struct SpiaKitTests {
         #expect(throws: ModuleTarget.Invalid.sameRequestAndResponse) {
             try ModuleTarget(bus: .highSpeed, request: 0x744, response: 0x744)
         }
+        let extended = try ModuleTarget(
+            bus: .highSpeed, request: 0x18DA30F1, response: 0x18DAF130)
+        #expect(extended.isExtended)
+        #expect(throws: ModuleTarget.Invalid.extendedOnMediumSpeed) {
+            try ModuleTarget(bus: .mediumSpeed, request: 0x18DA30F1, response: 0x18DAF130)
+        }
+        #expect(throws: ModuleTarget.Invalid.extendedFunctionalBroadcast) {
+            try ModuleTarget(bus: .highSpeed, request: 0x18DB33F1, response: 0x18DAF133)
+        }
+        #expect(throws: ModuleTarget.Invalid.invalidCANID(0x20000000)) {
+            try ModuleTarget(bus: .highSpeed, request: 0x20000000, response: 0x18DAF130)
+        }
+    }
+
+    @Test("29-bit module commands select protocol 7 and eight-digit headers")
+    func extendedModuleCommands() throws {
+        let target = try ModuleTarget(
+            bus: .highSpeed, request: 0x18DA30F1, response: 0x18DAF130)
+        #expect(target.setupCommands == ["ATSP7", "ATST 64", "ATCFC 1"])
+        #expect(
+            target.headerCommands == [
+                "ATSH 18DA30F1", "ATCRA 18DAF130", "ATFCSD 30 00 00", "ATFCSH 18DA30F1",
+                "ATFCSM 1",
+            ])
+        let plan = SurveyPlan(
+            catalogVersion: "test", vehicle: nil, platform: nil,
+            candidates: [SurveyCandidate(target: target, origin: .discovered)], unreachable: [])
+        #expect(plan.commands(for: plan.candidates[0]).setup.first == "ATSP7")
+        #expect(plan.plannedCommands.contains("ATSH 18DA30F1"))
     }
 
     @Test("connection state is delivered to every observer")
@@ -258,12 +400,38 @@ struct SpiaKitTests {
         #expect(ConnectionSummary.voltageText(14.3).contains("charging"))
         #expect(ConnectionSummary.voltageText(12.6) == "12.6 V")
     }
+
+    @Test("demo and replay connection summaries do not present saved voltage as current")
+    func recordedConnectionWording() {
+        let status = AdapterStatus(
+            identity: "ELM327 v2.3", firmware: "STN1170 v4.3.2", hardware: "vLinker FS r2",
+            voltage: 14.3)
+        for kind in [ConnectionKind.demo, .replay] {
+            let summary = ConnectionSummary(
+                adapter: AdapterDescriptor(kind: kind, displayName: "recording"),
+                state: .ready(status))
+            #expect(summary.detail.contains("not a live car reading"))
+            #expect(!summary.detail.contains("14.3 V"))
+            #expect(!summary.detail.contains("No power from the car"))
+        }
+    }
 }
 
 @Suite("Demo car")
 struct DemoBackendTests {
     private func run(_ job: DiagnosticJob, on demo: DemoBackend) async -> [JobEvent] {
         await collect(demo.run(job, transcript: nil))
+    }
+
+    @Test("demo refuses a survey because it has no survey recording")
+    func surveyUnavailable() async {
+        let demo = DemoBackend()
+        try? await demo.connect()
+        let plan = SurveyPlan(
+            catalogVersion: "test", vehicle: nil, platform: nil, candidates: [], unreachable: [])
+        #expect(!demo.canRun(.survey(plan)))
+        let events = await run(.survey(plan), on: demo)
+        #expect(events.compactMap(\.failure).first?.message.contains("car survey") == true)
     }
 
     @Test("connecting replays the recorded adapter check")
@@ -273,6 +441,92 @@ struct DemoBackendTests {
         let state = await prefix(demo.states(), 1).first
         #expect(state?.status?.firmware == "STN1170 v4.3.2")
         #expect(state?.status?.voltage == 11.7)
+    }
+
+    @Test("recorded connection waits for the adapter's real response latency")
+    func recordedConnectionTiming() async throws {
+        let events = try DemoRecording.adapterProbe.events()
+        let immediateTransport = ReplayTransport(events: events)
+        let immediate = ConnectionManager(adapter: DemoGarage.adapter) { immediateTransport }
+        try await immediate.connect()
+
+        let recordedTransport = ReplayTransport(events: events, timing: .recorded)
+        let recorded = ConnectionManager(adapter: DemoGarage.adapter) { recordedTransport }
+        let clock = ContinuousClock()
+        let start = clock.now
+        try await recorded.connect()
+        #expect(start.duration(to: clock.now) >= .milliseconds(1_000))
+        let recordedStatus = await recorded.state.status
+        let immediateStatus = await immediate.state.status
+        #expect(recordedStatus == immediateStatus)
+    }
+
+    @Test("a replay backend rejects checks without saved recordings readably")
+    func replayBackendCoverage() async throws {
+        let saved = SavedCheck(
+            job: .moduleDTCs(DemoGarage.airbag.target), recorded: .now,
+            transcript: try DemoRecording.airbagCodes.url())
+        let backend = ReplayBackend(
+            displayName: "Saved recordings", checks: [saved], timing: .immediate)
+        #expect(!backend.canRun(.genericScan))
+        try await backend.connect()
+        let events = await collect(await backend.run(.genericScan, transcript: nil))
+        #expect(
+            events.compactMap(\.failure).first?.message.contains("saved recording")
+                == true)
+    }
+
+    @Test("replay connection prefers an adapter check and otherwise uses check identity")
+    func replayConnectionStatusSources() async throws {
+        let adapter = SavedCheck(
+            job: .adapterCheck, recorded: Date(timeIntervalSince1970: 100),
+            transcript: try DemoRecording.adapterProbe.url())
+        let module = SavedCheck(
+            job: .moduleDTCs(DemoGarage.airbag.target), recorded: Date(timeIntervalSince1970: 200),
+            transcript: try DemoRecording.airbagCodes.url())
+        let withAdapter = ReplayBackend(
+            displayName: "Saved", checks: [adapter, module], timing: .immediate)
+        try await withAdapter.connect()
+        #expect((await withAdapter.currentState()).status?.firmware == "STN1170 v4.3.2")
+
+        let withoutAdapter = ReplayBackend(
+            displayName: "Saved", checks: [module], timing: .immediate)
+        try await withoutAdapter.connect()
+        #expect((await withoutAdapter.currentState()).status?.firmware == nil)
+    }
+
+    @Test("a paced decoded check can be cancelled")
+    func cancelPacedDecodedCheck() async throws {
+        let demo = DemoBackend(timing: .recorded)
+        try await demo.connect()
+        let stream = await demo.run(.genericScan, transcript: nil)
+        let collecting = Task { await collect(stream) }
+        try await Task.sleep(for: .milliseconds(20))
+        await demo.cancel()
+        let events = await collecting.value
+        #expect(events.compactMap(\.failure).first?.cancelled == true)
+    }
+
+    @Test("a paced module check does not replay connection initialization")
+    func pacedModuleCheckUsesCheckDuration() async throws {
+        let demo = DemoBackend(timing: .recorded)
+        try await demo.connect()
+        let events = try DemoRecording.airbagCodes.events()
+        let checkStart = try #require(
+            events.firstIndex {
+                $0.direction == .tx && $0.bytes == Array("ATRV\r".utf8)
+            })
+        let lastTimestamp = try #require(events.last?.milliseconds)
+        let recordedDuration = lastTimestamp - events[checkStart].milliseconds
+        let clock = ContinuousClock()
+        let start = clock.now
+        _ = await run(.moduleDTCs(DemoGarage.airbag.target), on: demo)
+        let elapsed = start.duration(to: clock.now)
+        let lowerBound: Duration = .milliseconds(Int64(recordedDuration / 2))
+        let upperBound: Duration = .milliseconds(
+            Int64(min(recordedDuration + 1_000, UInt64(Int64.max))))
+        #expect(elapsed >= lowerBound)
+        #expect(elapsed < upperBound)
     }
 
     @Test("vehicle information and generic scan come from the ignition-on recording")

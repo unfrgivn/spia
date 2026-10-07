@@ -27,7 +27,9 @@ struct VehicleWorkspace: View {
         let references = model.references(for: vehicle)
         NavigationSplitView {
             WorkspaceSidebar(
-                vehicle: vehicle, references: references, selection: $selection,
+                vehicle: vehicle, references: references,
+                interpretations: model.interpreter.interpretations(for: vehicle),
+                selection: $selection,
                 switchTo: switchTo, showGarage: leave, newSession: newSession
             )
             .navigationSplitViewColumnWidth(min: 230, ideal: 270)
@@ -76,7 +78,7 @@ struct VehicleWorkspace: View {
 
     private func newSession() {
         do {
-            let session = try model.garage.addSession(to: vehicle, title: "New session")
+            let session = try model.garage.addSession(to: vehicle, title: "New problem")
             selection = .session(session.id)
         } catch {
             problem = error.readable
@@ -93,6 +95,7 @@ private struct WorkspaceSidebar: View {
     @Environment(AppModel.self) private var model
     let vehicle: Vehicle
     let references: VehicleReferences
+    let interpretations: VehicleInterpretations
     @Binding var selection: WorkspaceSection?
     let switchTo: (Vehicle) -> Void
     let showGarage: () -> Void
@@ -120,16 +123,17 @@ private struct WorkspaceSidebar: View {
                     .tag(WorkspaceSection.photos)
             }
 
-            Section("Sessions") {
+            Section("Problems") {
                 ForEach(vehicle.orderedSessions) { session in
                     SessionRow(session: session)
+                        .badge(session.openQuestionCount(in: interpretations))
                         .tag(WorkspaceSection.session(session.id))
                         .contextMenu {
-                            Button("Delete Session…", role: .destructive) { deleting = session }
+                            Button("Delete Problem…", role: .destructive) { deleting = session }
                         }
                 }
                 Button(action: newSession) {
-                    Label("New Session", systemImage: "plus")
+                    Label("New Problem", systemImage: "plus")
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
@@ -222,6 +226,7 @@ private struct CarSwitcher: View {
     }
 }
 
+/// A problem in the sidebar. Its open-question count is the row's badge, set by the list.
 private struct SessionRow: View {
     let session: DiagnosticSession
 

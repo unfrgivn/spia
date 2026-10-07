@@ -11,6 +11,9 @@ struct GarageView: View {
     @Query(sort: \Vehicle.createdAt) private var vehicles: [Vehicle]
     let open: (Vehicle, DiagnosticSession?) -> Void
     @State private var addingVehicle = false
+    #if os(iOS)
+        @State private var showingSettings = false
+    #endif
     @State private var deleting: Vehicle?
     @State private var problem: String?
     @State private var width: CGFloat = 1_000
@@ -26,6 +29,7 @@ struct GarageView: View {
                     ForEach(vehicles) { vehicle in
                         ShowroomBay(
                             vehicle: vehicle, references: model.references(for: vehicle),
+                            interpretations: model.interpreter.interpretations(for: vehicle),
                             compact: compact, featured: vehicles.count == 1,
                             open: { open(vehicle, $0) },
                             startSession: { startSession(on: vehicle) }
@@ -59,6 +63,16 @@ struct GarageView: View {
         .focusedSceneValue(\.garage, GarageActions(addVehicle: { addingVehicle = true }))
         .navigationTitle("Garage")
         .toolbar {
+            // A Mac has its Settings window (⌘,); an iPhone or iPad opens it from here.
+            #if os(iOS)
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Label("Settings", systemImage: "gearshape")
+                    }
+                }
+            #endif
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     addingVehicle = true
@@ -68,11 +82,23 @@ struct GarageView: View {
                 .help("Add a vehicle")
             }
         }
+        #if os(iOS)
+            .sheet(isPresented: $showingSettings) {
+                NavigationStack {
+                    SettingsView()
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showingSettings = false }
+                        }
+                    }
+                }
+            }
+        #endif
         .sheet(isPresented: $addingVehicle) {
             VehicleEditor { vehicle in open(vehicle, vehicle.orderedSessions.first) }
         }
         .confirmationDialog(
-            "Delete \(deleting?.name ?? "this vehicle") and all its sessions?",
+            "Delete \(deleting?.name ?? "this vehicle") and all its problems?",
             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
             titleVisibility: .visible, presenting: deleting
         ) { vehicle in
@@ -86,8 +112,8 @@ struct GarageView: View {
     static func deletionMessage(sessions count: Int) -> String {
         let sessions =
             count == 1
-            ? "Its session, with its results, transcripts, photos, and conversation, is"
-            : "All \(count) sessions, with their results, transcripts, photos, and conversations, are"
+            ? "Its problem, with its results, transcripts, photos, and conversation, is"
+            : "All \(count) problems, with their results, transcripts, photos, and conversations, are"
         return
             "\(sessions) removed from \(PlatformText.thisDevice), along with its references. This can't be undone."
     }
@@ -103,7 +129,7 @@ struct GarageView: View {
 
     private func startSession(on vehicle: Vehicle) {
         do {
-            open(vehicle, try model.garage.addSession(to: vehicle, title: "New session"))
+            open(vehicle, try model.garage.addSession(to: vehicle, title: "New problem"))
         } catch {
             problem = error.readable
         }
@@ -121,6 +147,7 @@ struct GarageView: View {
 private struct ShowroomBay: View {
     let vehicle: Vehicle
     let references: VehicleReferences
+    let interpretations: VehicleInterpretations
     let compact: Bool
     /// The garage's only car, which gets the room to itself.
     let featured: Bool
@@ -229,12 +256,15 @@ private struct ShowroomBay: View {
                 Text("\(Text(session.title).foregroundStyle(Palette.primary)) \(opened)")
                     .font(.system(size: 13, weight: .medium))
                     .lineLimit(compact ? 2 : 1)
-                Text(board.headline)
-                    .font(.system(size: compact ? 19 : 24, weight: .semibold))
-                    .tracking(-0.3)
-                    .foregroundStyle(Palette.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 8)
+                Text(
+                    headline(
+                        board.headline, questions: session.openQuestionCount(in: interpretations))
+                )
+                .font(.system(size: compact ? 19 : 24, weight: .semibold))
+                .tracking(-0.3)
+                .foregroundStyle(Palette.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 8)
                 MiniBoard(
                     rows: board.rows.filter { $0.status != .notRead }.prefix(3),
                     size: compact ? 17 : 20
@@ -251,18 +281,24 @@ private struct ShowroomBay: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 6) {
-                Text(vehicle.sessions.isEmpty ? "No sessions yet" : "No open sessions")
+                Text(vehicle.sessions.isEmpty ? "No problems yet" : "No open problems")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Palette.primary)
                 Text("Start one when something's wrong: what you notice, and what the car reports.")
                     .font(.system(size: 13.5))
                     .foregroundStyle(Palette.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Button(action: startSession) { PrimaryPill(title: "Start a Session") }
+                Button(action: startSession) { PrimaryPill(title: "Start a Problem") }
                     .buttonStyle(.plain)
                     .padding(.top, 10)
             }
         }
+    }
+
+    private func headline(_ headline: String, questions: Int) -> String {
+        guard questions > 0 else { return headline }
+        let suffix = questions == 1 ? "1 question" : "\(questions) questions"
+        return "\(headline) · \(suffix)"
     }
 
     private var detail: String {
@@ -409,7 +445,7 @@ private struct Welcome: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, compact ? 16 : 22)
             Text(
-                "Spia reads your car's modules through an OBD‑II adapter, looks up its recalls and service bulletins, and keeps it all beside what you've noticed, one session per problem."
+                "Spia reads your car's modules through an OBD‑II adapter, looks up its recalls and service bulletins, and keeps it all beside what you've noticed, one problem at a time."
             )
             .font(.system(size: compact ? 15 : 17))
             .lineSpacing(3)

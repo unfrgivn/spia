@@ -92,12 +92,22 @@ public enum JobPayload: Codable, Sendable, Equatable {
     case vehicleInfo([ECUIdentity])
     case genericScan([ECUScan])
     case moduleDTCs(ModuleDTCs)
+    case survey(SurveyReport)
 }
 
 public enum ResultSource: Codable, Sendable, Equatable {
     case live
     /// Produced from a real recording, named after the file (demo mode).
     case recording(String)
+    /// Produced by replaying a saved live check from this vehicle.
+    case replay(recorded: Date)
+}
+
+extension ResultSource {
+    public var replayDate: Date? {
+        if case .replay(let recorded) = self { return recorded }
+        return nil
+    }
 }
 
 /// A saved transcript of every byte exchanged during one check.

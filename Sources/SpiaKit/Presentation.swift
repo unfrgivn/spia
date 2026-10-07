@@ -75,22 +75,45 @@ public struct ConnectionSummary: Sendable, Equatable {
             case .usbSerial: "cable.connector"
             case .bluetooth: "antenna.radiowaves.left.and.right"
             case .demo: "play.rectangle"
+            case .replay: "arrow.clockwise.circle"
             }
         switch state {
         case .disconnected:
-            title = "Not connected"
             detail =
-                adapter.kind == .demo
-                ? "Demo recordings ready" : "Plug in the adapter, then connect"
-            tone = .neutral
+                switch adapter.kind {
+                case .demo: "Demo recordings ready"
+                case .replay: "Saved recordings ready"
+                default: "Plug in the adapter, then connect"
+                }
+            if adapter.kind == .demo {
+                title = "Demo recordings"
+                tone = .neutral
+            } else if adapter.kind == .replay {
+                title = "Saved recordings"
+                tone = .neutral
+            } else {
+                title = "Not connected"
+                tone = .neutral
+            }
         case .connecting:
             title = "Connecting"
             detail = "Resetting the adapter"
             tone = .working
         case .ready(let status):
-            title = status.hardware ?? adapter.displayName
-            detail = "Ready · \(Self.voltageText(status.voltage))"
-            tone = status.voltage == nil ? .attention : .good
+            switch adapter.kind {
+            case .demo:
+                title = "Demo recordings"
+                detail = "Ready · not a live car reading"
+                tone = .neutral
+            case .replay:
+                title = "Saved recordings"
+                detail = "Ready · not a live car reading"
+                tone = .neutral
+            case .usbSerial, .bluetooth:
+                title = status.hardware ?? adapter.displayName
+                detail = "Ready · \(Self.voltageText(status.voltage))"
+                tone = status.voltage == nil ? .attention : .good
+            }
         case .reconnectRequired(let reason):
             title = "Reconnect needed"
             detail = reason

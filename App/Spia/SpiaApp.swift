@@ -28,9 +28,7 @@ struct SpiaApp: App {
             }
             .platformWindowFrame()
             .tint(Palette.accent)
-            #if DEBUG
-                .preferredColorScheme(Fixture.colorScheme)
-            #endif
+            .followsAppearanceSetting()
             .task {
                 guard model == nil, startupError == nil else { return }
                 do {
@@ -48,8 +46,9 @@ struct SpiaApp: App {
         #if os(macOS)
             Settings {
                 if let model {
-                    AssistantSettingsView()
+                    SettingsView()
                         .environment(model)
+                        .followsAppearanceSetting()
                 }
             }
         #endif
@@ -74,7 +73,7 @@ struct ContentView: View {
         #if DEBUG
             Group {
                 if Fixture.enabled, Fixture.screen == .settings {
-                    NavigationStack { AssistantSettingsView() }
+                    NavigationStack { SettingsView() }
                 } else {
                     content
                 }

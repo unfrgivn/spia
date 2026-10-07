@@ -30,6 +30,7 @@ struct SessionActions {
     let toggleAssistant: () -> Void
     let connect: () -> Void
     let checks: [Check]
+    let survey: (() -> Void)?
     let moduleChecks: [Check]
 }
 
@@ -41,6 +42,7 @@ extension DiagnosticJob {
         case .vehicleInfo: "Read Vehicle Information"
         case .genericScan: "Scan for Engine and Transmission Codes"
         case .moduleDTCs: "Read Module Trouble Codes"
+        case .survey: "Survey This Car"
         }
     }
 }
@@ -63,7 +65,7 @@ struct SpiaCommands: Commands {
     var body: some Commands {
         SidebarCommands()
         CommandGroup(replacing: .newItem) {
-            Button("New Session") { workspace?.newSession() }
+            Button("New Problem") { workspace?.newSession() }
                 .keyboardShortcut("n")
                 .disabled(workspace == nil)
             Button("New Vehicle…") { garage?.addVehicle() }
@@ -94,7 +96,7 @@ struct SpiaCommands: Commands {
                 .disabled(workspace == nil)
             Divider()
         }
-        CommandMenu("Session") {
+        CommandMenu("Problem") {
             Button(session?.connected == true ? "Connection…" : "Connect…") { session?.connect() }
                 .keyboardShortcut("k")
                 .disabled(session == nil)
@@ -104,6 +106,8 @@ struct SpiaCommands: Commands {
                     .keyboardShortcut(check.job == .genericScan ? KeyboardShortcut("r") : nil)
                     .disabled(check.perform == nil)
             }
+            Button("Survey This Car") { session?.survey?() }
+                .disabled(session?.survey == nil)
             Menu("Read Module Trouble Codes") {
                 ForEach(session?.moduleChecks ?? [], id: \.title) { check in
                     Button(check.title) { check.perform?() }

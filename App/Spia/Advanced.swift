@@ -86,7 +86,7 @@ private struct ModuleRow: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
                     .help(
-                        "Not a valid module address: 11-bit IDs up to 7FF, not 7DF, request and reply different."
+                        "Not a valid module address: use matching 11-bit or 29-bit IDs, not a broadcast ID, and keep request and reply different."
                     )
             }
         }
@@ -101,10 +101,10 @@ private struct HexField: View {
     var body: some View {
         TextField(label, text: $text)
             .font(.body.monospaced())
-            .frame(width: 56)
-            .onAppear { text = String(format: "%03X", value) }
+            .frame(width: 76)
+            .onAppear { text = String(format: value > 0x7FF ? "%08X" : "%03X", value) }
             .onChange(of: text) { _, new in
-                if let parsed = Int(new, radix: 16), parsed <= 0x7FF { value = parsed }
+                if let parsed = Int(new, radix: 16), parsed <= 0x1FFF_FFFF { value = parsed }
             }
             .accessibilityLabel("\(label) ID, hexadecimal")
     }

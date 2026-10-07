@@ -85,19 +85,22 @@ public struct ConversationMessage: Codable, Sendable, Equatable {
 
 /// Everything a provider needs for one reply.
 public struct AssistantRequest: Sendable, Equatable {
+    public enum ToolChoice: Sendable, Equatable { case auto, tool(String) }
     public let instructions: String
     public let messages: [ConversationMessage]
     public let tools: [ToolDefinition]
     public let maxOutputTokens: Int
+    public let toolChoice: ToolChoice
 
     public init(
         instructions: String, messages: [ConversationMessage], tools: [ToolDefinition],
-        maxOutputTokens: Int = 2048
+        maxOutputTokens: Int = 2048, toolChoice: ToolChoice = .auto
     ) {
         self.instructions = instructions
         self.messages = messages
         self.tools = tools
         self.maxOutputTokens = maxOutputTokens
+        self.toolChoice = toolChoice
     }
 }
 

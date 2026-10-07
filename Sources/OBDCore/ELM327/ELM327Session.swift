@@ -27,18 +27,7 @@ public actor ELM327Session {
         transportUnsynchronized = false
         do {
             try await transport.open()
-            let identity: String
-            do {
-                identity = try await sendUnlocked("ATZ", timeout: .seconds(3))
-            } catch ELM327Error.timeout {
-                identity = try await recoverForeignBaud()
-            }
-            for command in ["ATE0", "ATL0", "ATS0", "ATH1", "ATSP\(selected.commandDigit)"] {
-                let response = try await sendUnlocked(command)
-                guard response.contains("OK") else {
-                    throw ELM327Error.unexpectedResponse(command: command, response: response)
-                }
-            }
+            let identity = try await initializeUnlocked(protocol: selected)
             transportUnsynchronized = false
             operationInFlight = false
             return identity
@@ -47,6 +36,31 @@ public actor ELM327Session {
             operationInFlight = false
             throw error
         }
+    }
+
+    /// Resets and reapplies the connection's framing and protocol settings without closing the
+    /// transport. The caller decides whether a failed reinitialisation requires reconnection.
+    public func reinitialize(protocol selected: ELM327Protocol = .automatic) async throws {
+        try beginOperation()
+        defer { endOperation() }
+        _ = try await initializeUnlocked(protocol: selected)
+    }
+
+    private func initializeUnlocked(protocol selected: ELM327Protocol) async throws -> String {
+        let identity: String
+        do {
+            identity = try await sendUnlocked("ATZ", timeout: .seconds(3))
+        } catch ELM327Error.timeout {
+            identity = try await recoverForeignBaud()
+        }
+        for command in ["ATE0", "ATL0", "ATS0", "ATH1", "ATSP\(selected.commandDigit)"] {
+            let response = try await sendUnlocked(command)
+            guard response.contains("OK") else {
+                throw ELM327Error.unexpectedResponse(command: command, response: response)
+            }
+        }
+        transportUnsynchronized = false
+        return identity
     }
 
     /// Puts the UART back to its opening rate if `switchBaud` changed it, so the next program
@@ -106,15 +120,58 @@ public actor ELM327Session {
     ) async throws -> UDSDTCResponse {
         try beginOperation()
         defer { endOperation() }
-        guard responseHeader <= 0x7FF else { throw UDSDTCReadError.invalidHeader(responseHeader) }
+        let payload = try await readUDSResponse(
+            responseHeader: responseHeader,
+            request: String(format: "1902%02X", statusMask), service: 0x19, timeout: timeout)
+        return try UDSDTCDecoder.decode(payload)
+    }
+
+    /// Reads one ReadDataByIdentifier response from the expected ECU.
+    public func readDataByIdentifier(
+        _ did: UInt16, responseHeader: UInt32, timeout: Duration = .seconds(10)
+    ) async throws -> IdentificationReading {
+        try beginOperation()
+        defer { endOperation() }
+        let payload = try await readUDSResponse(
+            responseHeader: responseHeader, request: String(format: "22%04X", did),
+            service: 0x22, timeout: timeout)
+        return try IdentificationDecoder.decode(did: did, payload: payload)
+    }
+
+    /// Asks an ECU whether a TesterPresent service is accepted by its diagnostic server.
+    public func testerPresent(
+        responseHeader: UInt32, timeout: Duration = .seconds(2)
+    ) async throws -> TesterPresentReply? {
+        try beginOperation()
+        defer { endOperation() }
+        do {
+            let payload = try await readUDSResponse(
+                responseHeader: responseHeader, request: "3E00", service: 0x3E, timeout: timeout)
+            return TesterPresentReply(payload: payload)
+        } catch UDSReadError.adapterStatus(.noData) {
+            return nil
+        } catch UDSReadError.pendingWithoutFinalResponse {
+            return .pending
+        } catch UDSReadError.invalidPositiveService {
+            return .unrelated
+        } catch UDSReadError.wrongNegativeService {
+            return .unrelated
+        }
+    }
+
+    private func readUDSResponse(
+        responseHeader: UInt32, request: String, service: UInt8, timeout: Duration
+    ) async throws -> [UInt8] {
+        guard responseHeader <= 0x1FFF_FFFF else {
+            throw UDSReadError.invalidHeader(responseHeader)
+        }
         guard timeout > .zero, timeout <= .seconds(120) else {
             throw ELM327Error.invalidTimeout
         }
         let raw: String
         do {
             try Task.checkCancellation()
-            raw = try await sendBounded(
-                String(format: "1902%02X", statusMask), timeout: timeout, limit: 65_536)
+            raw = try await sendBounded(request, timeout: timeout, limit: 65_536)
         } catch is CancellationError {
             transportUnsynchronized = true
             throw CancellationError()
@@ -122,7 +179,8 @@ public actor ELM327Session {
             if case .timeout = error { transportUnsynchronized = true }
             throw error
         }
-        return try UDSDTCResponseSelector.select(raw, expectedECU: responseHeader)
+        return try UDSResponseSelector.finalPayload(
+            raw, expectedECU: responseHeader, service: service)
     }
 
     /// `ATI`: adapter identification, e.g. `ELM327 v2.3`.
@@ -262,6 +320,7 @@ public actor ELM327Session {
     /// unsupported command. The caller sees that as a `.prompt` event.
     public func monitor(
         _ command: String = "ATMA",
+        for duration: Duration? = nil,
         handle: @Sendable (Duration, MonitorEvent) async -> Bool
     ) async throws {
         try beginOperation()
@@ -269,22 +328,35 @@ public actor ELM327Session {
         transportUnsynchronized = true
         try await transport.write(Array((command + "\r").utf8))
         let started = clock.now
+        let deadline = duration.map { started + $0 }
         var parser = MonitorStreamParser()
         var running = true
-        while running, !Task.isCancelled {
-            let chunk = try await transport.read(timeout: .milliseconds(250))
-            let elapsed = started.duration(to: clock.now)
-            for event in parser.feed(chunk) {
-                let wanted = await handle(elapsed, event)
-                if event == .prompt {
-                    transportUnsynchronized = false
-                    return
+        do {
+            while running, !Task.isCancelled {
+                if let deadline, clock.now >= deadline { break }
+                let readTimeout: Duration
+                if let deadline {
+                    readTimeout = min(.milliseconds(250), clock.now.duration(to: deadline))
+                } else {
+                    readTimeout = .milliseconds(250)
                 }
-                if !wanted {
-                    running = false
-                    break
+                let chunk = try await transport.read(timeout: readTimeout)
+                let elapsed = started.duration(to: clock.now)
+                for event in parser.feed(chunk) {
+                    let wanted = await handle(elapsed, event)
+                    if event == .prompt {
+                        transportUnsynchronized = false
+                        return
+                    }
+                    if !wanted {
+                        running = false
+                        break
+                    }
                 }
             }
+        } catch is CancellationError {
+            try await stopMonitoring()
+            throw CancellationError()
         }
         try await stopMonitoring()
     }

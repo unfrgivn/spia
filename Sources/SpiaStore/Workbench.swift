@@ -5,7 +5,8 @@ import SpiaKit
 /// What a running check is doing right now, for the activity panel.
 public struct CheckActivity: Equatable, Sendable {
     public let job: DiagnosticJob
-    public let sessionID: UUID
+    public let vehicleID: UUID
+    public let sessionID: UUID?
     public internal(set) var steps: [String] = []
     public internal(set) var warnings: [String] = []
     /// Set while the check is paused for the person at the car.
@@ -34,12 +35,15 @@ public enum CheckOutcome: Sendable, Equatable {
 public final class Workbench {
     public let adapter: AdapterDescriptor
     public private(set) var connection: ConnectionState = .disconnected
+    public private(set) var liveStatus: AdapterStatus?
     public private(set) var activity: CheckActivity?
     /// The most recent problem to show the user, cleared when they act.
     public var lastError: String?
 
     private let backend: any DiagnosticsBackend
     private let garage: Garage
+    private var observerReady = false
+    private var observerWaiters: [CheckedContinuation<Void, Never>] = []
 
     public init(backend: any DiagnosticsBackend, garage: Garage) {
         self.backend = backend
@@ -49,6 +53,13 @@ public final class Workbench {
             for await state in await backend.states() {
                 guard let self else { return }
                 self.connection = state
+                self.liveStatus = self.isPhysical ? state.status : nil
+                if !self.observerReady {
+                    self.observerReady = true
+                    let waiters = self.observerWaiters
+                    self.observerWaiters.removeAll()
+                    for waiter in waiters { waiter.resume() }
+                }
             }
         }
     }
@@ -60,28 +71,34 @@ public final class Workbench {
 
     public func connect() async {
         lastError = nil
+        await waitForObserver()
         do {
             try await backend.connect()
         } catch {
             lastError = error.readable
         }
         connection = await backend.currentState()
+        liveStatus = isPhysical ? connection.status : nil
     }
 
     public func disconnect() async {
         await backend.disconnect()
         connection = await backend.currentState()
+        liveStatus = isPhysical ? connection.status : nil
     }
 
-    /// Runs `job` for `session`, keeping `activity` current, and saves the outcome to the
-    /// session's timeline. A check the user cancels is not recorded.
+    /// Runs `job` on `vehicle`, keeping `activity` current, and saves the outcome to the car's
+    /// history, linked to `session` when the check was taken for a problem. A check the user
+    /// cancels is not recorded.
     @discardableResult
-    public func run(_ job: DiagnosticJob, in session: DiagnosticSession) async -> CheckOutcome {
+    public func run(
+        _ job: DiagnosticJob, for vehicle: Vehicle, in session: DiagnosticSession? = nil
+    ) async -> CheckOutcome {
         guard activity == nil else { return .notStarted }
         var outcome = CheckOutcome.cancelled
         lastError = nil
-        let transcript = garage.newTranscript(for: session)
-        activity = CheckActivity(job: job, sessionID: session.id)
+        let transcript = garage.newTranscript(for: vehicle)
+        activity = CheckActivity(job: job, vehicleID: vehicle.id, sessionID: session?.id)
         defer { activity = nil }
 
         for await event in await backend.run(job, transcript: transcript.url) {
@@ -101,7 +118,7 @@ public final class Workbench {
                 save {
                     try garage.record(
                         result, warnings: activity?.warnings ?? [], transcriptPath: transcript.path,
-                        in: session)
+                        for: vehicle, in: session)
                 }
             case .failed(let failure):
                 guard !failure.cancelled else { break }
@@ -110,7 +127,7 @@ public final class Workbench {
                     try garage.recordFailure(
                         of: job, failure, warnings: activity?.warnings ?? [],
                         transcriptPath: transcript.path,
-                        in: session)
+                        for: vehicle, in: session)
                 }
             }
         }
@@ -135,5 +152,16 @@ public final class Workbench {
         } catch {
             lastError = "Couldn't save the result: \(error.readable)"
         }
+    }
+
+    private func waitForObserver() async {
+        guard !observerReady else { return }
+        await withCheckedContinuation { continuation in
+            observerWaiters.append(continuation)
+        }
+    }
+
+    private var isPhysical: Bool {
+        adapter.kind == .usbSerial || adapter.kind == .bluetooth
     }
 }

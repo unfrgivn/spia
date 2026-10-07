@@ -30,10 +30,12 @@ public struct SessionBoard: Equatable, Sendable {
         }
     }
 
-    public enum Subject: Hashable, Sendable {
+    public enum Subject: Hashable, Sendable, Identifiable {
         case engine
         case module(ModuleTarget)
         case battery
+
+        public var id: Self { self }
 
         /// The row a check fills in: engine and transmission for the generic scan, the module it
         /// reads, the battery for the adapter check. Vehicle information has no row.
@@ -42,7 +44,7 @@ public struct SessionBoard: Equatable, Sendable {
             case .genericScan: self = .engine
             case .moduleDTCs(let target): self = .module(target)
             case .adapterCheck: self = .battery
-            case .vehicleInfo: return nil
+            case .vehicleInfo, .survey: return nil
             }
         }
 
@@ -102,6 +104,10 @@ public struct SessionBoard: Equatable, Sendable {
         public let shortName: String?
         public let status: Status
         public let codes: [String]
+        public var names: [CodeName?] { codes.map(CodeName.init) }
+        public var printedCodes: [String] {
+            names.enumerated().map { $0.element?.printed ?? codes[$0.offset] }
+        }
         /// A measurement: "11.7 V".
         public let value: String?
         public let detail: String
@@ -110,6 +116,21 @@ public struct SessionBoard: Equatable, Sendable {
         public let date: Date?
         /// Read from the connected adapter just now, rather than from a saved result.
         public var live = false
+
+        public init(
+            subject: Subject, name: String, shortName: String?, status: Status, codes: [String],
+            value: String?, detail: String, date: Date?, live: Bool = false
+        ) {
+            self.subject = subject
+            self.name = name
+            self.shortName = shortName
+            self.status = status
+            self.codes = codes
+            self.value = value
+            self.detail = detail
+            self.date = date
+            self.live = live
+        }
 
         public var id: Subject { subject }
 
@@ -140,25 +161,32 @@ public struct SessionBoard: Equatable, Sendable {
         var reads: [ModuleTarget: (date: Date, outcome: ModuleDTCOutcome)] = [:]
         var readOrder: [ModuleTarget] = []
         var adapter: (date: Date, status: AdapterStatus)?
+        func record(_ target: ModuleTarget, outcome: ModuleDTCOutcome, date: Date) {
+            if case .negative = outcome, case .records = reads[target]?.outcome { return }
+            if reads[target] == nil { readOrder.append(target) }
+            reads[target] = (date, outcome)
+        }
         for result in results.sorted(by: { $0.date < $1.date }) {
             switch result.payload {
             case .genericScan(let reports):
                 scan = (result.date, reports)
             case .moduleDTCs(let module):
-                if case .negative = module.outcome, case .records = reads[module.target]?.outcome {
-                    continue
-                }
-                if reads[module.target] == nil { readOrder.append(module.target) }
-                reads[module.target] = (result.date, module.outcome)
+                record(module.target, outcome: module.outcome, date: result.date)
             case .adapter(let status):
                 adapter = (result.date, status)
             case .vehicleInfo:
                 continue
+            case .survey(let report):
+                for module in report.modules {
+                    if case .outcome(let outcome) = module.codes {
+                        record(module.candidate.target, outcome: outcome, date: result.date)
+                    }
+                }
             }
         }
         let known = Set(modules.map(\.target))
         let others = readOrder.filter { !known.contains($0) }.map { target in
-            Module(label: String(format: "Module %03X", target.request), target: target)
+            Module(label: target.fallbackLabel, target: target)
         }
         let unsorted =
             [Self.engineRow(scan)] + (modules + others).map { Self.moduleRow($0, reads[$0.target]) }
@@ -172,6 +200,40 @@ public struct SessionBoard: Equatable, Sendable {
     }
 
     // MARK: Rows
+
+    static func row(
+        for subject: Subject, result: Result, modules: [Module]
+    ) -> Row? {
+        switch (subject, result.payload) {
+        case (.engine, .genericScan(let reports)):
+            return engineRow((result.date, reports))
+        case (.module(let target), .moduleDTCs(let moduleResult))
+        where moduleResult.target == target:
+            let module =
+                modules.first { $0.target == target }
+                ?? Module(label: target.fallbackLabel, target: target)
+            return moduleRow(module, (result.date, moduleResult.outcome))
+        case (.module(let target), .survey(let report)):
+            guard
+                let module = report.modules.first(where: {
+                    $0.candidate.target == target
+                        && {
+                            if case .outcome = $0.codes { return true }
+                            return false
+                        }($0)
+                })
+            else { return nil }
+            let preset =
+                modules.first { $0.target == target }
+                ?? Module(label: target.fallbackLabel, target: target)
+            guard case .outcome(let outcome) = module.codes else { return nil }
+            return moduleRow(preset, (result.date, outcome))
+        case (.battery, .adapter(let status)):
+            return batteryRow((result.date, status))
+        default:
+            return nil
+        }
+    }
 
     private static func engineRow(_ scan: (date: Date, reports: [ECUScan])?) -> Row {
         let name = "Engine and transmission"
@@ -386,7 +448,7 @@ extension SessionBoard.Row {
         case .fault, .codes:
             let verb = codes.count == 1 ? "does" : "do"
             return
-                "What \(verb) \(Self.list(codes)) from the \(place) mean on this car, and what should I check first?"
+                "What \(verb) \(Self.list(printedCodes)) from the \(place) mean on this car, and what should I check first?"
         case .low, .high:
             return
                 "The battery reads \(value ?? "an unusual voltage") at the OBD port. Is that a problem, and what should I check?"

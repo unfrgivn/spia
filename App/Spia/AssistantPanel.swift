@@ -338,7 +338,7 @@ private struct AssistantIntro: View {
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(Palette.primary)
             Text(
-                "The assistant reads this session's problem, notes, and results. It asks what you're seeing and suggests read-only checks, which run only when you approve them."
+                "The assistant reads this problem's description, notes, and results. It asks what you're seeing and suggests read-only checks, which run only when you approve them."
             )
             .font(.system(size: 14))
             .foregroundStyle(Palette.secondary)
@@ -581,7 +581,7 @@ private struct ToolCallCard: View {
             case .running:
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
-                    Text("Running. Follow any prompts in the session.")
+                    Text("Running. Follow any prompts from the Overview.")
                 }
             case .completed(let summary):
                 outcome(summary, symbol: "checkmark", tint: Palette.tertiary)
@@ -694,7 +694,7 @@ private struct CloudConsentSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label("Share this session with \(provider.displayName)?", systemImage: "icloud")
+            Label("Share this problem with \(provider.displayName)?", systemImage: "icloud")
                 .font(.title3.weight(.semibold))
             Text("To answer, \(provider.displayName) receives, with each message:")
             VStack(alignment: .leading, spacing: 4) {
@@ -705,7 +705,7 @@ private struct CloudConsentSheet: View {
             }
             .font(.callout)
             Text(
-                "It's sent with your API key and handled under your account's terms with \(provider == .anthropic ? "Anthropic" : "OpenAI"). This applies to this session only; the on-device model never needs this."
+                "It's sent with your API key and handled under your account's terms with \(provider == .anthropic ? "Anthropic" : "OpenAI"). This applies to this problem only; the on-device model never needs this."
             )
             .font(.callout)
             .foregroundStyle(.secondary)
