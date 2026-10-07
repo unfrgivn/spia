@@ -114,6 +114,7 @@ struct ReviewTests {
         #expect(text.contains("at most three sentences of plain prose, with no lists or headings"))
         #expect(!text.contains("SECRET"))
         #expect(request.toolChoice == .tool(ReviewTool.name))
+        #expect(request.maxOutputTokens == 900)
     }
 
     @Test(

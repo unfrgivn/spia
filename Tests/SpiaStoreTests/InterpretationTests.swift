@@ -69,6 +69,63 @@ struct InterpretationTests {
         #expect(interpreter.interpretations(for: vehicle).lastError == nil)
     }
 
+    @Test("automatic work pauses without an error, request, or stored result")
+    func pausedAutomaticWork() async throws {
+        let vehicle = try garage.addDemoVehicle()
+        let defaults = UserDefaults(suiteName: "spia-paused-\(UUID().uuidString)")!
+        let configuration = AssistantConfiguration(
+            keys: APIKeyStore(service: "spia-paused-\(UUID().uuidString)"), defaults: defaults)
+        configuration.settings.automaticWorkPaused = true
+        let interpreter = Interpreter(configuration: configuration, garage: garage)
+        let cache = interpreter.interpretations(for: vehicle)
+        cache.allow(.anthropic)
+        await interpreter.refresh(vehicle, adapter: nil)
+        let result = interpreter.interpretations(for: vehicle)
+        #expect(result.lastError == nil)
+        #expect(result.inFlight.isEmpty)
+        #expect(result.reviewInFlight.isEmpty)
+        #expect(result.codes.isEmpty)
+        #expect(result.reviews.isEmpty)
+    }
+
+    @Test("eleven interpretation modules form sequential batches of eight and three")
+    func interpretationBatches() async throws {
+        let vehicle = try garage.addVehicle(name: "Batch test car")
+        let session = try garage.addSession(to: vehicle, title: "Batch test")
+        for index in 0..<11 {
+            let target = try ModuleTarget(
+                bus: .highSpeed, request: UInt32(0x700 + index), response: UInt32(0x600 + index))
+            vehicle.modules.append(
+                ModulePreset(
+                    label: "Module \(index)", target: target, position: index, confirmed: true))
+            try garage.record(
+                JobResult(
+                    job: .moduleDTCs(target),
+                    payload: .moduleDTCs(
+                        ModuleDTCs(
+                            target: target,
+                            outcome: .records(
+                                availability: 0xFF,
+                                [ModuleDTCRecord(code: "100900", status: 0x08)]))),
+                    source: .live, transcript: nil),
+                warnings: [], transcriptPath: nil, for: vehicle, in: session)
+        }
+        let plan = InterpretationPlan.missing(
+            board: vehicle.board(), stored: [], modules: vehicle.orderedModules)
+        #expect(plan.count == 11)
+        let work = plan
+        let configuration = AssistantConfiguration(
+            keys: APIKeyStore(service: "spia-batch-\(UUID().uuidString)"))
+        let interpreter = Interpreter(configuration: configuration, garage: garage)
+        interpreter.interpretations(for: vehicle).allow(.anthropic)
+        await interpreter.catchUp(vehicle, adapter: nil)
+        #expect(interpreter.interpretations(for: vehicle).lastError != nil)
+        let batches = InterpretationPlan.batches(work, size: 8)
+        #expect(batches.map(\.count) == [8, 3])
+        #expect(batches[0].first?.label == plan[0].label)
+        #expect(batches[1].first?.label == plan[8].label)
+    }
+
     @Test("the plan finds new airbag and body computer codes")
     func missingPlan() async throws {
         let vehicle = try garage.addDemoVehicle()

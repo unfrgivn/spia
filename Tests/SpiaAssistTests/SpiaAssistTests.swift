@@ -26,7 +26,7 @@ struct InterpretationTests {
         let call = ToolCall(
             id: "1", name: InterpretationTool.name,
             arguments:
-                #"{"codes":[{"code":"B0001-1B","name":"clock spring","meaning":"Stage 1 circuit fault","first_check":"Use the SRS procedure","confidence":"high"},{"code":"B0002-1B","name":"connector","meaning":"Stage 2 circuit fault","first_check":"Inspect safely","confidence":"medium"}],"module":null}"#
+                #"{"codes":[{"code":"B0001-1B","module":null,"name":"clock spring","meaning":"Stage 1 circuit fault","first_check":"Use the SRS procedure","confidence":"high"},{"code":"B0002-1B","module":null,"name":"connector","meaning":"Stage 2 circuit fault","first_check":"Inspect safely","confidence":"medium"}],"module":null}"#
         )
         let result = try InterpretationTool.parse(call)
         #expect(result.codes.count == 2)
@@ -105,6 +105,77 @@ struct InterpretationTests {
         #expect(
             promptText(from: placeholder).contains(
                 "Name this module: its only label is a placeholder."))
+    }
+
+    @Test("batched interpretation prompts keep each module's codes under its heading")
+    func batchedPrompt() {
+        let briefing = SessionBriefing(
+            vehicle: .init(name: "Ghibli", vin: nil, notes: ""), problem: "", modules: [],
+            adapter: nil, events: [])
+        let request = InterpretationRequest.make(
+            briefing: briefing,
+            modules: [
+                .init(
+                    module: .init(
+                        label: "Airbag controller (ORC)", bus: "hs", request: "744", reply: "4C4",
+                        labelConfirmed: true),
+                    codes: [.init(code: "B0001-1B", catalogName: nil)], nameModule: false),
+                .init(
+                    module: .init(
+                        label: "Body computer", bus: "hs", request: "742", reply: "4C2",
+                        labelConfirmed: true),
+                    codes: [.init(code: "B1000-1B", catalogName: nil)], nameModule: false),
+                .init(
+                    module: nil, codes: [.init(code: "P1009", catalogName: nil)], nameModule: false),
+            ], provider: .anthropic, sharing: .init(includeVIN: false))
+        let text = promptText(from: request)
+        #expect(text.contains("Module: Airbag controller (ORC)"))
+        #expect(text.contains("- B0001-1B"))
+        #expect(text.contains("Module: Body computer"))
+        #expect(text.contains("- B1000-1B"))
+        #expect(text.contains("Module: engine generic scan."))
+        #expect(text.contains("- P1009"))
+    }
+
+    @Test("interpretation rejects and quotes an unrequested module label")
+    func rejectsUnknownInterpretationModule() {
+        let call = ToolCall(
+            id: "1", name: InterpretationTool.name,
+            arguments:
+                #"{"codes":[{"code":"P1009","module":"Unknown controller","name":"x","meaning":"x","first_check":"x","confidence":"low"}],"module":null}"#
+        )
+        #expect(
+            throws: AssistantError.malformedStream(
+                "unknown interpretation module \"Unknown controller\"")
+        ) {
+            try InterpretationTool.parse(call, modules: ["Airbag controller"])
+        }
+    }
+
+    @Test("interpretation output caps follow the floor, estimate, and ceiling")
+    func interpretationOutputCaps() {
+        let briefing = SessionBriefing(
+            vehicle: .init(name: "Ghibli", vin: nil, notes: ""), problem: "", modules: [],
+            adapter: nil, events: [])
+        func input(_ count: Int, _ nameModule: Bool = false) -> InterpretationModuleInput {
+            .init(
+                module: .init(
+                    label: "Module", bus: "hs", request: "744", reply: "4C4", labelConfirmed: true),
+                codes: (0..<count).map { .init(code: "P100\($0)", catalogName: nil) },
+                nameModule: nameModule)
+        }
+        let floor = InterpretationRequest.make(
+            briefing: briefing, modules: [input(2)], provider: .anthropic,
+            sharing: .init(includeVIN: false))
+        let estimate = InterpretationRequest.make(
+            briefing: briefing, modules: [input(5), input(5, true)], provider: .anthropic,
+            sharing: .init(includeVIN: false))
+        let ceiling = InterpretationRequest.make(
+            briefing: briefing, modules: [input(20)], provider: .anthropic,
+            sharing: .init(includeVIN: false))
+        #expect(floor.maxOutputTokens == 600)
+        #expect(estimate.maxOutputTokens == 3200)
+        #expect(ceiling.maxOutputTokens == 4000)
     }
 
     private func promptText(from request: AssistantRequest) -> String {
@@ -494,6 +565,25 @@ struct SettingsTests {
         #expect(throws: AssistantError.missingAPIKey(.openAI)) {
             try AssistantSettings().provider(.openAI, keys: store)
         }
+    }
+
+    @Test("older settings use fast defaults for automatic work")
+    func backgroundDefaults() throws {
+        let data = Data(
+            #"{"defaultProvider":"anthropic","anthropicModel":"chat","openAIModel":"chat","shareVIN":false}"#
+                .utf8)
+        let settings = try JSONDecoder().decode(AssistantSettings.self, from: data)
+        #expect(settings.anthropicBackgroundModel == AnthropicProvider.fastModel)
+        #expect(settings.openAIBackgroundModel == OpenAIProvider.fastModel)
+        #expect(!settings.automaticWorkPaused)
+    }
+
+    @Test("automatic work can use the chat model")
+    func backgroundChatModel() {
+        var settings = AssistantSettings(anthropicModel: "custom")
+        #expect(settings.backgroundModel(for: .anthropic) == AnthropicProvider.fastModel)
+        settings.anthropicBackgroundModel = settings.anthropicModel
+        #expect(settings.backgroundModel(for: .anthropic) == "custom")
     }
 
     @Test("the on-device model reports why it can't run on this Mac")

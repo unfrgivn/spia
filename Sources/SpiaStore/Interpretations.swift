@@ -392,7 +392,22 @@ public enum InterpretationPlan {
         public let label: String
         public let codes: [String]
         public let needsName: Bool
+
+        public init(target: ModuleTarget?, label: String, codes: [String], needsName: Bool) {
+            self.target = target
+            self.label = label
+            self.codes = codes
+            self.needsName = needsName
+        }
     }
+
+    public static func batches(_ work: [Work], size: Int) -> [[Work]] {
+        guard size > 0 else { return [] }
+        return stride(from: 0, to: work.count, by: size).map { index in
+            Array(work[index..<min(index + size, work.count)])
+        }
+    }
+
     public static func missing(
         board: SessionBoard, stored: [StoredCodeInterpretation], modules: [ModulePreset]
     ) -> [Work] {
