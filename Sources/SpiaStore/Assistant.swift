@@ -416,6 +416,7 @@ public final class AssistantConversation {
                 switch event {
                 case .text(let delta): streamingText += delta
                 case .toolCall(let call): calls.append(call)
+                case .usage: break
                 case .finished(.maxTokens): failure = "The reply was cut off at its length limit."
                 case .finished: break
                 }

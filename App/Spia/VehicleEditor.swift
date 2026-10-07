@@ -162,6 +162,21 @@ struct VehicleSettings: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    if interpretations.usageSummary.total.requests == 0 {
+                        Text("Nothing sent yet")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(interpretations.usageSummary.byModel.keys.sorted(), id: \.self) {
+                            model in
+                            let totals = interpretations.usageSummary.byModel[model] ?? .init()
+                            Text(
+                                "\(totals.requests) requests · \(totals.input.formatted()) tokens in · \(totals.output.formatted()) out · \(model)"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
             .formStyle(.grouped)

@@ -52,6 +52,11 @@ struct AssistantSettingsView: View {
                     "Codes still get their public names. Nothing is sent to a model until you turn this back on."
                 )
                 .font(.caption).foregroundStyle(.secondary)
+                Text(
+                    "Spia records tokens per car; see a vehicle's settings. Prices are the provider's."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 Toggle(
                     "Include the VIN when sharing with cloud models",
                     isOn: $assistant.settings.shareVIN)

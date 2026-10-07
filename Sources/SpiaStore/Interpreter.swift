@@ -46,6 +46,15 @@ public final class Interpreter {
             do {
                 let provider = try configuration.settings.backgroundProvider(
                     providerID, keys: configuration.keys)
+                let model = configuration.settings.backgroundModel(for: providerID)
+                var usage: TokenUsage?
+                defer {
+                    if let usage {
+                        interpretations.recordUsage(
+                            usage, kind: .interpretation, provider: providerID, model: model,
+                            modules: batch.count)
+                    }
+                }
                 let request = InterpretationRequest.make(
                     briefing: briefing,
                     modules: batch.map {
@@ -58,10 +67,11 @@ public final class Interpreter {
                     sharing: SharingPolicy(includeVIN: configuration.settings.shareVIN))
                 var call: ToolCall?
                 for try await event in provider.respond(to: request) {
-                    if case .toolCall(let toolCall) = event,
-                        toolCall.name == InterpretationTool.name
-                    {
+                    switch event {
+                    case .usage(let value): usage = value
+                    case .toolCall(let toolCall) where toolCall.name == InterpretationTool.name:
                         call = toolCall
+                    default: break
                     }
                 }
                 guard let call else {
@@ -78,7 +88,7 @@ public final class Interpreter {
                     interpretations.store(
                         InterpretationResult(codes: codes, module: module), target: item.target,
                         provider: providerID,
-                        model: configuration.settings.backgroundModel(for: providerID),
+                        model: model,
                         module: item.needsName ? module : nil)
                 }
                 interpretations.lastError = nil
@@ -128,6 +138,15 @@ public final class Interpreter {
             do {
                 let provider = try configuration.settings.backgroundProvider(
                     providerID, keys: configuration.keys)
+                let model = configuration.settings.backgroundModel(for: providerID)
+                var usage: TokenUsage?
+                defer {
+                    if let usage {
+                        interpretations.recordUsage(
+                            usage, kind: .review, provider: providerID, model: model, modules: 0,
+                            scope: scope)
+                    }
+                }
                 let request = ReviewRequest.make(
                     briefing: carBriefing, scope: requestScope, answered: answered,
                     codes: reviewCodes(for: vehicle.board()),
@@ -136,15 +155,18 @@ public final class Interpreter {
                     sharing: SharingPolicy(includeVIN: configuration.settings.shareVIN))
                 var call: ToolCall?
                 for try await event in provider.respond(to: request) {
-                    if case .toolCall(let toolCall) = event, toolCall.name == ReviewTool.name {
+                    switch event {
+                    case .usage(let value): usage = value
+                    case .toolCall(let toolCall) where toolCall.name == ReviewTool.name:
                         call = toolCall
+                    default: break
                     }
                 }
                 guard let call else { throw InterpreterError.noStructuredAnswer }
                 let result = try ReviewTool.parse(call, modules: carBriefing.modules.map(\.label))
                 interpretations.storeReview(
                     result, scope: scope, inputs: inputs, provider: providerID,
-                    model: configuration.settings.backgroundModel(for: providerID),
+                    model: model,
                     modules: vehicle.assistantModules)
                 interpretations.lastError = nil
             } catch {

@@ -144,8 +144,19 @@ public struct OpenAIStreamDecoder: Sendable {
                 .toolCall(
                     ToolCall(id: id, name: name, arguments: item["arguments"]?.string ?? "{}"))
             ]
+        // OpenAI's response.completed event carries response.usage.input_tokens and
+        // response.usage.output_tokens. The other usage detail fields are ignored.
         case "response.completed":
-            return [.finished(sawToolCall ? .toolUse : .endTurn)]
+            let usage = payload["response"]?["usage"]
+            let events: [AssistantEvent] =
+                usage.flatMap { usage in
+                    guard let input = usage["input_tokens"].flatMap(Self.integer),
+                        let output = usage["output_tokens"].flatMap(Self.integer)
+                    else { return nil }
+                    return .usage(TokenUsage(input: input, output: output))
+                }.map { [$0, .finished(sawToolCall ? .toolUse : .endTurn)] }
+                ?? [.finished(sawToolCall ? .toolUse : .endTurn)]
+            return events
         case "response.incomplete":
             let reason = payload["response"]?["incomplete_details"]?["reason"]?.string
             return [
@@ -164,5 +175,10 @@ public struct OpenAIStreamDecoder: Sendable {
         default:
             return []
         }
+    }
+
+    private static func integer(_ value: JSONValue) -> Int? {
+        if case .number(let number) = value { return Int(exactly: number) }
+        return nil
     }
 }

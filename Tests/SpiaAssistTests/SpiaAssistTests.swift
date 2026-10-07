@@ -257,6 +257,7 @@ struct AnthropicTests {
                     ToolCall(
                         id: "toolu_01ABC", name: "ask_user",
                         arguments: #"{"question":"Does the horn work?"}"#)),
+                .usage(TokenUsage(input: 25, output: 42)),
                 .finished(.toolUse),
             ])
     }
@@ -345,7 +346,7 @@ struct OpenAITests {
         data: {"type":"response.output_item.done","output_index":1,"item":{"type":"function_call","id":"fc_123","call_id":"call_123","name":"propose_check","arguments":"{\\"check\\":\\"generic_scan\\",\\"module\\":null,\\"reason\\":\\"Baseline\\"}"}}
 
         event: response.completed
-        data: {"type":"response.completed","response":{"id":"resp_123","status":"completed","output":[]}}
+        data: {"type":"response.completed","response":{"id":"resp_123","status":"completed","output":[],"usage":{"input_tokens":25,"output_tokens":42}}}
 
 
         """
@@ -361,6 +362,7 @@ struct OpenAITests {
                     ToolCall(
                         id: "call_123", name: "propose_check",
                         arguments: #"{"check":"generic_scan","module":null,"reason":"Baseline"}"#)),
+                .usage(TokenUsage(input: 25, output: 42)),
                 .finished(.toolUse),
             ])
     }
@@ -624,6 +626,7 @@ struct LiveProviderTests {
             case .toolCall(let call):
                 _ = try AssistantTools.parse(call)
                 produced = true
+            case .usage: break
             case .finished: finished = true
             }
         }

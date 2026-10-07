@@ -15,6 +15,55 @@ public struct InterpretationConsent: Codable, Sendable, Equatable {
     public let grantedAt: Date
 }
 
+public enum UsageKind: String, Codable, Sendable, Equatable {
+    case interpretation
+    case review
+}
+
+public struct UsageEntry: Codable, Sendable, Equatable {
+    public let date: Date
+    public let kind: UsageKind
+    public let provider: ProviderID
+    public let model: String
+    public let input: Int
+    public let output: Int
+    public let modules: Int
+    public let scope: ReviewScope?
+
+    public init(
+        date: Date = .now, kind: UsageKind, provider: ProviderID, model: String, input: Int,
+        output: Int, modules: Int, scope: ReviewScope? = nil
+    ) {
+        self.date = date
+        self.kind = kind
+        self.provider = provider
+        self.model = model
+        self.input = input
+        self.output = output
+        self.modules = modules
+        self.scope = scope
+    }
+}
+
+public struct UsageTotals: Sendable, Equatable {
+    public let requests: Int
+    public let input: Int
+    public let output: Int
+
+    public init(requests: Int = 0, input: Int = 0, output: Int = 0) {
+        self.requests = requests
+        self.input = input
+        self.output = output
+    }
+}
+
+public struct UsageSummary: Sendable, Equatable {
+    public let total: UsageTotals
+    public let byModel: [String: UsageTotals]
+    public let last30Days: UsageTotals
+    public let last30DaysByModel: [String: UsageTotals]
+}
+
 public struct StoredCodeInterpretation: Codable, Sendable, Equatable {
     public let target: ModuleTarget?
     public let code: String
@@ -133,18 +182,21 @@ public struct InterpretationSnapshot: Codable, Sendable, Equatable {
     public var codes: [StoredCodeInterpretation]
     public var modules: [StoredModuleInterpretation]
     public var reviews: [StoredReview]
+    public var usage: [UsageEntry]
 
     public init(
         consent: InterpretationConsent?, codes: [StoredCodeInterpretation],
-        modules: [StoredModuleInterpretation], reviews: [StoredReview] = []
+        modules: [StoredModuleInterpretation], reviews: [StoredReview] = [],
+        usage: [UsageEntry] = []
     ) {
         self.consent = consent
         self.codes = codes
         self.modules = modules
         self.reviews = reviews
+        self.usage = usage
     }
 
-    private enum CodingKeys: String, CodingKey { case consent, codes, modules, reviews }
+    private enum CodingKeys: String, CodingKey { case consent, codes, modules, reviews, usage }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -152,6 +204,7 @@ public struct InterpretationSnapshot: Codable, Sendable, Equatable {
         codes = try container.decode([StoredCodeInterpretation].self, forKey: .codes)
         modules = try container.decode([StoredModuleInterpretation].self, forKey: .modules)
         reviews = try container.decodeIfPresent([StoredReview].self, forKey: .reviews) ?? []
+        usage = try container.decodeIfPresent([UsageEntry].self, forKey: .usage) ?? []
     }
 }
 
@@ -161,6 +214,7 @@ public final class VehicleInterpretations {
     public private(set) var codes: [StoredCodeInterpretation]
     public private(set) var modules: [StoredModuleInterpretation]
     public private(set) var reviews: [StoredReview]
+    public private(set) var usage: [UsageEntry]
     public private(set) var inFlight: Set<ModuleTarget?> = []
     public private(set) var reviewInFlight: Set<ReviewScope> = []
     public var lastError: String?
@@ -177,11 +231,13 @@ public final class VehicleInterpretations {
             codes = snapshot.codes
             modules = snapshot.modules
             reviews = snapshot.reviews
+            usage = snapshot.usage
         } else {
             consent = nil
             codes = []
             modules = []
             reviews = []
+            usage = []
         }
     }
 
@@ -209,6 +265,33 @@ public final class VehicleInterpretations {
 
     public func endReview(_ scope: ReviewScope) {
         reviewInFlight.remove(scope)
+    }
+
+    public func recordUsage(
+        _ tokenUsage: TokenUsage, kind: UsageKind, provider: ProviderID, model: String,
+        modules: Int, scope: ReviewScope? = nil
+    ) {
+        usage.append(
+            UsageEntry(
+                kind: kind, provider: provider, model: model, input: tokenUsage.input,
+                output: tokenUsage.output, modules: modules, scope: scope))
+        save()
+    }
+
+    public var usageSummary: UsageSummary {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: .now) ?? .distantPast
+        func totals(_ entries: [UsageEntry]) -> UsageTotals {
+            UsageTotals(
+                requests: entries.count, input: entries.reduce(0) { $0 + $1.input },
+                output: entries.reduce(0) { $0 + $1.output })
+        }
+        func grouped(_ entries: [UsageEntry]) -> [String: UsageTotals] {
+            Dictionary(grouping: entries, by: \.model).mapValues(totals)
+        }
+        let recent = usage.filter { $0.date >= cutoff }
+        return UsageSummary(
+            total: totals(usage), byModel: grouped(usage), last30Days: totals(recent),
+            last30DaysByModel: grouped(recent))
     }
 
     public func interpretation(for subject: SessionBoard.Subject, code: String)
@@ -357,7 +440,8 @@ public final class VehicleInterpretations {
         guard
             let data = try? encoder.encode(
                 InterpretationSnapshot(
-                    consent: consent, codes: codes, modules: modules, reviews: reviews))
+                    consent: consent, codes: codes, modules: modules, reviews: reviews, usage: usage
+                ))
         else { return }
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

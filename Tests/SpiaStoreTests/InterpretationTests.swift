@@ -37,8 +37,44 @@ struct InterpretationTests {
         let loaded = VehicleInterpretations(vehicleID: vehicle.id, files: files)
         #expect(loaded.consent?.provider == .anthropic)
         #expect(loaded.codes.first?.meaning == "A body fault.")
+        cache.recordUsage(
+            TokenUsage(input: 100, output: 20), kind: .interpretation, provider: .anthropic,
+            model: "test", modules: 2)
+        let usageLoaded = VehicleInterpretations(vehicleID: vehicle.id, files: files)
+        #expect(usageLoaded.usage.count == 1)
+        #expect(usageLoaded.usage.first?.input == 100)
         loaded.withdraw()
         #expect(loaded.consent == nil)
+    }
+
+    @Test("old interpretation files decode without a usage key")
+    func oldFileDecodes() throws {
+        let vehicle = try garage.addVehicle(name: "Old file")
+        let url = garage.files.interpretationsURL(vehicle: vehicle.id)
+        let data = Data(#"{"codes":[],"modules":[],"reviews":[],"consent":null}"#.utf8)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: url)
+        #expect(VehicleInterpretations(vehicleID: vehicle.id, files: garage.files).usage.isEmpty)
+    }
+
+    @Test("usage summary groups totals by model and recent date")
+    func usageSummary() throws {
+        let vehicle = try garage.addVehicle(name: "Summary")
+        let cache = VehicleInterpretations(vehicleID: vehicle.id, files: garage.files)
+        cache.recordUsage(
+            TokenUsage(input: 10, output: 4), kind: .interpretation, provider: .anthropic,
+            model: "haiku", modules: 1)
+        cache.recordUsage(
+            TokenUsage(input: 20, output: 8), kind: .review, provider: .anthropic,
+            model: "haiku", modules: 0, scope: .car)
+        cache.recordUsage(
+            TokenUsage(input: 30, output: 12), kind: .interpretation, provider: .openAI,
+            model: "gpt", modules: 2)
+        let summary = cache.usageSummary
+        #expect(summary.total == UsageTotals(requests: 3, input: 60, output: 24))
+        #expect(summary.byModel["haiku"] == UsageTotals(requests: 2, input: 30, output: 12))
+        #expect(summary.last30Days == summary.total)
     }
 
     @Test("car briefing includes open problems and interpretations")
