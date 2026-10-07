@@ -332,6 +332,10 @@ public final class VehicleInterpretations {
         reviews.first { $0.scope == scope }
     }
 
+    public func review(for scope: ReviewScope, fallingBackTo fallback: ReviewScope) -> StoredReview? {
+        review(for: scope) ?? review(for: fallback)
+    }
+
     public func openQuestions(for scope: ReviewScope) -> [StoredQuestion] {
         review(for: scope)?.questions.filter { $0.answer == nil } ?? []
     }

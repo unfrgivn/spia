@@ -151,6 +151,22 @@ struct ReviewTests {
         #expect(interpreter.interpretations(for: vehicle).reviews.isEmpty)
     }
 
+    @Test("only problems with a report or note receive their own review scope")
+    func reviewScopes() throws {
+        let vehicle = try garage.addVehicle(name: "Test car")
+        let empty = DiagnosticSession(title: "Finding modules")
+        let textful = DiagnosticSession(title: "Noise", problem: "A clicking noise")
+        vehicle.sessions = [empty, textful]
+        #expect(
+            Interpreter.reviewScopes(for: vehicle) == [.car, .problem(textful.id)])
+
+        let noted = DiagnosticSession(title: "No text")
+        noted.entries = [TimelineEntry(kind: .note, title: "Owner note", body: "It happens cold")]
+        vehicle.sessions = [empty, noted]
+        #expect(
+            Interpreter.reviewScopes(for: vehicle) == [.car, .problem(noted.id)])
+    }
+
     @Test("answer persists before a no-key re-review and the briefing carries it")
     func answerAndBriefing() async throws {
         let vehicle = try garage.addDemoVehicle()
