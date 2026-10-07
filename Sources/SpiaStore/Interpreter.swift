@@ -175,11 +175,18 @@ public final class Interpreter {
         }
     }
 
-    private func reviewCodes(for board: SessionBoard) -> [(printed: String, name: String?)] {
+    private func reviewCodes(for board: SessionBoard) -> [(
+        printed: String, name: String?, failureType: String?
+    )] {
         board.rows.flatMap { row in
-            row.printedCodes.map { code in
+            row.printedCodes.enumerated().map { index, code in
+                let codeName = row.names[index]
                 let name = catalogName(for: code)
-                return (printed: code, name: name)
+                return (
+                    printed: code,
+                    name: name,
+                    failureType: Self.failureTypeLabel(for: codeName)
+                )
             }
         }
     }
@@ -188,6 +195,14 @@ public final class Interpreter {
         let base = printed.split(separator: "-", maxSplits: 1).first.map(String.init) ?? printed
         guard let code = CodeName(base) else { return nil }
         return CodeCatalog.bundledCatalog?.entry(for: code)?.title
+    }
+
+    private static func failureTypeLabel(for name: CodeName?) -> String? {
+        guard let name, let byte = name.failureType else { return nil }
+        if let label = name.failureTypeLabel, name.failureTypeMeaning != nil {
+            return label
+        }
+        return "\(String(format: "%02X", byte)), not described by Spia"
     }
 
     private func unreadParts(for board: SessionBoard) -> [String] {
@@ -224,7 +239,16 @@ public final class Interpreter {
         return work.codes.map { raw in
             let name = CodeName(raw).flatMap { CodeCatalog.bundledCatalog?.entry(for: $0)?.title }
             let printed = CodeName(raw)?.printed ?? raw
-            return InterpretationCodeInput(code: printed, catalogName: name)
+            let failureType: String?
+            if let name = CodeName(raw), let byte = name.failureType {
+                failureType =
+                    Self.failureTypeLabel(for: name)
+                    ?? "\(String(format: "%02X", byte)), not described by Spia"
+            } else {
+                failureType = nil
+            }
+            return InterpretationCodeInput(
+                code: printed, catalogName: name, failureType: failureType)
         }
     }
 }

@@ -153,7 +153,9 @@ public enum ReviewRequest {
 
     public static func make(
         briefing: SessionBriefing, scope: Scope, answered: [(question: String, answer: String)],
-        codes: [(printed: String, name: String?)], unread: [String], provider: ProviderID,
+        codes: [(
+            printed: String, name: String?, failureType: String?
+        )], unread: [String], provider: ProviderID,
         sharing: SharingPolicy
     ) -> AssistantRequest {
         let subject: String
@@ -169,8 +171,16 @@ public enum ReviewRequest {
         let codeText =
             codes.isEmpty
             ? "- None"
-            : codes.map { "- \($0.printed): \($0.name ?? "manufacturer-specific, no public name")" }
-                .joined(separator: "\n")
+            : codes.map {
+                let details = [
+                    $0.name ?? "manufacturer-specific, no public name",
+                    $0.failureType.map { "failure type \($0)" },
+                ]
+                .compactMap { $0 }
+                .joined(separator: "; ")
+                return "- \($0.printed): \(details)"
+            }
+            .joined(separator: "\n")
         let unreadText =
             unread.isEmpty ? "- None" : unread.map { "- \($0)" }.joined(separator: "\n")
         let prompt = """
@@ -187,6 +197,7 @@ public enum ReviewRequest {
             Propose checks only for parts listed as not read yet. The adapter check is allowed only when Battery is
             listed as not read yet. Never propose vehicle_info when the briefing already has a VIN.
             Manufacturer-code meanings are interpretations, not verified descriptions.
+            A failure-type meaning beside a code is from the standard's categories; use it as given. When it says the byte is not described, say what the byte means if you know, and label it a guess otherwise.
 
             Already answered questions:
             \(answers)

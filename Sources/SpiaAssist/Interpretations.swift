@@ -104,8 +104,11 @@ public enum InterpretationTool {
 public struct InterpretationCodeInput: Sendable, Equatable {
     public let code: String
     public let catalogName: String?
-    public init(code: String, catalogName: String?) {
-        self.code = code; self.catalogName = catalogName
+    public let failureType: String?
+    public init(code: String, catalogName: String?, failureType: String? = nil) {
+        self.code = code
+        self.catalogName = catalogName
+        self.failureType = failureType
     }
 }
 
@@ -146,7 +149,13 @@ public enum InterpretationRequest {
                     "Module: \(facts.label), bus \(facts.bus), request \(facts.request), reply \(facts.reply)."
                 } ?? "Module: engine generic scan."
             let codeText = input.codes.map {
-                "- \($0.code) (\($0.catalogName ?? "no public description"))"
+                let details = [
+                    $0.catalogName ?? "no public description",
+                    $0.failureType.map { "failure type \($0)" },
+                ]
+                .compactMap { $0 }
+                .joined(separator: "; ")
+                return "- \($0.code) (\(details))"
             }.joined(separator: "\n")
             let naming =
                 input.module.map { _ in
@@ -160,7 +169,7 @@ public enum InterpretationRequest {
         let prompt = """
             \(sections)
 
-            A public name beside a code is its SAE definition; treat it as reliable, not as a guess, and never propose reading the code again. Use record_interpretations. Give each code a technician's name, its meaning on this car in at most two sentences including the failure-type byte when present, the first physical thing to check, and confidence. Label guesses as guesses.
+            A public name beside a code is its SAE definition; treat it as reliable, not as a guess, and never propose reading the code again. A failure-type meaning beside a code is from the standard's categories; use it as given. When it says the byte is not described, say what the byte means if you know, and label it a guess otherwise. Use record_interpretations. Give each code a technician's name, its meaning on this car in at most two sentences including the failure-type byte when present, the first physical thing to check, and confidence. Label guesses as guesses.
             Set each code's `module` to the exact module heading it belongs to, or null for the engine generic scan.
             """
         let tokens = modules.reduce(0) { $0 + $1.codes.count * 300 + ($1.nameModule ? 200 : 0) }

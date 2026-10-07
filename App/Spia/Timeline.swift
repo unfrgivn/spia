@@ -312,6 +312,11 @@ private struct ModuleCodesView: View {
                         Text(CodeName(record.code)?.printed ?? record.code)
                             .font(.body.monospaced().weight(.semibold))
                             .textSelection(.enabled)
+                        if let failureType = CodeName(record.code)?.failureTypeLabel {
+                            Text(failureType)
+                                .font(.caption)
+                                .foregroundStyle(Palette.tertiary)
+                        }
                         FlowChips(
                             flags: DTCStatus.flags(for: record.status, availability: availability))
                     }

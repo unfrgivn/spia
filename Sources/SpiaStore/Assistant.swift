@@ -154,7 +154,8 @@ extension Garage {
         return Array(Set(rawCodes)).sorted().map { raw in
             guard let name = CodeName(raw) else { return raw }
             let title = catalog?.entry(for: name)?.title
-            return title.map { "\(name.printed) (\($0))" } ?? name.printed
+            let details = [title, name.failureTypeLabel].compactMap { $0 }.joined(separator: "; ")
+            return details.isEmpty ? name.printed : "\(name.printed) (\(details))"
         }
     }
 
