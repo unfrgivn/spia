@@ -21,16 +21,16 @@ struct VehicleOverview: View {
 
     var body: some View {
         let compact = BoardLayout(width: width) == .compact
+        ScrollViewReader { scroller in
+            overviewScroll(compact: compact, scroller: scroller)
+        }
+    }
+
+    private static let composerID = "composer"
+
+    private func overviewScroll(compact: Bool, scroller: ScrollViewProxy) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                #if DEBUG
-                    if Fixture.screen == .startProblem {
-                        ProblemComposerInline(vehicle: vehicle) { session in
-                            show(.session(session.id))
-                        }
-                        .padding(.bottom, 24)
-                    }
-                #endif
                 hero(compact: compact)
                 if !vehicle.isDemo && vehicle.modules.isEmpty {
                     ScanCard(
@@ -99,10 +99,6 @@ struct VehicleOverview: View {
                     open: { runner?.historySubject = $0.subject }
                 )
                 .padding(.top, compact ? 18 : 22)
-                ProblemComposerInline(vehicle: vehicle) { session in
-                    show(.session(session.id))
-                }
-                .padding(.top, compact ? 30 : 40)
                 if let error = interpretations.lastError {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(error)
@@ -119,6 +115,14 @@ struct VehicleOverview: View {
                     }
                     .padding(.top, 8)
                 }
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionHeading("What's wrong with the car?")
+                    ProblemComposerInline(vehicle: vehicle) { session in
+                        show(.session(session.id))
+                    }
+                }
+                .padding(.top, compact ? 30 : 40)
+                .id(Self.composerID)
                 SessionLedger(
                     vehicle: vehicle, interpretations: interpretations, compact: compact,
                     open: { show(.session($0.id)) }
@@ -143,6 +147,14 @@ struct VehicleOverview: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .readingWidth($width)
+        #if DEBUG
+            .task {
+                if Fixture.screen == .startProblem {
+                    try? await Task.sleep(for: .seconds(3))
+                    withAnimation { scroller.scrollTo(Self.composerID, anchor: .top) }
+                }
+            }
+        #endif
         .background(Palette.base)
         .navigationTitle(vehicle.name)
         .platformSubtitle("Overview")
