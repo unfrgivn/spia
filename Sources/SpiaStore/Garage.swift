@@ -140,6 +140,14 @@ public final class Garage {
         return session
     }
 
+    public func rename(_ session: DiagnosticSession, to title: String) throws {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        session.title = trimmed
+        session.updatedAt = .now
+        try context.save()
+    }
+
     public func addNote(_ text: String, to session: DiagnosticSession) throws {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }

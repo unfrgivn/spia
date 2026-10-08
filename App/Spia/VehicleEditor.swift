@@ -74,7 +74,7 @@ struct VehicleEditor: View {
             vehicle.color = color
             vehicle.colorName = colorName.trimmed
             if !problem.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                _ = try model.garage.addSession(to: vehicle, title: "New problem", problem: problem)
+                _ = try model.startProblem(for: vehicle, saying: problem)
             }
             onCreate(vehicle)
             dismiss()

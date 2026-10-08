@@ -33,6 +33,7 @@ struct SessionActions {
     let scan: (() -> Void)?
     let deepScan: (() -> Void)?
     let editModules: (() -> Void)?
+    let rename: () -> Void
     let moduleChecks: [Check]
 }
 
@@ -99,6 +100,9 @@ struct SpiaCommands: Commands {
             Divider()
         }
         CommandMenu("Problem") {
+            Button("Rename Problem…") { session?.rename() }
+                .disabled(session == nil)
+            Divider()
             Button(session?.connected == true ? "Connection…" : "Connect…") { session?.connect() }
                 .keyboardShortcut("k")
                 .disabled(session == nil)

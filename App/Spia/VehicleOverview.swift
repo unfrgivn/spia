@@ -10,7 +10,6 @@ struct VehicleOverview: View {
     let references: VehicleReferences
     let show: (WorkspaceSection) -> Void
     let browse: (ReferencesView.Shelf) -> Void
-    let newSession: () -> Void
 
     @State private var runner: DiagnosticRunCoordinator?
     @State private var editing = false
@@ -22,6 +21,14 @@ struct VehicleOverview: View {
 
     var body: some View {
         let compact = BoardLayout(width: width) == .compact
+        ScrollViewReader { scroller in
+            overviewScroll(compact: compact, scroller: scroller)
+        }
+    }
+
+    private static let composerID = "composer"
+
+    private func overviewScroll(compact: Bool, scroller: ScrollViewProxy) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 hero(compact: compact)
@@ -108,10 +115,17 @@ struct VehicleOverview: View {
                     }
                     .padding(.top, 8)
                 }
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionHeading("What's wrong with the car?")
+                    ProblemComposerInline(vehicle: vehicle) { session in
+                        show(.session(session.id))
+                    }
+                }
+                .padding(.top, compact ? 30 : 40)
+                .id(Self.composerID)
                 SessionLedger(
                     vehicle: vehicle, interpretations: interpretations, compact: compact,
-                    open: { show(.session($0.id)) },
-                    newSession: newSession
+                    open: { show(.session($0.id)) }
                 )
                 .padding(.top, compact ? 30 : 40)
                 VStack(alignment: .leading, spacing: 14) {
@@ -133,6 +147,14 @@ struct VehicleOverview: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .readingWidth($width)
+        #if DEBUG
+            .task {
+                if Fixture.screen == .startProblem {
+                    try? await Task.sleep(for: .seconds(3))
+                    withAnimation { scroller.scrollTo(Self.composerID, anchor: .top) }
+                }
+            }
+        #endif
         .background(Palette.base)
         .navigationTitle(vehicle.name)
         .platformSubtitle("Overview")
@@ -545,14 +567,11 @@ private struct SessionLedger: View {
     let interpretations: VehicleInterpretations
     let compact: Bool
     let open: (DiagnosticSession) -> Void
-    let newSession: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SectionHeading("Problems", note: count) {
-                Button("New Problem", action: newSession)
-            }
-            .padding(.bottom, 10)
+            SectionHeading("Problems", note: count)
+                .padding(.bottom, 10)
             Hairline()
             if vehicle.sessions.isEmpty {
                 Text("Start a problem to work on this car.")

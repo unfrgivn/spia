@@ -120,6 +120,15 @@ final class AppModel {
         return conversation
     }
 
+    func startProblem(for vehicle: Vehicle, saying text: String) throws -> DiagnosticSession {
+        var startedConversation: AssistantConversation?
+        let session = try garage.startProblem(
+            for: vehicle, saying: text, configuration: assistant,
+            conversation: &startedConversation)
+        if let startedConversation { conversations[session.id] = startedConversation }
+        return session
+    }
+
     func references(for vehicle: Vehicle) -> VehicleReferences {
         if let existing = referenceSets[vehicle.id] { return existing }
         let references = VehicleReferences(vehicleID: vehicle.id, files: garage.files)

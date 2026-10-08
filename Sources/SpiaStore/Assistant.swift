@@ -5,6 +5,22 @@ import SpiaKit
 import SpiaReference
 
 extension Garage {
+    public func startProblem(
+        for vehicle: Vehicle, saying text: String, configuration: AssistantConfiguration,
+        conversation: inout AssistantConversation?
+    ) throws -> DiagnosticSession {
+        let session = try addSession(
+            to: vehicle, title: ProblemTitle.derive(from: text), problem: text)
+        let provider = configuration.settings.defaultProvider
+        guard configuration.unavailableReason(provider) == nil else { return session }
+        let created = AssistantConversation(
+            session: session, garage: self, configuration: configuration)
+        if provider.isCloud { created.allowCloudSharing() }
+        created.send(text, using: provider)
+        conversation = created
+        return session
+    }
+
     /// What the assistant is told about `session`: the vehicle, the problem, its modules, the
     /// problem's own notes and readings, and the newest reading of every other part of the car at
     /// the problem's point in time.
