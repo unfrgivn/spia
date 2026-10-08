@@ -120,6 +120,17 @@ final class AppModel {
         return conversation
     }
 
+    func startProblem(for vehicle: Vehicle, saying text: String) throws -> DiagnosticSession {
+        let session = try garage.addSession(
+            to: vehicle, title: ProblemTitle.derive(from: text), problem: text)
+        let provider = assistant.settings.defaultProvider
+        guard assistant.unavailableReason(provider) == nil else { return session }
+        let conversation = conversation(for: session)
+        if provider.isCloud { conversation.allowCloudSharing() }
+        conversation.send(text, using: provider)
+        return session
+    }
+
     func references(for vehicle: Vehicle) -> VehicleReferences {
         if let existing = referenceSets[vehicle.id] { return existing }
         let references = VehicleReferences(vehicleID: vehicle.id, files: garage.files)

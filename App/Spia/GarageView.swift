@@ -17,6 +17,7 @@ struct GarageView: View {
     @State private var deleting: Vehicle?
     @State private var problem: String?
     @State private var width: CGFloat = 1_000
+    @State private var composingProblemFor: Vehicle?
 
     var body: some View {
         let compact = width < 760
@@ -97,6 +98,16 @@ struct GarageView: View {
         .sheet(isPresented: $addingVehicle) {
             VehicleEditor { vehicle in open(vehicle, vehicle.orderedSessions.first) }
         }
+        .problemComposer(
+            isPresented: Binding(
+                get: { composingProblemFor != nil },
+                set: { if !$0 { composingProblemFor = nil } }),
+            vehicle: composingProblemFor ?? vehicles.first ?? Vehicle(name: ""),
+            started: { session in
+                if let vehicle = session.vehicle { open(vehicle, session) }
+                composingProblemFor = nil
+            }
+        )
         .confirmationDialog(
             "Delete \(deleting?.name ?? "this vehicle") and all its problems?",
             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
@@ -128,11 +139,7 @@ struct GarageView: View {
     }
 
     private func startSession(on vehicle: Vehicle) {
-        do {
-            open(vehicle, try model.garage.addSession(to: vehicle, title: "New problem"))
-        } catch {
-            problem = error.readable
-        }
+        composingProblemFor = vehicle
     }
 
     private func delete(_ vehicle: Vehicle) {

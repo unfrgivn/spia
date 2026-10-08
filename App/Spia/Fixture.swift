@@ -16,7 +16,8 @@
     @MainActor
     enum Fixture {
         enum Screen: String {
-            case garage, overview, references, photos, session, settings, replay
+            case garage, overview, startProblem = "start-problem", references, photos, session,
+                settings, replay
             case replayTimeline = "replay-timeline"
             case recordings
             case onboarding
@@ -145,7 +146,7 @@
                 .recordings:
                 vehicle.orderedSessions.first.map { .session($0.id) }
             case .garage, .settings, .welcome, nil: nil
-            case .onboarding, .scanning: .overview
+            case .onboarding, .scanning, .startProblem: .overview
             case .surveyResults, .surveyResultsMissing, .surveyResultsSearched: .overview
             }
         }

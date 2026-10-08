@@ -19,6 +19,8 @@ struct SessionView: View {
     /// A board row's question, for the assistant to ask.
     @State private var question: String?
     @State private var interpretationDismissed = false
+    @State private var renaming = false
+    @State private var renameTitle = ""
     #if os(iOS)
         @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
@@ -62,6 +64,10 @@ struct SessionView: View {
                 runner: runner, vehicle: session.vehicle, showTranscript: { transcript = $0 }
             )
             .task(id: session.vehicle?.id) {
+                let conversation = model.conversation(for: session)
+                if !conversation.visibleMessages.isEmpty || conversation.isResponding {
+                    showAssistant = true
+                }
                 if let vehicle = session.vehicle {
                     workbench = model.workbench(for: vehicle)
                     runner = DiagnosticRunCoordinator(
@@ -93,6 +99,15 @@ struct SessionView: View {
                 BulbCheck(link: link, subjects: board.rows.map(\.subject), checking: $checking)
             )
             .focusedSceneValue(\.session, actions)
+            .alert("Rename Problem", isPresented: $renaming) {
+                TextField("Problem title", text: $renameTitle)
+                Button("Cancel", role: .cancel) {}
+                Button("Rename") {
+                    do { try model.garage.rename(session, to: renameTitle) } catch let renameError {
+                        error = renameError.readable
+                    }
+                }
+            }
     }
 
     private func sessionChrome(layout: BoardLayout, wide: Bool) -> AnyView {
@@ -390,6 +405,10 @@ struct SessionView: View {
             checks: ScanMenu.jobs.map { check($0, $0.menuTitle) },
             scan: runner?.scanAction(), deepScan: runner?.scanAction(deep: true),
             editModules: { editingModules = true },
+            rename: {
+                renameTitle = session.title
+                renaming = true
+            },
             moduleChecks: (session.vehicle?.orderedModules ?? []).compactMap { module in
                 module.target.map { check(.moduleDTCs($0), module.label) }
             })

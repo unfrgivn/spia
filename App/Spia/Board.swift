@@ -62,10 +62,13 @@ extension View {
 /// The top of a session: when it was opened and where it stands, what the car said, in one
 /// sentence and then in brief, and what the owner noticed.
 struct BoardHeader: View {
+    @Environment(AppModel.self) private var model
     @Bindable var session: DiagnosticSession
     let board: SessionBoard
     let layout: BoardLayout
     let connectionKind: ConnectionKind?
+    @State private var editingTitle = false
+    @State private var titleDraft = ""
 
     var body: some View {
         let wide = layout == .wide
@@ -75,12 +78,12 @@ struct BoardHeader: View {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(context)
                         Text("·")
-                        statusMenu
+                        statusLine
                     }
                 } else {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(context)
-                        statusMenu
+                        statusLine
                     }
                 }
             }
@@ -115,6 +118,39 @@ struct BoardHeader: View {
             .padding(.top, 16)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var statusLine: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            statusMenu
+            if editingTitle {
+                TextField("Problem title", text: $titleDraft)
+                    .textFieldStyle(.plain)
+                    .frame(minWidth: 120, maxWidth: 300)
+                    .onSubmit(rename)
+                Button("Done", action: rename)
+                    .buttonStyle(.plain)
+            } else {
+                Button {
+                    titleDraft = session.title
+                    editingTitle = true
+                } label: {
+                    Image(systemName: "pencil")
+                }
+                .buttonStyle(.plain)
+                .help("Rename problem")
+                .accessibilityLabel("Rename problem")
+            }
+        }
+    }
+
+    private func rename() {
+        do {
+            try model.garage.rename(session, to: titleDraft)
+            editingTitle = false
+        } catch {
+            editingTitle = false
+        }
     }
 
     /// On a Mac the toolbar already names the car, so the line starts with when.

@@ -22,6 +22,7 @@ struct VehicleWorkspace: View {
     /// The References shelf, kept while the owner looks elsewhere.
     @State private var shelf: ReferencesView.Shelf = .recalls
     @State private var problem: String?
+    @State private var composingProblem = false
 
     var body: some View {
         let references = model.references(for: vehicle)
@@ -65,24 +66,21 @@ struct VehicleWorkspace: View {
             \.workspace,
             WorkspaceActions(show: show, newSession: newSession, showGarage: leave)
         )
+        .problemComposer(isPresented: $composingProblem, vehicle: vehicle) { session in
+            selection = .session(session.id)
+        }
         .errorAlert($problem)
     }
 
     private func overview(_ references: VehicleReferences) -> some View {
         VehicleOverview(
-            vehicle: vehicle, references: references, show: show, browse: browse,
-            newSession: newSession)
+            vehicle: vehicle, references: references, show: show, browse: browse)
     }
 
     private func show(_ section: WorkspaceSection) { selection = section }
 
     private func newSession() {
-        do {
-            let session = try model.garage.addSession(to: vehicle, title: "New problem")
-            selection = .session(session.id)
-        } catch {
-            problem = error.readable
-        }
+        composingProblem = true
     }
 
     private func browse(_ shelf: ReferencesView.Shelf) {
@@ -101,6 +99,8 @@ private struct WorkspaceSidebar: View {
     let showGarage: () -> Void
     let newSession: () -> Void
     @State private var deleting: DiagnosticSession?
+    @State private var renaming: DiagnosticSession?
+    @State private var renameTitle = ""
     @State private var problem: String?
 
     var body: some View {
@@ -129,6 +129,10 @@ private struct WorkspaceSidebar: View {
                         .badge(session.openQuestionCount(in: interpretations))
                         .tag(WorkspaceSection.session(session.id))
                         .contextMenu {
+                            Button("Rename…") {
+                                renameTitle = session.title
+                                renaming = session
+                            }
                             Button("Delete Problem…", role: .destructive) { deleting = session }
                         }
                 }
@@ -154,6 +158,22 @@ private struct WorkspaceSidebar: View {
             )
         }
         .errorAlert($problem)
+        .alert(
+            "Rename Problem",
+            isPresented: Binding(
+                get: { renaming != nil }, set: { if !$0 { renaming = nil } })
+        ) {
+            TextField("Problem title", text: $renameTitle)
+            Button("Cancel", role: .cancel) { renaming = nil }
+            Button("Rename") {
+                if let session = renaming {
+                    do { try model.garage.rename(session, to: renameTitle) } catch {
+                        problem = error.readable
+                    }
+                }
+                renaming = nil
+            }
+        }
     }
 
     private func delete(_ session: DiagnosticSession) {

@@ -10,7 +10,6 @@ struct VehicleOverview: View {
     let references: VehicleReferences
     let show: (WorkspaceSection) -> Void
     let browse: (ReferencesView.Shelf) -> Void
-    let newSession: () -> Void
 
     @State private var runner: DiagnosticRunCoordinator?
     @State private var editing = false
@@ -24,6 +23,14 @@ struct VehicleOverview: View {
         let compact = BoardLayout(width: width) == .compact
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
+                #if DEBUG
+                    if Fixture.screen == .startProblem {
+                        ProblemComposerInline(vehicle: vehicle) { session in
+                            show(.session(session.id))
+                        }
+                        .padding(.bottom, 24)
+                    }
+                #endif
                 hero(compact: compact)
                 if !vehicle.isDemo && vehicle.modules.isEmpty {
                     ScanCard(
@@ -92,6 +99,10 @@ struct VehicleOverview: View {
                     open: { runner?.historySubject = $0.subject }
                 )
                 .padding(.top, compact ? 18 : 22)
+                ProblemComposerInline(vehicle: vehicle) { session in
+                    show(.session(session.id))
+                }
+                .padding(.top, compact ? 30 : 40)
                 if let error = interpretations.lastError {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(error)
@@ -110,8 +121,7 @@ struct VehicleOverview: View {
                 }
                 SessionLedger(
                     vehicle: vehicle, interpretations: interpretations, compact: compact,
-                    open: { show(.session($0.id)) },
-                    newSession: newSession
+                    open: { show(.session($0.id)) }
                 )
                 .padding(.top, compact ? 30 : 40)
                 VStack(alignment: .leading, spacing: 14) {
@@ -545,14 +555,11 @@ private struct SessionLedger: View {
     let interpretations: VehicleInterpretations
     let compact: Bool
     let open: (DiagnosticSession) -> Void
-    let newSession: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SectionHeading("Problems", note: count) {
-                Button("New Problem", action: newSession)
-            }
-            .padding(.bottom, 10)
+            SectionHeading("Problems", note: count)
+                .padding(.bottom, 10)
             Hairline()
             if vehicle.sessions.isEmpty {
                 Text("Start a problem to work on this car.")
