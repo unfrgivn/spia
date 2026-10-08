@@ -2,7 +2,7 @@ import Observation
 import SpiaKit
 import SpiaStore
 
-/// The connection, check, and survey state shared by the vehicle dashboard and a problem.
+/// The connection and diagnostic state shared by the vehicle dashboard and a problem.
 @MainActor
 @Observable
 final class DiagnosticRunCoordinator {
@@ -12,11 +12,12 @@ final class DiagnosticRunCoordinator {
     var workbench: Workbench?
     var connectRequested = false
     var reviewReport: SurveyReport?
+    var scanCutShortReason: String?
     var historySubject: SessionBoard.Subject?
-    private var pendingSurvey = false
-    private var pendingThoroughSearch = false
+    private var pendingScan = false
+    private var pendingDeepScan = false
 
-    var isSurveyPending: Bool { pendingSurvey }
+    var isScanPending: Bool { pendingScan }
 
     var reader: ((SessionBoard.Subject) -> Void)? {
         guard workbench?.activity == nil else { return nil }
@@ -76,41 +77,46 @@ final class DiagnosticRunCoordinator {
         run(job)
     }
 
-    func requestSurvey(search: Bool = false) {
+    func scan(deep: Bool = false) {
         guard let workbench else { return }
-        pendingSurvey = true
-        pendingThoroughSearch = search
+        pendingScan = true
+        pendingDeepScan = deep
         if workbench.connection.status == nil {
             connectRequested = true
         } else {
-            startPendingSurveyIfReady()
+            startPendingScanIfReady()
         }
     }
 
-    func startPendingSurveyIfReady() {
-        guard pendingSurvey, let workbench, workbench.connection.status != nil else { return }
-        pendingSurvey = false
-        let search = pendingThoroughSearch
-        pendingThoroughSearch = false
+    func startPendingScanIfReady() {
+        guard pendingScan, let workbench, workbench.connection.status != nil else { return }
+        pendingScan = false
+        let deep = pendingDeepScan
+        pendingDeepScan = false
         connectRequested = false
-        runSurvey(search: search)
+        startScan(deep: deep)
     }
 
-    func cancelPendingSurveyIfDisconnected() {
+    func cancelPendingScanIfDisconnected() {
         if workbench?.connection.status == nil {
-            pendingSurvey = false
-            pendingThoroughSearch = false
+            pendingScan = false
+            pendingDeepScan = false
         }
     }
 
-    func surveyAction() -> (() -> Void)? {
+    func scanAction(deep: Bool = false) -> (() -> Void)? {
         guard let workbench else { return nil }
-        if let plan = try? model.surveyPlan(for: vehicle, workbench: workbench),
-            !workbench.canRun(.survey(plan))
-        {
-            return nil
-        }
-        return { [weak self] in self?.runSurvey() }
+        guard workbench.activity == nil else { return nil }
+        return { [weak self] in self?.scan(deep: deep) }
+    }
+
+    func deepScanMessage() -> String? {
+        guard let workbench, workbench.connection.status != nil,
+            let plan = try? model.surveyPlan(for: vehicle, workbench: workbench, search: true),
+            let search = plan.search
+        else { return nil }
+        return search.confirmationMessage(
+            connection: workbench.adapter.kind, candidates: plan.candidates)
     }
 
     func thoroughSearchMessage(for report: SurveyReport) -> String? {
@@ -123,11 +129,23 @@ final class DiagnosticRunCoordinator {
             connection: workbench.adapter.kind, candidates: plan.candidates)
     }
 
-    private func runSurvey(search: Bool = false) {
+    private func startScan(deep: Bool) {
         do {
             guard let workbench else { return }
-            let plan = try model.surveyPlan(for: vehicle, workbench: workbench, search: search)
-            run(.survey(plan))
+            let survey = try model.surveyPlan(for: vehicle, workbench: workbench)
+            let plan = ScanPlan.make(
+                for: vehicle, canRun: { workbench.canRun($0) }, survey: survey, deep: deep)
+            Task {
+                let outcome = await workbench.scan(plan, for: vehicle, in: session)
+                switch ScanDecision.needed(
+                    report: outcome.surveyReport, vehicle: vehicle, outcomes: outcome.outcomes)
+                {
+                case .keepModules(let report): reviewReport = report
+                case .cutShort(let reason): scanCutShortReason = reason
+                case nil: break
+                }
+                await model.interpreter.refresh(vehicle, adapter: workbench.connection.status)
+            }
         } catch { workbench?.lastError = error.readable }
     }
 }

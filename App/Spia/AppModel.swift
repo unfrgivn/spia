@@ -140,7 +140,7 @@ final class AppModel {
                 catalog = try ModuleCatalog.bundled()
                 surveyCatalog = catalog
             } catch {
-                let message = "The vehicle survey catalog couldn't be loaded: \(error.readable)"
+                let message = "The vehicle module catalog couldn't be loaded: \(error.readable)"
                 surveyCatalogError = message
                 throw SurveySetupError(message)
             }

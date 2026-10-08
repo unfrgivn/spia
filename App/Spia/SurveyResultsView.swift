@@ -40,7 +40,7 @@ struct SurveyResultsView: View {
             VStack(alignment: .leading, spacing: 18) {
                 if let reason = report.search?.stopReason {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Spia didn't search")
+                        Text("The deep scan didn't run")
                             .font(.headline)
                         Text(reason)
                             .fixedSize(horizontal: false, vertical: true)
@@ -68,7 +68,7 @@ struct SurveyResultsView: View {
                     }
                 }
                 if searchMessage != nil {
-                    Button("Search More Thoroughly") { showSearchConfirmation = true }
+                    Button("Deep Scan…") { showSearchConfirmation = true }
                         .buttonStyle(.borderedProminent)
                 }
                 VStack(alignment: .leading, spacing: 0) {
@@ -93,7 +93,7 @@ struct SurveyResultsView: View {
                     Button("Not Now") { dismiss() }
                         .buttonStyle(.bordered)
                     Spacer()
-                    Button("Save Modules") { save() }
+                    Button("Keep Modules") { save() }
                         .buttonStyle(.borderedProminent)
                         .disabled(kept.isEmpty)
                 }
@@ -103,13 +103,14 @@ struct SurveyResultsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Palette.base)
+        .navigationTitle("Modules found")
         .platformSheetFrame(width: 760, idealWidth: 820, minHeight: 620, idealHeight: 760)
         .errorAlert($error)
         .confirmationDialog(
-            "Search More Thoroughly?", isPresented: $showSearchConfirmation,
+            "Deep Scan?", isPresented: $showSearchConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Search") { searchMoreThoroughly() }
+            Button("Deep Scan") { searchMoreThoroughly() }
             Button("Cancel", role: .cancel) {}
         } message: {
             if let searchMessage { Text(searchMessage) }

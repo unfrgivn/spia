@@ -26,13 +26,24 @@ struct VehicleOverview: View {
             VStack(alignment: .leading, spacing: 0) {
                 hero(compact: compact)
                 if !vehicle.isDemo && vehicle.modules.isEmpty {
-                    FindModulesCard(
-                        compact: compact, disabled: workbench?.activity != nil, action: findModules
+                    ScanCard(
+                        compact: compact, disabled: workbench?.activity != nil, action: scan
                     )
                     .padding(.top, compact ? 18 : 24)
                 }
                 BoardHeadline(headline: board.headline, summary: board.summary, compact: compact)
                     .padding(.top, compact ? 18 : 28)
+                if ScanSuggestion.shouldSuggestDeepScan(for: vehicle) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(
+                            "Spia knows no modules for this make. A Deep Scan can find them (about two minutes, engine off)."
+                        )
+                        Button("Deep Scan…") { runner?.scan(deep: true) }
+                    }
+                    .font(.callout)
+                    .foregroundStyle(Palette.secondary)
+                    .padding(.top, 10)
+                }
                 if interpretations.review(for: .car) != nil
                     || interpretations.reviewInFlight.contains(.car)
                 {
@@ -130,7 +141,7 @@ struct VehicleOverview: View {
             runner = DiagnosticRunCoordinator(vehicle: vehicle, session: nil, model: model)
             await model.interpreter.refresh(vehicle, adapter: workbench?.liveStatus)
             #if DEBUG
-                if Fixture.screen == .onboarding { runner?.requestSurvey() }
+                if Fixture.screen == .onboarding { runner?.scan() }
                 if Fixture.screen == .surveyResults || Fixture.screen == .surveyResultsMissing
                     || Fixture.screen == .surveyResultsSearched,
                     let entry = vehicle.entries.sorted(by: { $0.date < $1.date }).last,
@@ -141,7 +152,7 @@ struct VehicleOverview: View {
             #endif
         }
         .onChange(of: runner?.workbench?.connection) { _, state in
-            if case .ready = state { runner?.startPendingSurveyIfReady() }
+            if case .ready = state { runner?.startPendingScanIfReady() }
         }
         .sheet(isPresented: $editing) { VehicleSettings(vehicle: vehicle, references: references) }
         .sheet(isPresented: $editingModules) { ModulesEditor(vehicle: vehicle) }
@@ -149,8 +160,8 @@ struct VehicleOverview: View {
             if let workbench {
                 ConnectionAssistant(
                     vehicle: vehicle, workbench: workbench,
-                    purpose: runner?.isSurveyPending == true
-                        ? "Connect the adapter, and Spia will find this car's modules." : nil
+                    purpose: runner?.isScanPending == true
+                        ? "Connect the adapter, and Spia will scan the car." : nil
                 ) { runner?.refresh($0) }
             }
         }
@@ -170,8 +181,8 @@ struct VehicleOverview: View {
 
     // MARK: - The bay
 
-    private func findModules() {
-        runner?.requestSurvey()
+    private func scan() {
+        runner?.scan()
     }
 
     private var workbench: Workbench? { runner?.workbench }
@@ -182,7 +193,7 @@ struct VehicleOverview: View {
             set: { isPresented in
                 if !isPresented {
                     runner?.connectRequested = false
-                    runner?.cancelPendingSurveyIfDisconnected()
+                    runner?.cancelPendingScanIfDisconnected()
                 }
             })
     }
@@ -194,9 +205,11 @@ struct VehicleOverview: View {
             ToolbarItemGroup(placement: .primaryAction) {
                 if let workbench {
                     AdapterIndicator(workbench: workbench) { requestConnection() }
-                    RunMenu(
+                    ScanMenu(
                         vehicle: vehicle, workbench: workbench, run: { runner?.run($0) },
-                        survey: runner?.surveyAction(), connect: requestConnection,
+                        scan: { runner?.scan() }, deepScan: { runner?.scan(deep: true) },
+                        deepScanMessage: runner?.deepScanMessage(),
+                        connect: requestConnection,
                         editModules: { editingModules = true })
                 }
             }
@@ -205,9 +218,11 @@ struct VehicleOverview: View {
                 if let workbench {
                     AdapterIndicator(workbench: workbench) { requestConnection() }
                     Spacer()
-                    RunMenu(
+                    ScanMenu(
                         vehicle: vehicle, workbench: workbench, run: { runner?.run($0) },
-                        survey: runner?.surveyAction(), connect: requestConnection,
+                        scan: { runner?.scan() }, deepScan: { runner?.scan(deep: true) },
+                        deepScanMessage: runner?.deepScanMessage(),
+                        connect: requestConnection,
                         editModules: { editingModules = true })
                 }
             }

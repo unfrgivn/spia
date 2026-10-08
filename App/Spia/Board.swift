@@ -753,80 +753,74 @@ private struct Breathing: ViewModifier {
     }
 }
 
-/// Every check, in one menu. The board offers the check that's missing; this offers them all.
-struct RunMenu: View {
+/// The car-wide scan and the individual checks that make it up.
+struct ScanMenu: View {
     let vehicle: Vehicle?
     let workbench: Workbench
     let run: (DiagnosticJob) -> Void
-    let survey: (() -> Void)?
+    let scan: () -> Void
+    let deepScan: () -> Void
+    let deepScanMessage: String?
     let connect: () -> Void
     let editModules: () -> Void
+    @State private var showingDeepScanConfirmation = false
 
     var body: some View {
         if workbench.connection.status == nil {
             Button(action: connect) { PrimaryPill(title: "Connect", menu: false) }
                 .buttonStyle(.plain)
                 .fixedSize()
-                .help("Connect the adapter to run checks")
+                .help("Connect the adapter to scan the car")
         } else {
             Menu {
-                ForEach([VehicleRequirement.ignitionOn, .none], id: \.self) { requirement in
-                    Section(requirement.label) {
-                        ForEach(Self.jobs.filter { $0.requirement == requirement }, id: \.title) {
-                            job in
-                            Button(job.menuTitle) { run(job) }
-                        }
-                        if requirement == .ignitionOn, vehicle != nil {
-                            // Off for the demo, and for saved recordings without this survey.
-                            Button("Survey This Car") { survey?() }
-                                .disabled(survey == nil)
-                        }
-                        // Module reads always need the ignition on.
-                        if requirement == .ignitionOn { modules }
+                Button("Scan") { scan() }
+                Button("Deep Scan…") {
+                    if deepScanMessage == nil {
+                        deepScan()
+                    } else {
+                        showingDeepScanConfirmation = true
                     }
                 }
+                Divider()
+                Menu("Advanced") {
+                    ForEach(Self.jobs, id: \.title) { job in
+                        Button(job.menuTitle) { run(job) }
+                    }
+                    ForEach(vehicle?.orderedModules ?? []) { module in
+                        if let target = module.target {
+                            let job = DiagnosticJob.moduleDTCs(target)
+                            Button(module.label) { run(job) }
+                                .disabled(!workbench.canRun(job))
+                        }
+                    }
+                    Divider()
+                    Button("Edit Modules…", action: editModules)
+                }
             } label: {
-                PrimaryPill(title: "Run", menu: true)
+                PrimaryPill(title: "Scan", menu: true)
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize()
             .disabled(workbench.activity != nil)
-            .help("Run a check")
+            .help("Scan the car")
+            .confirmationDialog(
+                "Deep Scan?", isPresented: $showingDeepScanConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Deep Scan") { deepScan() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                if let deepScanMessage { Text(deepScanMessage) }
+            }
         }
     }
 }
 
-extension RunMenu {
+extension ScanMenu {
     static let jobs: [DiagnosticJob] = [.genericScan, .vehicleInfo, .adapterCheck]
 
-    private var modules: some View {
-        Menu("Read Module Trouble Codes") {
-            ForEach(vehicle?.orderedModules ?? []) { module in
-                if let target = module.target {
-                    let job = DiagnosticJob.moduleDTCs(target)
-                    Button(module.confirmed ? module.label : "\(module.label) (unconfirmed)") {
-                        run(job)
-                    }
-                    // Only the demo can't: nobody recorded some of its modules.
-                    .disabled(!workbench.canRun(job))
-                }
-            }
-            Divider()
-            Button("Edit Modules…", action: editModules)
-        }
-    }
-}
-
-extension VehicleRequirement {
-    /// What a check needs from the car, as the Run menu groups them.
-    var label: String {
-        switch self {
-        case .none: "No car needed"
-        case .ignitionOn: "Ignition on"
-        }
-    }
 }
 
 /// A screen's one primary action, drawn in the accent colour even in a toolbar, which would

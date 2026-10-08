@@ -30,7 +30,9 @@ struct SessionActions {
     let toggleAssistant: () -> Void
     let connect: () -> Void
     let checks: [Check]
-    let survey: (() -> Void)?
+    let scan: (() -> Void)?
+    let deepScan: (() -> Void)?
+    let editModules: (() -> Void)?
     let moduleChecks: [Check]
 }
 
@@ -38,11 +40,11 @@ extension DiagnosticJob {
     /// The check's name as a menu item, in the title case menus use.
     var menuTitle: String {
         switch self {
-        case .adapterCheck: "Check the Adapter"
-        case .vehicleInfo: "Read Vehicle Information"
-        case .genericScan: "Scan for Engine and Transmission Codes"
-        case .moduleDTCs: "Read Module Trouble Codes"
-        case .survey: "Survey This Car"
+        case .adapterCheck: "Adapter and battery"
+        case .vehicleInfo: "Vehicle information"
+        case .genericScan: "Engine and transmission codes"
+        case .moduleDTCs: "Module codes"
+        case .survey: "Modules and their codes"
         }
     }
 }
@@ -55,7 +57,7 @@ extension FocusedValues {
 
 /// The menu bar's way to everything the toolbar and board do, with keys: ⌘N for a session and
 /// ⇧⌘N for a vehicle, ⌘1 to ⌘3 for a vehicle's pages, ⌥⌘I for the assistant, ⌘K to connect,
-/// and ⌘R for the scan everything starts with.
+/// and ⌘R for Scan Car.
 struct SpiaCommands: Commands {
     @FocusedValue(\.garage) private var garage
     @FocusedValue(\.workspace) private var workspace
@@ -101,20 +103,28 @@ struct SpiaCommands: Commands {
                 .keyboardShortcut("k")
                 .disabled(session == nil)
             Divider()
-            ForEach(session?.checks ?? [], id: \.title) { check in
-                Button(check.title) { check.perform?() }
-                    .keyboardShortcut(check.job == .genericScan ? KeyboardShortcut("r") : nil)
-                    .disabled(check.perform == nil)
-            }
-            Button("Survey This Car") { session?.survey?() }
-                .disabled(session?.survey == nil)
-            Menu("Read Module Trouble Codes") {
-                ForEach(session?.moduleChecks ?? [], id: \.title) { check in
+            Button("Scan Car") { session?.scan?() }
+                .keyboardShortcut("r")
+                .disabled(session?.scan == nil)
+            Button("Deep Scan…") { session?.deepScan?() }
+                .disabled(session?.deepScan == nil)
+            Divider()
+            Menu("Advanced") {
+                ForEach(session?.checks ?? [], id: \.title) { check in
                     Button(check.title) { check.perform?() }
                         .disabled(check.perform == nil)
                 }
+                Divider()
+                Menu("Modules") {
+                    ForEach(session?.moduleChecks ?? [], id: \.title) { check in
+                        Button(check.title) { check.perform?() }
+                            .disabled(check.perform == nil)
+                    }
+                }
+                .disabled(session?.moduleChecks.isEmpty ?? true)
+                Button("Edit Modules…") { session?.editModules?() }
+                    .disabled(session?.editModules == nil)
             }
-            .disabled(session?.moduleChecks.isEmpty ?? true)
         }
     }
 }

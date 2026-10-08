@@ -20,6 +20,7 @@
             case replayTimeline = "replay-timeline"
             case recordings
             case onboarding
+            case scanning
             case surveyResults = "survey-results"
             case surveyResultsMissing = "survey-results-missing"
             case surveyResultsSearched = "survey-results-searched"
@@ -64,7 +65,7 @@
                 ? savedChecks() : nil
             let model = AppModel(
                 container: try Garage.inMemoryContainer(), files: SpiaFiles(root: root),
-                assistant: assistant(), replayTiming: .immediate,
+                assistant: assistant(), replayTiming: screen == .scanning ? .recorded : .immediate,
                 savedChecksProvider: checks.map { saved in { saved } })
             if screen == .onboarding {
                 _ = try model.garage.addVehicle(
@@ -105,7 +106,13 @@
                 } else {
                     let vehicle = try model.garage.addDemoVehicle()
                     seedInterpretations(model: model, vehicle: vehicle)
-                    Task { await runChecks(model: model, vehicle: vehicle) }
+                    Task {
+                        if screen == .scanning {
+                            await runScan(model: model, vehicle: vehicle)
+                        } else {
+                            await runChecks(model: model, vehicle: vehicle)
+                        }
+                    }
                 }
             }
             return model
@@ -138,7 +145,7 @@
                 .recordings:
                 vehicle.orderedSessions.first.map { .session($0.id) }
             case .garage, .settings, .welcome, nil: nil
-            case .onboarding: .overview
+            case .onboarding, .scanning: .overview
             case .surveyResults, .surveyResultsMissing, .surveyResultsSearched: .overview
             }
         }
@@ -177,6 +184,16 @@
             _ = await workbench.run(
                 .moduleDTCs(DemoGarage.bodyComputer.target), for: vehicle, in: session)
             if let error = workbench.lastError { print("Spia fixture check failed: \(error)") }
+        }
+
+        private static func runScan(model: AppModel, vehicle: Vehicle) async {
+            guard let workbench = model.workbench(for: vehicle) else { return }
+            try? await Task.sleep(for: .seconds(1))
+            await workbench.connect()
+            let survey = try? model.surveyPlan(for: vehicle, workbench: workbench)
+            let plan = ScanPlan.make(
+                for: vehicle, canRun: { workbench.canRun($0) }, survey: survey)
+            _ = await workbench.scan(plan, for: vehicle, in: vehicle.orderedSessions.first)
         }
 
         private static func seedInterpretations(model: AppModel, vehicle: Vehicle) {

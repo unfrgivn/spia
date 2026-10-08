@@ -1,22 +1,22 @@
 import SwiftUI
 
-struct FindModulesCard: View {
+struct ScanCard: View {
     let compact: Bool
     let disabled: Bool
     let action: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Find this car's modules")
+            Text("Scan this car")
                 .font(.headline)
                 .foregroundStyle(Palette.primary)
             Text(
-                "Ask the car which diagnostic modules are awake, then review their names and codes."
+                "Spia finds its modules, reads their codes, and checks the engine, transmission, battery, and VIN."
             )
             .font(.callout)
             .foregroundStyle(Palette.secondary)
             .fixedSize(horizontal: false, vertical: true)
-            Button("Find Modules", action: action)
+            Button("Scan", action: action)
                 .buttonStyle(.borderedProminent)
                 .disabled(disabled)
         }
