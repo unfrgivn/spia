@@ -22,7 +22,26 @@ func imageData() throws -> Data {
     return output as Data
 }
 
+/// The one test clip, encoded on first use and shared by every test that needs one. CI's runner
+/// has three cores and no hardware encoder, so a fresh clip per test took six seconds a test and
+/// starved the paced replay tests, whose connect gives the adapter three seconds to answer ATZ.
+private actor ClipFixture {
+    static let shared = ClipFixture()
+    private var encoding: Task<URL, Error>?
+
+    func clip() async throws -> URL {
+        if let encoding { return try await encoding.value }
+        let encoding = Task { try await encodeClip() }
+        self.encoding = encoding
+        return try await encoding.value
+    }
+}
+
 func makeClip() async throws -> URL {
+    try await ClipFixture.shared.clip()
+}
+
+private func encodeClip() async throws -> URL {
     let url = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString).appendingPathExtension("mov")
     do {
