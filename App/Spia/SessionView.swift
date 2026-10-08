@@ -151,20 +151,20 @@ struct SessionView: View {
                     .padding(.top, wide ? 24 : 18)
                 }
                 if let interpretations,
-                    interpretations.review(for: .problem(session.id)) != nil
-                        || interpretations.reviewInFlight.contains(.problem(session.id))
+                    interpretations.review(for: sessionReviewScope) != nil
+                        || interpretations.reviewInFlight.contains(sessionReviewScope)
                 {
                     ReviewView(
-                        review: interpretations.review(for: .problem(session.id)),
-                        inFlight: interpretations.reviewInFlight.contains(.problem(session.id)),
-                        untaggedQuestions: interpretations.review(for: .problem(session.id))?
+                        review: interpretations.review(for: sessionReviewScope),
+                        inFlight: interpretations.reviewInFlight.contains(sessionReviewScope),
+                        untaggedQuestions: interpretations.review(for: sessionReviewScope)?
                             .questions
                             .filter {
                                 $0.module == nil && $0.codes.isEmpty
                             } ?? [],
                         moduleLabels: moduleLabels,
                         answer: answer,
-                        checks: reviewChecks(interpretations.review(for: .problem(session.id))),
+                        checks: reviewChecks(interpretations.review(for: sessionReviewScope)),
                         run: { runner?.run($0) }
                     )
                     .padding(.top, wide ? 24 : 18)
@@ -175,7 +175,7 @@ struct SessionView: View {
                     reading: runner?.reading,
                     checking: checking, unreadable: runner?.unreadable(for: board) ?? [:],
                     notes: notes, interpretations: interpretations,
-                    scope: .problem(session.id),
+                    scope: sessionReviewScope,
                     answer: answer,
                     runCheck: { runner?.run($0) },
                     askMore: {
@@ -239,6 +239,15 @@ struct SessionView: View {
                 }
             }
         #endif
+    }
+
+    private var sessionReviewScope: ReviewScope {
+        if !session.problem.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || session.entries.contains(where: { $0.kind == .note })
+        {
+            return .problem(session.id)
+        }
+        return .car
     }
 
     private static let timelineID = "timeline"

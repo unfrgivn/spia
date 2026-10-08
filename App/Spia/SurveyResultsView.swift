@@ -38,6 +38,18 @@ struct SurveyResultsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                if let reason = report.search?.stopReason {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Spia didn't search")
+                            .font(.headline)
+                        Text(reason)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Try Again", action: searchMoreThoroughly)
+                            .buttonStyle(.borderedProminent)
+                    }
+                    .foregroundStyle(Palette.primary)
+                    .card(tint: Palette.caution)
+                }
                 Text(review.headline)
                     .font(.largeTitle.weight(.bold))
                     .foregroundStyle(Palette.primary)

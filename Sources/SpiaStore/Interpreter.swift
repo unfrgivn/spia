@@ -108,10 +108,9 @@ public final class Interpreter {
         guard !configuration.settings.automaticWorkPaused else { return }
         let carBriefing = garage.briefing(for: vehicle, adapter: adapter)
         let scopes: [(ReviewScope, ReviewRequest.Scope, String)] =
-            [
-                (.car, .car, carBriefing.problem)
-            ]
-            + vehicle.sessions.filter { $0.status == .open }.map { session in
+            [(.car, .car, carBriefing.problem)]
+            + vehicle.sessions.filter { $0.status == .open && Self.hasReviewScope($0) }.map {
+                session in
                 (
                     .problem(session.id), .problem(title: session.title, text: session.problem),
                     session.problem
@@ -173,6 +172,18 @@ public final class Interpreter {
                 interpretations.lastError = "Review failed: \(error.readable)."
             }
         }
+    }
+
+    public static func reviewScopes(for vehicle: Vehicle) -> [ReviewScope] {
+        [.car]
+            + vehicle.sessions.filter { $0.status == .open && hasReviewScope($0) }.map {
+                .problem($0.id)
+            }
+    }
+
+    private static func hasReviewScope(_ session: DiagnosticSession) -> Bool {
+        !session.problem.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || session.entries.contains { $0.kind == .note }
     }
 
     private func reviewCodes(for board: SessionBoard) -> [(

@@ -89,6 +89,9 @@ public enum ResultText {
                 }
                 sentences.append(stopped)
             }
+            if let reason = report.search?.stopReason {
+                sentences.append("The search didn't run: \(reason)")
+            }
             return sentences.joined(separator: " ")
         }
     }

@@ -111,7 +111,8 @@ struct ModuleSearchTests {
         // traffic, not trouble.
         #expect(events.contains(.message(.dataError)))
         var windowed = SearchListen(
-            maxFrames: ModuleSearch.standard(over: .usbSerial).maxListenFrames)
+            maxFrames: ModuleSearch.standard(over: .usbSerial).maxListenFrames,
+            replyWindow: .window(mask: 0x400, pattern: 0x400))
         for event in events {
             if case .frame(let frame) = event, !Self.inWindow(frame) { continue }
             let listening = windowed.receive(event)
@@ -121,7 +122,8 @@ struct ModuleSearchTests {
         #expect(windowed.heard.count == 10)
 
         var everything = SearchListen(
-            maxFrames: ModuleSearch.standard(over: .usbSerial).maxListenFrames)
+            maxFrames: ModuleSearch.standard(over: .usbSerial).maxListenFrames,
+            replyWindow: .expectedReply)
         var stopped = false
         for event in events {
             if !everything.receive(event) {

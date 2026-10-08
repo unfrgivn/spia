@@ -64,10 +64,10 @@ final class DiagnosticRunCoordinator {
         }
         Task {
             let outcome = await workbench.run(job, for: vehicle, in: session)
-            await model.interpreter.refresh(vehicle, adapter: workbench.connection.status)
             if case .completed(let result) = outcome, case .survey(let report) = result.payload {
                 reviewReport = report
             }
+            await model.interpreter.refresh(vehicle, adapter: workbench.connection.status)
         }
     }
 
