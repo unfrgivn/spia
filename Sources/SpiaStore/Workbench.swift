@@ -2,6 +2,15 @@ import Foundation
 import Observation
 import SpiaKit
 
+private extension DiagnosticJob {
+    var stopsScan: Bool {
+        switch self {
+        case .vehicleInfo, .survey: return true
+        case .adapterCheck, .genericScan, .moduleDTCs: return false
+        }
+    }
+}
+
 /// What a running check is doing right now, for the activity panel.
 public struct CheckActivity: Equatable, Sendable {
     public let job: DiagnosticJob
@@ -11,6 +20,7 @@ public struct CheckActivity: Equatable, Sendable {
     public internal(set) var warnings: [String] = []
     /// Set while the check is paused for the person at the car.
     public internal(set) var prompt: Prompt?
+    public internal(set) var scan: ScanProgress? = nil
 
     public struct Prompt: Equatable, Sendable {
         public let id: UUID
@@ -18,6 +28,13 @@ public struct CheckActivity: Equatable, Sendable {
     }
 
     public var currentStep: String? { steps.last }
+}
+
+public struct ScanProgress: Equatable, Sendable {
+    public let phases: [ScanPhase]
+    public internal(set) var current: ScanPhase
+    public internal(set) var completed: Int
+    public let total: Int
 }
 
 /// How a check ended, for callers that act on it (the assistant feeds it back to the model).
@@ -95,11 +112,55 @@ public final class Workbench {
         _ job: DiagnosticJob, for vehicle: Vehicle, in session: DiagnosticSession? = nil
     ) async -> CheckOutcome {
         guard activity == nil else { return .notStarted }
-        var outcome = CheckOutcome.cancelled
+        return await runJob(job, for: vehicle, in: session, scan: nil, ownsActivity: true)
+    }
+
+    /// Runs all jobs in a scan as one activity and records each result independently.
+    @discardableResult
+    public func scan(
+        _ plan: ScanPlan, for vehicle: Vehicle, in session: DiagnosticSession? = nil
+    ) async -> ScanOutcome {
+        guard activity == nil else { return ScanOutcome(outcomes: [.notStarted]) }
+        guard let first = plan.jobs.first else { return ScanOutcome(outcomes: []) }
         lastError = nil
-        let transcript = garage.newTranscript(for: vehicle)
-        activity = CheckActivity(job: job, vehicleID: vehicle.id, sessionID: session?.id)
+        let phases = plan.phases
+        activity = CheckActivity(
+            job: first, vehicleID: vehicle.id, sessionID: session?.id,
+            scan: ScanProgress(
+                phases: phases, current: phases[0], completed: 0, total: plan.jobs.count))
         defer { activity = nil }
+        var outcomes: [CheckOutcome] = []
+        var report: SurveyReport?
+        for (index, job) in plan.jobs.enumerated() {
+            let phase = plan.phase(for: index)
+            activity?.scan?.current = phase
+            let outcome = await runJob(
+                job, for: vehicle, in: session, scan: phase, ownsActivity: false)
+            outcomes.append(outcome)
+            if case .completed(let result) = outcome, case .survey(let value) = result.payload {
+                report = value
+            }
+            activity?.scan?.completed = index + 1
+            if case .cancelled = outcome { break }
+            if case .failed = outcome, job.stopsScan { break }
+        }
+        return ScanOutcome(outcomes: outcomes, surveyReport: report)
+    }
+
+    private func runJob(
+        _ job: DiagnosticJob, for vehicle: Vehicle, in session: DiagnosticSession?,
+        scan phase: ScanPhase?, ownsActivity: Bool
+    ) async -> CheckOutcome {
+        var outcome = CheckOutcome.cancelled
+        let transcript = garage.newTranscript(for: vehicle)
+        if ownsActivity {
+            activity = CheckActivity(job: job, vehicleID: vehicle.id, sessionID: session?.id)
+        }
+        defer { if ownsActivity { activity = nil } }
+        if let phase { activity?.scan?.current = phase }
+        activity?.steps.removeAll()
+        activity?.warnings.removeAll()
+        activity?.prompt = nil
 
         for await event in await backend.run(job, transcript: transcript.url) {
             switch event {
@@ -107,6 +168,9 @@ public final class Workbench {
                 break
             case .step(let text):
                 activity?.steps.append(text)
+                if activity?.scan != nil {
+                    activity?.scan?.current = ScanPhase.current(for: job, step: text)
+                }
             case .warning(let text):
                 activity?.warnings.append(text)
             case .needsUser(let id, let action):

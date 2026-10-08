@@ -106,6 +106,17 @@ public struct SurveyPlan: Codable, Sendable, Equatable, Hashable {
     public let detectsProtocol: Bool
     public let search: ModuleSearch?
 
+    /// True when the bundled catalog supplied at least one make-specific candidate.
+    public var catalogContributedMakeSpecificCandidates: Bool {
+        candidates.contains { candidate in
+            if case .catalog = candidate.origin { return true }
+            return false
+        }
+    }
+
+    /// Whether the catalog has make-specific coverage for this vehicle.
+    public var hasMakeSpecificCandidates: Bool { catalogContributedMakeSpecificCandidates }
+
     public init(
         catalogVersion: String, vehicle: CatalogVehicle?, platform: String?,
         candidates: [SurveyCandidate], unreachable: [SurveyCandidate],
