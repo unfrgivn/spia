@@ -31,7 +31,7 @@ struct InterpretationTests {
                 codes: [
                     CodeInterpretation(
                         code: "P1009", name: "body computer", meaning: "A body fault.",
-                        firstCheck: "Inspect the connector.", confidence: "low")
+                        firstCheck: "Inspect the connector.", confidence: .low)
                 ], module: nil),
             target: nil, provider: .anthropic, model: "test")
         let loaded = VehicleInterpretations(vehicleID: vehicle.id, files: files)
@@ -86,7 +86,7 @@ struct InterpretationTests {
                 codes: [
                     CodeInterpretation(
                         code: "B0001-1B", name: "clock spring", meaning: "Stage 1 circuit.",
-                        firstCheck: "Use the SRS procedure.", confidence: "high")
+                        firstCheck: "Use the SRS procedure.", confidence: .high)
                 ], module: nil),
             target: DemoGarage.airbag.target, provider: .anthropic, model: "test")
         let briefing = garage.briefing(for: vehicle, adapter: nil)
@@ -183,10 +183,10 @@ struct InterpretationTests {
                 codes: [
                     CodeInterpretation(
                         code: "B0001-1B", name: "clock spring", meaning: "x", firstCheck: "x",
-                        confidence: "high"),
+                        confidence: .high),
                     CodeInterpretation(
                         code: "B0002-1B", name: "connector", meaning: "x", firstCheck: "x",
-                        confidence: "high"),
+                        confidence: .high),
                 ], module: nil),
             target: DemoGarage.airbag.target, provider: .anthropic, model: "test")
         plan = InterpretationPlan.missing(

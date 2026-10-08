@@ -688,7 +688,6 @@ struct LiveProviderTests {
         #expect(
             result.codes.allSatisfy {
                 !$0.name.isEmpty && !$0.meaning.isEmpty && !$0.firstCheck.isEmpty
-                    && ["high", "medium", "low"].contains($0.confidence)
             })
     }
 

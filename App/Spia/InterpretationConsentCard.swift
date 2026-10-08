@@ -30,7 +30,7 @@ struct InterpretationConsentCard: View {
             .foregroundStyle(Palette.primary)
             Text(
                 unavailable
-                    ?? "Spia sends the make, model, and year, the module names, the codes and their public names, and what you noticed in open problems. The VIN stays here unless Settings allow it. Once allowed, new codes are explained as they're read."
+                    ?? "Spia sends the make, model, and year, the module names, the codes and their public names, what you noticed in open problems, and the photos and clip frames you attach to findings. The VIN stays here unless Settings allow it. Once allowed, new codes are explained as they're read."
             )
             .font(.callout)
             .foregroundStyle(Palette.secondary)

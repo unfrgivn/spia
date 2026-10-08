@@ -10,19 +10,6 @@ private func reviewText(_ request: AssistantRequest) -> String {
     }.joined(separator: "\n")
 }
 
-private func assertStrict(_ value: JSONValue) {
-    guard case .object(let object) = value else { return }
-    let isObjectSchema = object["type"]?.string == "object"
-    guard isObjectSchema else { return }
-    #expect(object["additionalProperties"] == .bool(false))
-    guard case .object(let properties)? = object["properties"],
-        case .array(let required)? = object["required"]
-    else { return }
-    #expect(Set(required.compactMap(\.string)) == Set(properties.keys))
-    for property in properties.values { assertStrict(property) }
-    if let items = object["items"] { assertStrict(items) }
-}
-
 @Suite("Review assistant")
 struct ReviewTests {
     private let modules = ["Airbag controller (ORC)"]

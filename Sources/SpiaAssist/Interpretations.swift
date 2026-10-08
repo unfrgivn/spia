@@ -7,9 +7,9 @@ public struct CodeInterpretation: Codable, Sendable, Equatable {
     public let name: String
     public let meaning: String
     public let firstCheck: String
-    public let confidence: String
+    public let confidence: Confidence
     public init(
-        code: String, name: String, meaning: String, firstCheck: String, confidence: String,
+        code: String, name: String, meaning: String, firstCheck: String, confidence: Confidence,
         module: String? = nil
     ) {
         self.code = code; self.module = module; self.name = name; self.meaning = meaning;
@@ -49,7 +49,10 @@ public enum InterpretationTool {
                             "name": ["type": "string"],
                             "meaning": ["type": "string"],
                             "first_check": ["type": "string"],
-                            "confidence": ["type": "string", "enum": ["high", "medium", "low"]],
+                            "confidence": [
+                                "type": "string",
+                                "enum": .array(Confidence.allCases.map { .string($0.rawValue) }),
+                            ],
                         ],
                         "required": [
                             "code", "module", "name", "meaning", "first_check", "confidence",
@@ -75,8 +78,7 @@ public enum InterpretationTool {
             guard let code = item["code"]?.string, let moduleValue = item["module"],
                 let name = item["name"]?.string,
                 let meaning = item["meaning"]?.string, let check = item["first_check"]?.string,
-                let confidence = item["confidence"]?.string,
-                ["high", "medium", "low"].contains(confidence)
+                let confidence = item["confidence"]?.string.flatMap(Confidence.init(rawValue:))
             else { throw AssistantError.malformedStream("invalid interpretation code") }
             let module = moduleValue.string
             if let module, !modules.isEmpty,

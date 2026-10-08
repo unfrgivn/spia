@@ -129,17 +129,33 @@ extension Garage {
 
     private func reviewLines(for vehicle: Vehicle, scope: UUID? = nil) -> [String] {
         let stored = VehicleInterpretations(vehicleID: vehicle.id, files: files)
-        return stored.reviews.filter { review in
+        let reviews = stored.reviews.filter { review in
             switch review.scope {
             case .car: return true
             case .problem(let id): return scope == nil || id == scope
             }
-        }.flatMap { review in
-            ["Review: \(review.reading)"]
-                + review.questions.map { question in
-                    let answer = question.answer.map { " Answer: \($0)" } ?? " Open question."
-                    return "Question: \(question.text).\(answer)"
+        }
+        return reviews.flatMap { review in
+            var lines = ["Review: \(review.reading)"]
+            if review.kind == .diagnosis {
+                if !review.symptoms.isEmpty {
+                    lines.append("Symptoms: \(review.symptoms.joined(separator: "; "))")
                 }
+                lines += review.suspects.map {
+                    "Suspect: \($0.name) (\($0.confidence)): \($0.why)"
+                }
+                lines += review.inspections.map { "Inspection proposed: \($0.title)" }
+                if let conclusion = review.conclusion {
+                    lines.append(
+                        "Conclusion (\(conclusion.confidence)): \(conclusion.cause) Fix: \(conclusion.fix)"
+                    )
+                }
+            }
+            lines += review.questions.map { question in
+                let answer = question.answer.map { " Answer: \($0)" } ?? " Open question."
+                return "Question: \(question.text).\(answer)"
+            }
+            return lines
         }
     }
 

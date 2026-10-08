@@ -21,6 +21,8 @@ struct SessionView: View {
     @State private var interpretationDismissed = false
     @State private var renaming = false
     @State private var renameTitle = ""
+    @State private var resolving = false
+    @State private var resolutionText = ""
     #if os(iOS)
         @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
@@ -108,6 +110,11 @@ struct SessionView: View {
                     }
                 }
             }
+            .alert("Resolve Problem", isPresented: $resolving) {
+                TextField("What fixed it", text: $resolutionText, axis: .vertical)
+                Button("Cancel", role: .cancel) {}
+                Button("Resolve") { resolve() }
+            }
     }
 
     private func sessionChrome(layout: BoardLayout, wide: Bool) -> AnyView {
@@ -142,6 +149,13 @@ struct SessionView: View {
                     .font(.system(size: 13))
                     .foregroundStyle(Palette.tertiary)
                     .padding(.top, 10)
+                    if let resolution = session.resolution, !resolution.isEmpty {
+                        Text("Resolved: \(resolution)")
+                            .font(.system(size: 14)).foregroundStyle(Palette.secondary)
+                            .padding(.top, 5)
+                    }
+                    Button("Reopen") { reopen() }
+                        .buttonStyle(OutlineButtonStyle()).padding(.top, 3)
                 }
                 if let workbench, let activity = workbench.activity,
                     activity.sessionID == session.id,
@@ -166,23 +180,32 @@ struct SessionView: View {
                     )
                     .padding(.top, wide ? 24 : 18)
                 }
-                if let interpretations,
-                    interpretations.review(for: sessionReviewScope) != nil
-                        || interpretations.reviewInFlight.contains(sessionReviewScope)
-                {
-                    ReviewView(
-                        review: interpretations.review(for: sessionReviewScope),
-                        inFlight: interpretations.reviewInFlight.contains(sessionReviewScope),
-                        untaggedQuestions: interpretations.review(for: sessionReviewScope)?
-                            .questions
-                            .filter {
-                                $0.module == nil && $0.codes.isEmpty
-                            } ?? [],
-                        moduleLabels: moduleLabels,
-                        answer: answer,
-                        checks: reviewChecks(interpretations.review(for: sessionReviewScope)),
-                        run: { runner?.run($0) }
-                    )
+                if let interpretations {
+                    let stored = interpretations.review(for: sessionReviewScope)
+                    let inFlight = interpretations.reviewInFlight.contains(sessionReviewScope)
+                    let showDiagnosis =
+                        isProblemScope
+                        && (stored?.kind == .diagnosis || (stored == nil && inFlight))
+                    Group {
+                        if showDiagnosis {
+                            DiagnosisView(
+                                review: stored, inFlight: inFlight, findings: session.findings,
+                                untaggedQuestions: stored?.questions.filter {
+                                    $0.module == nil && $0.codes.isEmpty
+                                } ?? [], moduleLabels: moduleLabels, answer: answer,
+                                checks: reviewChecks(stored), run: { runner?.run($0) },
+                                recordFinding: recordFinding, files: model.garage.files,
+                                resolve: beginResolve, wide: wide,
+                                closed: session.closedAt != nil)
+                        } else if stored != nil || inFlight {
+                            ReviewView(
+                                review: stored, inFlight: inFlight,
+                                untaggedQuestions: stored?.questions.filter {
+                                    $0.module == nil && $0.codes.isEmpty
+                                } ?? [], moduleLabels: moduleLabels, answer: answer,
+                                checks: reviewChecks(stored), run: { runner?.run($0) })
+                        }
+                    }
                     .padding(.top, wide ? 24 : 18)
                 }
                 SessionBoardView(
@@ -218,7 +241,8 @@ struct SessionView: View {
                     .padding(.top, 8)
                 }
                 CaseFile(
-                    session: session, layout: layout, showTranscript: { transcript = $0 },
+                    session: session, layout: layout, files: model.garage.files,
+                    showTranscript: { transcript = $0 },
                     reviewSurvey: {
                         runner?.reviewReport = $0
                     }
@@ -239,6 +263,15 @@ struct SessionView: View {
                 case .timeline, .replayTimeline:
                     try? await Task.sleep(for: .seconds(3))
                     scroller.scrollTo(Self.timelineID, anchor: .top)
+                case .conclusion:
+                    try? await Task.sleep(for: .seconds(3))
+                    scroller.scrollTo(Self.timelineID, anchor: .bottom)
+                case .findingMedia:
+                    try? await Task.sleep(for: .seconds(3))
+                    scroller.scrollTo(DiagnosisView.foundID, anchor: .top)
+                case .findingComposer:
+                    try? await Task.sleep(for: .seconds(3))
+                    scroller.scrollTo(DiagnosisView.testsID, anchor: .top)
                 case .explain:
                     break
                 case .history:
@@ -264,6 +297,11 @@ struct SessionView: View {
             return .problem(session.id)
         }
         return .car
+    }
+
+    private var isProblemScope: Bool {
+        if case .problem = sessionReviewScope { return true }
+        return false
     }
 
     private static let timelineID = "timeline"
@@ -398,6 +436,8 @@ struct SessionView: View {
             let runs = idle && workbench?.canRun(job) == true
             return .init(job: job, title: title, perform: runs ? { run(job) } : nil)
         }
+        let resolveAction: (() -> Void)? = session.closedAt == nil ? { beginResolve() } : nil
+        let reopenAction: (() -> Void)? = session.closedAt != nil ? { reopen() } : nil
         return SessionActions(
             connected: workbench?.connection.status != nil,
             assistantShown: showAssistant,
@@ -409,6 +449,8 @@ struct SessionView: View {
                 renameTitle = session.title
                 renaming = true
             },
+            resolve: resolveAction,
+            reopen: reopenAction,
             moduleChecks: (session.vehicle?.orderedModules ?? []).compactMap { module in
                 module.target.map { check(.moduleDTCs($0), module.label) }
             })
@@ -437,6 +479,45 @@ struct SessionView: View {
             note = ""
         } catch {
             self.error = error.readable
+        }
+    }
+
+    private func beginResolve() {
+        resolutionText =
+            interpretations?.review(for: sessionReviewScope)?.conclusion?.fix
+            ?? session.resolution ?? ""
+        resolving = true
+    }
+
+    private func resolve() {
+        do { try model.garage.resolve(session, fix: resolutionText) } catch let resolveError {
+            self.error = resolveError.readable
+        }
+    }
+
+    private func reopen() {
+        do { try model.garage.reopen(session) } catch let reopenError {
+            self.error = reopenError.readable
+        }
+    }
+
+    /// Saves the finding with its evidence, then lets go of the recordings the composer made
+    /// in the temporary folder; the garage keeps its own copies.
+    private func recordFinding(_ draft: FindingDraft) {
+        Task {
+            defer {
+                for url in draft.clips + draft.sounds {
+                    try? FileManager.default.removeItem(at: url)
+                }
+            }
+            do {
+                try await model.garage.addFinding(draft, to: session)
+                if let vehicle = session.vehicle {
+                    await model.interpreter.refresh(vehicle, adapter: workbench?.liveStatus)
+                }
+            } catch let findingError {
+                error = findingError.readable
+            }
         }
     }
 }

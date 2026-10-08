@@ -7,6 +7,7 @@ import SwiftUI
 struct CaseFile: View {
     let session: DiagnosticSession
     let layout: BoardLayout
+    let files: SpiaFiles
     let showTranscript: (TimelineEntry) -> Void
     let reviewSurvey: (SurveyReport) -> Void
 
@@ -24,7 +25,8 @@ struct CaseFile: View {
             ForEach(session.timeline) { entry in
                 LedgerRow(
                     entry: entry, modules: modules, layout: layout,
-                    showTranscript: { showTranscript(entry) }, reviewSurvey: reviewSurvey)
+                    files: files, showTranscript: { showTranscript(entry) },
+                    reviewSurvey: reviewSurvey)
             }
             if !session.entries.isEmpty { Hairline() }
         }
@@ -41,6 +43,7 @@ private struct LedgerRow: View {
     let entry: TimelineEntry
     let modules: [ModulePreset]
     let layout: BoardLayout
+    let files: SpiaFiles
     let showTranscript: () -> Void
     let reviewSurvey: (SurveyReport) -> Void
     @State private var expanded = false
@@ -122,9 +125,14 @@ private struct LedgerRow: View {
     @ViewBuilder private var details: some View {
         switch entry.kind {
         case .note, .failure:
-            Text(entry.body)
-                .textSelection(.enabled)
-                .foregroundStyle(Palette.secondary)
+            Text(entry.body).textSelection(.enabled).foregroundStyle(Palette.secondary)
+        case .finding:
+            VStack(alignment: .leading, spacing: 8) {
+                if !entry.body.isEmpty {
+                    Text(entry.body).textSelection(.enabled).foregroundStyle(Palette.secondary)
+                }
+                EvidenceStrip(attachments: entry.attachments, files: files)
+            }
         case .result:
             if let result = entry.result {
                 ResultDetail(
@@ -148,7 +156,7 @@ private struct LedgerSummary {
         failed = entry.kind == .failure
         guard entry.kind == .result else {
             title = entry.kind == .note ? "Note" : entry.title
-            text = entry.body
+            text = entry.body.isEmpty ? Self.findingSummary(entry) : entry.body
             return
         }
         guard let payload = entry.result?.payload else {
@@ -186,6 +194,16 @@ private struct LedgerSummary {
                     job: .survey(report.plan), payload: .survey(report), source: .live,
                     transcript: nil))
         }
+    }
+
+    private static func findingSummary(_ entry: TimelineEntry) -> String {
+        let photos = entry.attachments.filter { $0.kind == .photo }.count
+        let clips = entry.attachments.filter { $0.kind == .clip }.count
+        let sounds = entry.attachments.filter { $0.kind == .sound }.count
+        let values = [(photos, "photo"), (clips, "clip"), (sounds, "sound")]
+            .filter { $0.0 > 0 }
+            .map { "\($0.0) \($0.1)\($0.0 == 1 ? "" : "s")" }
+        return values.joined(separator: ", ")
     }
 }
 

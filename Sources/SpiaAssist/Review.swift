@@ -91,7 +91,27 @@ public enum ReviewTool {
             case .array(let questionValues)? = root["questions"],
             case .array(let checkValues)? = root["checks"], questionValues.count <= 3
         else { throw AssistantError.malformedStream("invalid review") }
-        let questions = try questionValues.map { item -> ReviewQuestion in
+        let questions = try parseQuestions(questionValues, modules: modules)
+        let checks = try checkValues.map { item -> CheckProposal in
+            guard case .object(let object) = item,
+                Set(object.keys) == ["check", "module", "reason"],
+                let raw = object["check"]?.string, let check = CheckKind(rawValue: raw),
+                let reason = object["reason"]?.string
+            else { throw AssistantError.malformedStream("invalid review check") }
+            let module = object["module"]?.string
+            if let module,
+                !modules.contains(where: { $0.caseInsensitiveCompare(module) == .orderedSame })
+            {
+                throw AssistantError.malformedStream("unknown review check module \"\(module)\"")
+            }
+            return CheckProposal(check: check, module: module, reason: reason)
+        }
+        return ReviewResult(reading: reading, questions: questions, checks: checks)
+    }
+
+    static func parseQuestions(_ values: [JSONValue], modules: [String]) throws -> [ReviewQuestion]
+    {
+        try values.map { item -> ReviewQuestion in
             guard case .object(let object) = item,
                 Set(object.keys) == ["question", "module", "codes"],
                 let question = object["question"]?.string, !question.isEmpty
@@ -111,31 +131,16 @@ public enum ReviewTool {
                 guard let code = value.string else {
                     throw AssistantError.malformedStream("invalid review code")
                 }
-                guard Self.validCode(code) else {
+                guard validCode(code) else {
                     throw AssistantError.malformedStream("invalid review code \"\(code)\"")
                 }
                 return code
             }
             return ReviewQuestion(question: question, module: module, codes: codes)
         }
-        let checks = try checkValues.map { item -> CheckProposal in
-            guard case .object(let object) = item,
-                Set(object.keys) == ["check", "module", "reason"],
-                let raw = object["check"]?.string, let check = CheckKind(rawValue: raw),
-                let reason = object["reason"]?.string
-            else { throw AssistantError.malformedStream("invalid review check") }
-            let module = object["module"]?.string
-            if let module,
-                !modules.contains(where: { $0.caseInsensitiveCompare(module) == .orderedSame })
-            {
-                throw AssistantError.malformedStream("unknown review check module \"\(module)\"")
-            }
-            return CheckProposal(check: check, module: module, reason: reason)
-        }
-        return ReviewResult(reading: reading, questions: questions, checks: checks)
     }
 
-    private static func validCode(_ code: String) -> Bool {
+    static func validCode(_ code: String) -> Bool {
         if CodeName(code) != nil { return true }
         let parts = code.split(separator: "-", omittingEmptySubsequences: false)
         guard parts.count == 2, parts[1].count == 2,
