@@ -101,7 +101,7 @@ public struct OpenAIProvider: AssistantProvider {
         }()
         return [
             "model": .string(model),
-            "instructions": .string(request.instructions),
+            "instructions": .string(request.instructions.joined),
             "input": .array(input),
             "max_output_tokens": .number(Double(request.maxOutputTokens)),
             "store": false,
@@ -144,8 +144,7 @@ public struct OpenAIStreamDecoder: Sendable {
                 .toolCall(
                     ToolCall(id: id, name: name, arguments: item["arguments"]?.string ?? "{}"))
             ]
-        // OpenAI's response.completed event carries response.usage.input_tokens and
-        // response.usage.output_tokens. The other usage detail fields are ignored.
+        // OpenAI's response.completed event carries response.usage and its cache details.
         case "response.completed":
             let usage = payload["response"]?["usage"]
             let events: [AssistantEvent] =
@@ -153,7 +152,9 @@ public struct OpenAIStreamDecoder: Sendable {
                     guard let input = usage["input_tokens"].flatMap(Self.integer),
                         let output = usage["output_tokens"].flatMap(Self.integer)
                     else { return nil }
-                    return .usage(TokenUsage(input: input, output: output))
+                    let cached =
+                        usage["input_tokens_details"]?["cached_tokens"].flatMap(Self.integer) ?? 0
+                    return .usage(TokenUsage(input: input, output: output, cacheRead: cached))
                 }.map { [$0, .finished(sawToolCall ? .toolUse : .endTurn)] }
                 ?? [.finished(sawToolCall ? .toolUse : .endTurn)]
             return events

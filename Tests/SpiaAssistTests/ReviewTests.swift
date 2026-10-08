@@ -97,7 +97,7 @@ struct ReviewTests {
             ],
             unread: ["Steering column"],
             provider: .anthropic, sharing: .init(includeVIN: false))
-        let text = reviewText(request) + request.instructions
+        let text = reviewText(request) + request.instructions.joined
         #expect(text.contains("The horn stopped after rain."))
         #expect(text.contains("Was the battery disconnected?"))
         #expect(text.contains("Yes, yesterday."))

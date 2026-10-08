@@ -66,10 +66,14 @@ public struct ToolResult: Codable, Sendable, Equatable {
 public struct TokenUsage: Sendable, Equatable {
     public let input: Int
     public let output: Int
+    public let cacheRead: Int
+    public let cacheWrite: Int
 
-    public init(input: Int, output: Int) {
+    public init(input: Int, output: Int, cacheRead: Int = 0, cacheWrite: Int = 0) {
         self.input = input
         self.output = output
+        self.cacheRead = cacheRead
+        self.cacheWrite = cacheWrite
     }
 }
 
@@ -97,14 +101,14 @@ public struct ConversationMessage: Codable, Sendable, Equatable {
 /// Everything a provider needs for one reply.
 public struct AssistantRequest: Sendable, Equatable {
     public enum ToolChoice: Sendable, Equatable { case auto, tool(String) }
-    public let instructions: String
+    public let instructions: Instructions
     public let messages: [ConversationMessage]
     public let tools: [ToolDefinition]
     public let maxOutputTokens: Int
     public let toolChoice: ToolChoice
 
     public init(
-        instructions: String, messages: [ConversationMessage], tools: [ToolDefinition],
+        instructions: Instructions, messages: [ConversationMessage], tools: [ToolDefinition],
         maxOutputTokens: Int = 2048, toolChoice: ToolChoice = .auto
     ) {
         self.instructions = instructions
@@ -112,6 +116,15 @@ public struct AssistantRequest: Sendable, Equatable {
         self.tools = tools
         self.maxOutputTokens = maxOutputTokens
         self.toolChoice = toolChoice
+    }
+
+    public init(
+        instructions: String, messages: [ConversationMessage], tools: [ToolDefinition],
+        maxOutputTokens: Int = 2048, toolChoice: ToolChoice = .auto
+    ) {
+        self.init(
+            instructions: Instructions(joined: instructions), messages: messages, tools: tools,
+            maxOutputTokens: maxOutputTokens, toolChoice: toolChoice)
     }
 }
 

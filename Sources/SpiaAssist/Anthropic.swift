@@ -67,7 +67,18 @@ public struct AnthropicProvider: AssistantProvider {
         return [
             "model": .string(model),
             "max_tokens": .number(Double(request.maxOutputTokens)),
-            "system": .string(request.instructions),
+            "system": .array([
+                ["type": "text", "text": .string(request.instructions.rules)],
+                [
+                    "type": "text",
+                    "text": .string("<session_data>\n" + request.instructions.sharedData),
+                ],
+                [
+                    "type": "text",
+                    "text": .string(request.instructions.variableData + "\n</session_data>"),
+                    "cache_control": ["type": "ephemeral"],
+                ],
+            ]),
             "stream": true,
             "tool_choice": toolChoice(for: request.toolChoice),
             "tools": .array(
@@ -122,6 +133,8 @@ public struct AnthropicStreamDecoder: Sendable {
     private var tools: [Int: (id: String, name: String, json: String)] = [:]
     private var stopReason: StopReason = .endTurn
     private var inputTokens: Int?
+    private var cacheReadTokens = 0
+    private var cacheWriteTokens = 0
 
     public init() {}
 
@@ -134,10 +147,15 @@ public struct AnthropicStreamDecoder: Sendable {
         }
         let index = payload["index"].flatMap(Self.integer)
         switch payload["type"]?.string ?? event.event {
-        // Anthropic's message_start carries message.usage.input_tokens. Its message_delta
-        // carries cumulative usage.output_tokens. Cache fields are intentionally ignored.
+        // Anthropic's message_start carries input and cache usage. Its message_delta carries
+        // cumulative output usage.
         case "message_start":
             inputTokens = payload["message"]?["usage"]?["input_tokens"].flatMap(Self.integer)
+            cacheReadTokens =
+                payload["message"]?["usage"]?["cache_read_input_tokens"].flatMap(Self.integer) ?? 0
+            cacheWriteTokens =
+                payload["message"]?["usage"]?["cache_creation_input_tokens"].flatMap(Self.integer)
+                ?? 0
             return []
         case "content_block_start":
             if let block = payload["content_block"], block["type"]?.string == "tool_use", let index,
@@ -178,7 +196,12 @@ public struct AnthropicStreamDecoder: Sendable {
             guard let inputTokens,
                 let outputTokens = payload["usage"]?["output_tokens"].flatMap(Self.integer)
             else { return [] }
-            return [.usage(TokenUsage(input: inputTokens, output: outputTokens))]
+            return [
+                .usage(
+                    TokenUsage(
+                        input: inputTokens, output: outputTokens, cacheRead: cacheReadTokens,
+                        cacheWrite: cacheWriteTokens))
+            ]
         case "message_stop":
             return [.finished(stopReason)]
         case "error":

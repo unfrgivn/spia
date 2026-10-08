@@ -89,7 +89,7 @@ struct InterpretationTests {
         #expect(prompt.contains("Use record_interpretations."))
         #expect(!prompt.contains("SECRET"))
         #expect(request.toolChoice == .tool(InterpretationTool.name))
-        #expect(request.instructions.contains("withheld by the user's privacy setting"))
+        #expect(request.instructions.joined.contains("withheld by the user's privacy setting"))
         let named = InterpretationRequest.make(
             briefing: briefing,
             module: .init(
@@ -231,7 +231,7 @@ struct AnthropicTests {
     /// The event sequence from platform.claude.com/docs/en/build-with-claude/streaming.
     static let stream = """
         event: message_start
-        data: {"type":"message_start","message":{"id":"msg_01ABC","type":"message","role":"assistant","content":[],"model":"claude-opus-5-5","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":25}}}
+        data: {"type":"message_start","message":{"id":"msg_01ABC","type":"message","role":"assistant","content":[],"model":"claude-opus-5-5","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":25,"cache_read_input_tokens":11,"cache_creation_input_tokens":7}}}
 
         event: content_block_start
         data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
@@ -277,7 +277,7 @@ struct AnthropicTests {
                     ToolCall(
                         id: "toolu_01ABC", name: "ask_user",
                         arguments: #"{"question":"Does the horn work?"}"#)),
-                .usage(TokenUsage(input: 25, output: 42)),
+                .usage(TokenUsage(input: 25, output: 42, cacheRead: 11, cacheWrite: 7)),
                 .finished(.toolUse),
             ])
     }
@@ -321,7 +321,14 @@ struct AnthropicTests {
         let body = try AnthropicProvider.body(for: request, model: "claude-opus-5-5")
 
         #expect(body["model"] == "claude-opus-5-5")
-        #expect(body["system"] == "rules")
+        guard case .array(let system) = body["system"] else {
+            Issue.record("no system blocks"); return
+        }
+        #expect(system.map { $0["type"] } == ["text", "text", "text"])
+        #expect(system[0]["text"] == "rules")
+        #expect(system[2]["cache_control"] == ["type": "ephemeral"])
+        #expect(system[0]["cache_control"] == nil)
+        #expect(system[1]["cache_control"] == nil)
         #expect(body["stream"] == true)
         guard case .array(let messages) = body["messages"] else {
             Issue.record("no messages"); return
@@ -366,7 +373,7 @@ struct OpenAITests {
         data: {"type":"response.output_item.done","output_index":1,"item":{"type":"function_call","id":"fc_123","call_id":"call_123","name":"propose_check","arguments":"{\\"check\\":\\"generic_scan\\",\\"module\\":null,\\"reason\\":\\"Baseline\\"}"}}
 
         event: response.completed
-        data: {"type":"response.completed","response":{"id":"resp_123","status":"completed","output":[],"usage":{"input_tokens":25,"output_tokens":42}}}
+        data: {"type":"response.completed","response":{"id":"resp_123","status":"completed","output":[],"usage":{"input_tokens":25,"output_tokens":42,"input_tokens_details":{"cached_tokens":11}}}}
 
 
         """
@@ -382,7 +389,7 @@ struct OpenAITests {
                     ToolCall(
                         id: "call_123", name: "propose_check",
                         arguments: #"{"check":"generic_scan","module":null,"reason":"Baseline"}"#)),
-                .usage(TokenUsage(input: 25, output: 42)),
+                .usage(TokenUsage(input: 25, output: 42, cacheRead: 11)),
                 .finished(.toolUse),
             ])
     }
@@ -428,7 +435,7 @@ struct OpenAITests {
         let body = try OpenAIProvider.body(for: request, model: "gpt-5.5")
 
         #expect(body["store"] == false)
-        #expect(body["instructions"] == "rules")
+        #expect(body["instructions"] == "rules\n\n<session_data>\n\n</session_data>")
         guard case .array(let input) = body["input"] else { Issue.record("no input"); return }
         #expect(
             input.map { $0["type"] ?? $0["role"] } == [
@@ -563,6 +570,19 @@ struct InstructionsTests {
             briefing: briefing(events: 100), provider: .onDevice, sharing: .init(includeVIN: false))
         #expect(text.contains("Note 99"))
         #expect(!text.contains("\"Note 0\""))
+    }
+
+    @Test("shared session data is deterministic when problem data changes")
+    func sharedDataIsStable() {
+        let first = AssistantInstructions.make(
+            briefing: briefing(), provider: .anthropic, sharing: .init(includeVIN: false))
+        var changed = briefing()
+        changed.problem = "Brake pedal soft"
+        changed.events[0].summary = "A different owner note"
+        let second = AssistantInstructions.make(
+            briefing: changed, provider: .anthropic, sharing: .init(includeVIN: false))
+        #expect(first.sharedData == second.sharedData)
+        #expect(first.variableData != second.variableData)
     }
 }
 

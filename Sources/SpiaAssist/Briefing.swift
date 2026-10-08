@@ -135,10 +135,36 @@ public struct SharingPolicy: Sendable, Equatable {
     public init(includeVIN: Bool) { self.includeVIN = includeVIN }
 }
 
+public struct Instructions: Sendable, Equatable {
+    public let rules: String
+    public let sharedData: String
+    public let variableData: String
+
+    public init(rules: String, sharedData: String, variableData: String) {
+        self.rules = rules
+        self.sharedData = sharedData
+        self.variableData = variableData
+    }
+
+    public init(joined: String) {
+        rules = joined
+        sharedData = ""
+        variableData = ""
+    }
+
+    public var joined: String {
+        rules + "\n\n<session_data>\n" + sharedData + variableData + "\n</session_data>"
+    }
+
+    public func contains(_ substring: String) -> Bool { joined.contains(substring) }
+
+    public func hasSuffix(_ suffix: String) -> Bool { joined.hasSuffix(suffix) }
+}
+
 public enum AssistantInstructions {
-    /// The rules the assistant works under, followed by the session data.
+    /// The rules and two deterministic session-data segments used by provider prompt caching.
     public static func make(briefing: SessionBriefing, provider: ProviderID, sharing: SharingPolicy)
-        -> String
+        -> Instructions
     {
         var briefing = briefing
         if provider.isCloud && !sharing.includeVIN, briefing.vehicle.vin != nil {
@@ -168,7 +194,7 @@ public enum AssistantInstructions {
             briefing.events.removeFirst()
             data = encode(briefing)
         }
-        return rules + "\n\n<session_data>\n" + data + "\n</session_data>"
+        return segments(briefing)
     }
 
     static let rules = """
@@ -212,5 +238,19 @@ public enum AssistantInstructions {
         encoder.dateEncodingStrategy = .iso8601
         guard let data = try? encoder.encode(briefing) else { return "{}" }
         return String(decoding: data, as: UTF8.self)
+    }
+
+    private static func segments(_ briefing: SessionBriefing) -> Instructions {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        encoder.dateEncodingStrategy = .iso8601
+        func json<T: Encodable>(_ value: T) -> String {
+            guard let data = try? encoder.encode(value) else { return "null" }
+            return String(decoding: data, as: UTF8.self)
+        }
+        let shared =
+            "{\"adapter\":\(json(briefing.adapter)),\"interpretations\":\(json(briefing.interpretations)),\"modules\":\(json(briefing.modules)),\"references\":\(json(briefing.references)),\"reviews\":\(json(briefing.reviews)),\"vehicle\":\(json(briefing.vehicle)),\"problem\":"
+        let variable = "\(json(briefing.problem)),\"events\":\(json(briefing.events))}"
+        return Instructions(rules: rules, sharedData: shared, variableData: variable)
     }
 }

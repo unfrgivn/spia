@@ -171,7 +171,7 @@ struct VehicleSettings: View {
                             model in
                             let totals = interpretations.usageSummary.byModel[model] ?? .init()
                             Text(
-                                "\(totals.requests) requests · \(totals.input.formatted()) tokens in · \(totals.output.formatted()) out · \(model)"
+                                "\(totals.requests) requests · \(totals.input.formatted()) tokens in · \(totals.output.formatted()) out · \(totals.cacheRead.formatted()) cached · \(model)"
                             )
                             .font(.caption)
                             .foregroundStyle(.secondary)

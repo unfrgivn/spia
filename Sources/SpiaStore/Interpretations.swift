@@ -79,12 +79,15 @@ public struct UsageEntry: Codable, Sendable, Equatable {
     public let model: String
     public let input: Int
     public let output: Int
+    public let cacheRead: Int
+    public let cacheWrite: Int
     public let modules: Int
     public let scope: ReviewScope?
 
     public init(
         date: Date = .now, kind: UsageKind, provider: ProviderID, model: String, input: Int,
-        output: Int, modules: Int, scope: ReviewScope? = nil
+        output: Int, cacheRead: Int = 0, cacheWrite: Int = 0, modules: Int,
+        scope: ReviewScope? = nil
     ) {
         self.date = date
         self.kind = kind
@@ -92,8 +95,28 @@ public struct UsageEntry: Codable, Sendable, Equatable {
         self.model = model
         self.input = input
         self.output = output
+        self.cacheRead = cacheRead
+        self.cacheWrite = cacheWrite
         self.modules = modules
         self.scope = scope
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case date, kind, provider, model, input, output, cacheRead, cacheWrite, modules, scope
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        date = try container.decode(Date.self, forKey: .date)
+        kind = try container.decode(UsageKind.self, forKey: .kind)
+        provider = try container.decode(ProviderID.self, forKey: .provider)
+        model = try container.decode(String.self, forKey: .model)
+        input = try container.decode(Int.self, forKey: .input)
+        output = try container.decode(Int.self, forKey: .output)
+        cacheRead = try container.decodeIfPresent(Int.self, forKey: .cacheRead) ?? 0
+        cacheWrite = try container.decodeIfPresent(Int.self, forKey: .cacheWrite) ?? 0
+        modules = try container.decode(Int.self, forKey: .modules)
+        scope = try container.decodeIfPresent(ReviewScope.self, forKey: .scope)
     }
 }
 
@@ -101,11 +124,18 @@ public struct UsageTotals: Sendable, Equatable {
     public let requests: Int
     public let input: Int
     public let output: Int
+    public let cacheRead: Int
+    public let cacheWrite: Int
 
-    public init(requests: Int = 0, input: Int = 0, output: Int = 0) {
+    public init(
+        requests: Int = 0, input: Int = 0, output: Int = 0, cacheRead: Int = 0,
+        cacheWrite: Int = 0
+    ) {
         self.requests = requests
         self.input = input
         self.output = output
+        self.cacheRead = cacheRead
+        self.cacheWrite = cacheWrite
     }
 }
 
@@ -372,7 +402,8 @@ public final class VehicleInterpretations {
         usage.append(
             UsageEntry(
                 kind: kind, provider: provider, model: model, input: tokenUsage.input,
-                output: tokenUsage.output, modules: modules, scope: scope))
+                output: tokenUsage.output, cacheRead: tokenUsage.cacheRead,
+                cacheWrite: tokenUsage.cacheWrite, modules: modules, scope: scope))
         save()
     }
 
@@ -381,7 +412,9 @@ public final class VehicleInterpretations {
         func totals(_ entries: [UsageEntry]) -> UsageTotals {
             UsageTotals(
                 requests: entries.count, input: entries.reduce(0) { $0 + $1.input },
-                output: entries.reduce(0) { $0 + $1.output })
+                output: entries.reduce(0) { $0 + $1.output },
+                cacheRead: entries.reduce(0) { $0 + $1.cacheRead },
+                cacheWrite: entries.reduce(0) { $0 + $1.cacheWrite })
         }
         func grouped(_ entries: [UsageEntry]) -> [String: UsageTotals] {
             Dictionary(grouping: entries, by: \.model).mapValues(totals)
