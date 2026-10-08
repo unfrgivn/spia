@@ -18,6 +18,58 @@ public struct InterpretationConsent: Codable, Sendable, Equatable {
 public enum UsageKind: String, Codable, Sendable, Equatable {
     case interpretation
     case review
+    case diagnosis
+}
+
+public enum ReviewKind: String, Codable, Sendable, Equatable { case review, diagnosis }
+
+public struct StoredSuspect: Codable, Sendable, Equatable {
+    public let name: String
+    public let why: String
+    public let confidence: Confidence
+    public let symptoms: [Int]
+
+    public init(name: String, why: String, confidence: Confidence, symptoms: [Int]) {
+        self.name = name
+        self.why = why
+        self.confidence = confidence
+        self.symptoms = symptoms
+    }
+}
+
+public struct StoredInspection: Codable, Sendable, Equatable {
+    public let id: UUID
+    public let title: String
+    public let steps: String
+    public let lookFor: String
+    public let safety: String?
+    public let suspects: [Int]
+    public let tellsApart: String
+
+    public init(
+        id: UUID, title: String, steps: String, lookFor: String, safety: String?, suspects: [Int],
+        tellsApart: String
+    ) {
+        self.id = id
+        self.title = title
+        self.steps = steps
+        self.lookFor = lookFor
+        self.safety = safety
+        self.suspects = suspects
+        self.tellsApart = tellsApart
+    }
+}
+
+public struct StoredConclusion: Codable, Sendable, Equatable {
+    public let cause: String
+    public let fix: String
+    public let confidence: Confidence
+
+    public init(cause: String, fix: String, confidence: Confidence) {
+        self.cause = cause
+        self.fix = fix
+        self.confidence = confidence
+    }
 }
 
 public struct UsageEntry: Codable, Sendable, Equatable {
@@ -70,7 +122,7 @@ public struct StoredCodeInterpretation: Codable, Sendable, Equatable {
     public let name: String
     public let meaning: String
     public let firstCheck: String
-    public let confidence: String
+    public let confidence: Confidence
     public let provider: ProviderID
     public let model: String
     public let date: Date
@@ -144,15 +196,27 @@ public struct StoredCheck: Codable, Sendable, Equatable {
     public let kind: CheckKind
     public let module: ModuleTarget?
     public let reason: String
+    public let suspects: [Int]
 
-    public init(kind: CheckKind, module: ModuleTarget?, reason: String) {
+    public init(kind: CheckKind, module: ModuleTarget?, reason: String, suspects: [Int] = []) {
         self.kind = kind
         self.module = module
         self.reason = reason
+        self.suspects = suspects
+    }
+
+    private enum CodingKeys: String, CodingKey { case kind, module, reason, suspects }
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try container.decode(CheckKind.self, forKey: .kind)
+        module = try container.decodeIfPresent(ModuleTarget.self, forKey: .module)
+        reason = try container.decode(String.self, forKey: .reason)
+        suspects = try container.decodeIfPresent([Int].self, forKey: .suspects) ?? []
     }
 }
 
 public struct StoredReview: Codable, Sendable, Equatable {
+    public let kind: ReviewKind
     public let scope: ReviewScope
     public let reading: String
     public var questions: [StoredQuestion]
@@ -161,11 +225,19 @@ public struct StoredReview: Codable, Sendable, Equatable {
     public let provider: ProviderID
     public let model: String
     public let date: Date
+    public let symptoms: [String]
+    public let suspects: [StoredSuspect]
+    public let inspections: [StoredInspection]
+    public let conclusion: StoredConclusion?
 
     public init(
         scope: ReviewScope, reading: String, questions: [StoredQuestion], checks: [StoredCheck],
-        inputs: String, provider: ProviderID, model: String, date: Date
+        inputs: String, provider: ProviderID, model: String, date: Date, kind: ReviewKind = .review,
+        symptoms: [String] = [], suspects: [StoredSuspect] = [],
+        inspections: [StoredInspection] = [],
+        conclusion: StoredConclusion? = nil
     ) {
+        self.kind = kind
         self.scope = scope
         self.reading = reading
         self.questions = questions
@@ -174,6 +246,32 @@ public struct StoredReview: Codable, Sendable, Equatable {
         self.provider = provider
         self.model = model
         self.date = date
+        self.symptoms = symptoms
+        self.suspects = suspects
+        self.inspections = inspections
+        self.conclusion = conclusion
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, scope, reading, questions, checks, inputs, provider, model, date
+        case symptoms, suspects, inspections, conclusion
+    }
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try container.decodeIfPresent(ReviewKind.self, forKey: .kind) ?? .review
+        scope = try container.decode(ReviewScope.self, forKey: .scope)
+        reading = try container.decode(String.self, forKey: .reading)
+        questions = try container.decode([StoredQuestion].self, forKey: .questions)
+        checks = try container.decode([StoredCheck].self, forKey: .checks)
+        inputs = try container.decode(String.self, forKey: .inputs)
+        provider = try container.decode(ProviderID.self, forKey: .provider)
+        model = try container.decode(String.self, forKey: .model)
+        date = try container.decode(Date.self, forKey: .date)
+        symptoms = try container.decodeIfPresent([String].self, forKey: .symptoms) ?? []
+        suspects = try container.decodeIfPresent([StoredSuspect].self, forKey: .suspects) ?? []
+        inspections =
+            try container.decodeIfPresent([StoredInspection].self, forKey: .inspections) ?? []
+        conclusion = try container.decodeIfPresent(StoredConclusion.self, forKey: .conclusion)
     }
 }
 
@@ -408,7 +506,67 @@ public final class VehicleInterpretations {
         model: String, modules: [(label: String, target: ModuleTarget)]
     ) {
         let previous = review(for: scope)
-        let questions = result.questions.map { item in
+        let questions = carryOverQuestions(result.questions, previous: previous, modules: modules)
+        let checks = result.checks.map { item in
+            StoredCheck(
+                kind: item.check,
+                module: item.module.flatMap { label in
+                    modules.first { $0.label.caseInsensitiveCompare(label) == .orderedSame }?.target
+                }, reason: item.reason)
+        }
+        reviews.removeAll { $0.scope == scope }
+        reviews.append(
+            StoredReview(
+                scope: scope, reading: result.reading, questions: questions, checks: checks,
+                inputs: inputs, provider: provider, model: model, date: .now))
+        save()
+    }
+
+    public func storeDiagnosis(
+        _ result: DiagnosisResult, scope: ReviewScope, inputs: String, provider: ProviderID,
+        model: String, modules: [(label: String, target: ModuleTarget)]
+    ) {
+        let previous = review(for: scope)
+        let questions = carryOverQuestions(result.questions, previous: previous, modules: modules)
+        let checks = result.checks.map { item in
+            StoredCheck(
+                kind: item.proposal.check,
+                module: item.proposal.module.flatMap { label in
+                    modules.first { $0.label.caseInsensitiveCompare(label) == .orderedSame }?.target
+                }, reason: item.proposal.reason, suspects: item.suspects)
+        }
+        let inspections = result.inspections.map {
+            StoredInspection(
+                id: UUID(), title: $0.title, steps: $0.steps, lookFor: $0.lookFor,
+                safety: $0.safety, suspects: $0.suspects, tellsApart: $0.tellsApart)
+        }
+        let suspects = result.suspects.map {
+            StoredSuspect(
+                name: $0.name, why: $0.why, confidence: $0.confidence, symptoms: $0.symptoms)
+        }
+        let conclusion = result.conclusion.map {
+            StoredConclusion(cause: $0.cause, fix: $0.fix, confidence: $0.confidence)
+        }
+        reviews.removeAll { $0.scope == scope }
+        reviews.append(
+            StoredReview(
+                scope: scope, reading: result.reading, questions: questions, checks: checks,
+                inputs: inputs, provider: provider, model: model, date: .now, kind: .diagnosis,
+                symptoms: result.symptoms, suspects: suspects, inspections: inspections,
+                conclusion: conclusion))
+        save()
+    }
+
+    public func removeReview(for scope: ReviewScope) {
+        reviews.removeAll { $0.scope == scope }
+        save()
+    }
+
+    private func carryOverQuestions(
+        _ source: [ReviewQuestion], previous: StoredReview?,
+        modules: [(label: String, target: ModuleTarget)]
+    ) -> [StoredQuestion] {
+        source.map { item in
             let moduleTarget = item.module.flatMap { label in
                 modules.first { $0.label.caseInsensitiveCompare(label) == .orderedSame }?.target
             }
@@ -424,20 +582,6 @@ public final class VehicleInterpretations {
                 codes: storedCodes,
                 askedAt: old?.askedAt ?? .now, answer: old?.answer, answeredAt: old?.answeredAt)
         }
-        let checks = result.checks.map { item in
-            StoredCheck(
-                kind: item.check,
-                module: item.module.flatMap { label in
-                    modules.first { $0.label.caseInsensitiveCompare(label) == .orderedSame }?.target
-                },
-                reason: item.reason)
-        }
-        reviews.removeAll { $0.scope == scope }
-        reviews.append(
-            StoredReview(
-                scope: scope, reading: result.reading, questions: questions, checks: checks,
-                inputs: inputs, provider: provider, model: model, date: .now))
-        save()
     }
     private func save() {
         let encoder = JSONEncoder()
@@ -457,12 +601,21 @@ public final class VehicleInterpretations {
 
 public enum ReviewInputs {
     public static func hash(
-        board: SessionBoard, problem: String, answers: [(question: String, answer: String)]
+        board: SessionBoard, problem: String, answers: [(question: String, answer: String)],
+        notes: [String] = [], findings: [(title: String, text: String, evidence: String)] = []
     ) -> String {
         let rows = board.rows.map { "\($0.name)|\($0.printedCodes.joined(separator: ","))" }.joined(
             separator: "\n")
         let answerText = answers.map { "\($0.question)=\($0.answer)" }.joined(separator: "\n")
-        let input = "board:\n\(rows)\nproblem:\n\(problem)\nanswers:\n\(answerText)"
+        var input = "board:\n\(rows)\nproblem:\n\(problem)\nanswers:\n\(answerText)"
+        if !notes.isEmpty {
+            input += "\nnotes:\n\(notes.joined(separator: "\n"))"
+        }
+        if !findings.isEmpty {
+            let findingText = findings.map { "\($0.title)=\($0.text)|\($0.evidence)" }.joined(
+                separator: "\n")
+            input += "\nfindings:\n\(findingText)"
+        }
         return SHA256.hash(data: Data(input.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 }

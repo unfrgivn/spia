@@ -102,6 +102,8 @@ private struct WorkspaceSidebar: View {
     @State private var renaming: DiagnosticSession?
     @State private var renameTitle = ""
     @State private var problem: String?
+    @State private var resolving: DiagnosticSession?
+    @State private var resolutionText = ""
 
     var body: some View {
         List(selection: $selection) {
@@ -133,6 +135,13 @@ private struct WorkspaceSidebar: View {
                                 renameTitle = session.title
                                 renaming = session
                             }
+                            Button("Resolve Problem…") {
+                                resolutionText = session.resolution ?? ""
+                                resolving = session
+                            }
+                            .disabled(session.closedAt != nil)
+                            Button("Reopen Problem") { reopen(session) }
+                                .disabled(session.closedAt == nil)
                             Button("Delete Problem…", role: .destructive) { deleting = session }
                         }
                 }
@@ -174,11 +183,31 @@ private struct WorkspaceSidebar: View {
                 renaming = nil
             }
         }
+        .alert(
+            "Resolve Problem",
+            isPresented: Binding(
+                get: { resolving != nil }, set: { if !$0 { resolving = nil } })
+        ) {
+            TextField("What fixed it", text: $resolutionText, axis: .vertical)
+            Button("Cancel", role: .cancel) { resolving = nil }
+            Button("Resolve") {
+                if let session = resolving {
+                    do { try model.garage.resolve(session, fix: resolutionText) } catch {
+                        problem = error.readable
+                    }
+                }
+                resolving = nil
+            }
+        }
     }
 
     private func delete(_ session: DiagnosticSession) {
         if selection == .session(session.id) { selection = .overview }
         do { try model.delete(session) } catch { problem = error.readable }
+    }
+
+    private func reopen(_ session: DiagnosticSession) {
+        do { try model.garage.reopen(session) } catch { problem = error.readable }
     }
 }
 

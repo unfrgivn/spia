@@ -14,7 +14,7 @@ public struct ScanPlan: Sendable, Equatable {
 
     /// Builds a plan without touching the adapter or the store.
     public static func make(
-        for vehicle: SpiaSchemaV2.Vehicle,
+        for vehicle: Vehicle,
         backend: any DiagnosticsBackend,
         survey: SurveyPlan?,
         deep: Bool = false
@@ -24,7 +24,7 @@ public struct ScanPlan: Sendable, Equatable {
 
     /// Builds a plan from capabilities without contacting an adapter.
     public static func make(
-        for vehicle: SpiaSchemaV2.Vehicle,
+        for vehicle: Vehicle,
         canRun: (DiagnosticJob) -> Bool,
         survey: SurveyPlan?,
         deep: Bool = false
@@ -81,7 +81,7 @@ public enum ScanDecision: Sendable, Equatable {
     case cutShort(reason: String)
 
     public static func needed(
-        report: SurveyReport?, vehicle: SpiaSchemaV2.Vehicle, outcomes: [CheckOutcome]
+        report: SurveyReport?, vehicle: Vehicle, outcomes: [CheckOutcome]
     ) -> ScanDecision? {
         if let report {
             if let reason = report.search?.stopReason ?? report.stop?.reason {
@@ -107,7 +107,7 @@ public enum ScanDecision: Sendable, Equatable {
 
 /// Rules for showing the one-time deep-scan suggestion.
 public enum ScanSuggestion {
-    public static func shouldSuggestDeepScan(for vehicle: SpiaSchemaV2.Vehicle) -> Bool {
+    public static func shouldSuggestDeepScan(for vehicle: Vehicle) -> Bool {
         let results = vehicle.entries.filter { $0.kind == .result }
         let hasScan = results.contains { entry in
             guard let result = entry.result else { return false }

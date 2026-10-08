@@ -7,35 +7,22 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A10000000000000000000050 /* SpiaStore */ = {isa = PBXBuildFile; productRef = A10000000000000000000040 /* SpiaStore */; };
-		A10000000000000000000051 /* SpiaKit */ = {isa = PBXBuildFile; productRef = A10000000000000000000041 /* SpiaKit */; };
-		A10000000000000000000052 /* OBDCore */ = {isa = PBXBuildFile; productRef = A10000000000000000000042 /* OBDCore */; };
-		A10000000000000000000053 /* OBDSerial */ = {isa = PBXBuildFile; platformFilters = (macos,); productRef = A10000000000000000000043 /* OBDSerial */; };
-		A10000000000000000000056 /* OBDBluetooth */ = {isa = PBXBuildFile; productRef = A10000000000000000000046 /* OBDBluetooth */; };
-		A10000000000000000000054 /* SpiaAssist */ = {isa = PBXBuildFile; productRef = A10000000000000000000044 /* SpiaAssist */; };
-		A10000000000000000000055 /* SpiaReference */ = {isa = PBXBuildFile; productRef = A10000000000000000000045 /* SpiaReference */; };
+		A10000000000000000000050 /* SpiaStore in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000040 /* SpiaStore */; };
+		A10000000000000000000051 /* SpiaKit in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000041 /* SpiaKit */; };
+		A10000000000000000000052 /* OBDCore in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000042 /* OBDCore */; };
+		A10000000000000000000053 /* OBDSerial in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = A10000000000000000000043 /* OBDSerial */; };
+		A10000000000000000000054 /* SpiaAssist in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000044 /* SpiaAssist */; };
+		A10000000000000000000055 /* SpiaReference in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000045 /* SpiaReference */; };
+		A10000000000000000000056 /* OBDBluetooth in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000046 /* OBDBluetooth */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		A10000000000000000000200 /* Spia.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Spia.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		A10000000000000000000031 /* Exceptions for "Spia" folder in "Spia" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Spia.entitlements,
-			);
-			target = A10000000000000000000100 /* Spia */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A10000000000000000000030 /* Spia */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				A10000000000000000000031 /* Exceptions for "Spia" folder in "Spia" target */,
-			);
 			path = Spia;
 			sourceTree = "<group>";
 		};
@@ -46,13 +33,13 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A10000000000000000000050 /* SpiaStore */,
-				A10000000000000000000051 /* SpiaKit */,
-				A10000000000000000000052 /* OBDCore */,
-				A10000000000000000000053 /* OBDSerial */,
-				A10000000000000000000056 /* OBDBluetooth */,
-				A10000000000000000000054 /* SpiaAssist */,
-				A10000000000000000000055 /* SpiaReference */,
+				A10000000000000000000050 /* SpiaStore in Frameworks */,
+				A10000000000000000000051 /* SpiaKit in Frameworks */,
+				A10000000000000000000052 /* OBDCore in Frameworks */,
+				A10000000000000000000053 /* OBDSerial in Frameworks */,
+				A10000000000000000000056 /* OBDBluetooth in Frameworks */,
+				A10000000000000000000054 /* SpiaAssist in Frameworks */,
+				A10000000000000000000055 /* SpiaReference in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -176,12 +163,12 @@
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
-				TARGETED_DEVICE_FAMILY = "1,2";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
 				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -199,11 +186,11 @@
 				ONLY_ACTIVE_ARCH = NO;
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
-				TARGETED_DEVICE_FAMILY = "1,2";
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
 				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -217,23 +204,27 @@
 				CODE_SIGN_STYLE = Automatic;
 				"COMBINE_HIDPI_IMAGES[sdk=macosx*]" = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = DT6BAYQH72;
 				"ENABLE_HARDENED_RUNTIME[sdk=macosx*]" = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Spia;
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Spia talks to your OBD-II adapter over Bluetooth to read your car's diagnostics.";
 				"INFOPLIST_KEY_LSApplicationCategoryType[sdk=macosx*]" = "public.app-category.utilities";
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Spia talks to your OBD-II adapter over Bluetooth to read your car's diagnostics.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Spia takes photos and clips of what you find on the car, kept with that finding.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Spia records the sounds the car makes and takes voice notes, kept with the finding.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Spia turns voice notes into text on this device. Nothing is sent to Apple.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=iphoneos*]" = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.unfrgivn.spia;
@@ -254,23 +245,27 @@
 				CODE_SIGN_STYLE = Automatic;
 				"COMBINE_HIDPI_IMAGES[sdk=macosx*]" = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = DT6BAYQH72;
 				"ENABLE_HARDENED_RUNTIME[sdk=macosx*]" = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Spia;
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Spia talks to your OBD-II adapter over Bluetooth to read your car's diagnostics.";
 				"INFOPLIST_KEY_LSApplicationCategoryType[sdk=macosx*]" = "public.app-category.utilities";
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Spia talks to your OBD-II adapter over Bluetooth to read your car's diagnostics.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Spia takes photos and clips of what you find on the car, kept with that finding.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Spia records the sounds the car makes and takes voice notes, kept with the finding.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Spia turns voice notes into text on this device. Nothing is sent to Apple.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=iphoneos*]" = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.unfrgivn.spia;
@@ -332,11 +327,6 @@
 			package = A10000000000000000000020 /* XCLocalSwiftPackageReference ".." */;
 			productName = OBDSerial;
 		};
-		A10000000000000000000046 /* OBDBluetooth */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A10000000000000000000020 /* XCLocalSwiftPackageReference ".." */;
-			productName = OBDBluetooth;
-		};
 		A10000000000000000000044 /* SpiaAssist */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A10000000000000000000020 /* XCLocalSwiftPackageReference ".." */;
@@ -346,6 +336,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A10000000000000000000020 /* XCLocalSwiftPackageReference ".." */;
 			productName = SpiaReference;
+		};
+		A10000000000000000000046 /* OBDBluetooth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000020 /* XCLocalSwiftPackageReference ".." */;
+			productName = OBDBluetooth;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

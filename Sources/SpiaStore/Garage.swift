@@ -43,6 +43,11 @@ public struct SpiaFiles: Sendable {
         "Vehicles/\(vehicle.uuidString)/Photos/\(name)"
     }
 
+    /// Evidence attached to a finding: the car's, beside its photos.
+    public func findingPath(vehicle: UUID, name: String) -> String {
+        "Vehicles/\(vehicle.uuidString)/Findings/\(name)"
+    }
+
     /// Every folder holding files that belong to the session alone. Transcripts are the car's
     /// and are not here.
     public func folders(for session: UUID) -> [URL] {
@@ -84,7 +89,7 @@ public final class Garage {
         try container(ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
     }
 
-    private static let schema = Schema(versionedSchema: SpiaSchemaV2.self)
+    private static let schema = Schema(versionedSchema: SpiaSchemaV3.self)
 
     private static func container(_ configuration: ModelConfiguration) throws -> ModelContainer {
         try ModelContainer(
@@ -154,6 +159,31 @@ public final class Garage {
         let entry = TimelineEntry(kind: .note, title: "Note", body: trimmed)
         entry.vehicle = session.vehicle
         append(entry, to: session)
+        try context.save()
+    }
+
+    public func addFinding(_ text: String, title: String, to session: DiagnosticSession) throws {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        makeFinding(text: trimmed, title: title, session: session)
+        try context.save()
+    }
+
+    public func resolve(_ session: DiagnosticSession, fix: String?) throws {
+        let trimmed = fix?.trimmingCharacters(in: .whitespacesAndNewlines)
+        session.resolution = trimmed?.isEmpty == false ? trimmed : nil
+        session.status = .resolved
+        session.updatedAt = .now
+        try context.save()
+    }
+
+    public func reopen(_ session: DiagnosticSession) throws {
+        if let resolution = session.resolution, !resolution.isEmpty {
+            try addNote("Reopened. It had been resolved as: \(resolution)", to: session)
+        }
+        session.resolution = nil
+        session.status = .open
+        session.updatedAt = .now
         try context.save()
     }
 
@@ -287,7 +317,7 @@ public final class Garage {
         }
     }
 
-    private func append(_ entry: TimelineEntry, to session: DiagnosticSession) {
+    func append(_ entry: TimelineEntry, to session: DiagnosticSession) {
         session.entries.append(entry)
         session.updatedAt = entry.date
     }

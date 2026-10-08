@@ -31,6 +31,10 @@ public enum PhotoPreparation {
         else {
             throw PhotoError.unreadable
         }
+        return try jpeg(image)
+    }
+
+    public static func jpeg(_ image: CGImage) throws -> Data {
         let output = NSMutableData()
         guard
             let destination = CGImageDestinationCreateWithData(

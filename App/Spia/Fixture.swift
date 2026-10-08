@@ -1,5 +1,9 @@
 #if DEBUG
     import Foundation
+    import AVFoundation
+    import CoreGraphics
+    import ImageIO
+    import UniformTypeIdentifiers
     import OBDCore
     import SpiaAssist
     import SpiaKit
@@ -35,6 +39,10 @@
             case explain
             /// The problem with its review questions visible.
             case questions
+            case diagnosis, conclusion, findingMedia = "finding-media"
+            case findingComposer = "finding-composer"
+            /// The problem closed with the conclusion's fix: the as-of line, the resolution, Reopen.
+            case resolved
             /// The session, with a module's reading history open.
             case history
         }
@@ -142,7 +150,10 @@
             case .overview: .overview
             case .references, .bulletins, .complaints: .references
             case .photos: .photos
-            case .session, .timeline, .explain, .questions, .history, .replay, .replayTimeline,
+            case .session, .timeline, .explain, .questions, .diagnosis, .conclusion, .findingMedia,
+                .findingComposer, .resolved,
+                .history,
+                .replay, .replayTimeline,
                 .recordings:
                 vehicle.orderedSessions.first.map { .session($0.id) }
             case .garage, .settings, .welcome, nil: nil
@@ -185,6 +196,12 @@
             _ = await workbench.run(
                 .moduleDTCs(DemoGarage.bodyComputer.target), for: vehicle, in: session)
             if let error = workbench.lastError { print("Spia fixture check failed: \(error)") }
+            if screen == .resolved {
+                // After the readings, so the closed problem's board has something to freeze.
+                let fix = model.interpreter.interpretations(for: vehicle)
+                    .review(for: .problem(session.id))?.conclusion?.fix
+                try? model.garage.resolve(session, fix: fix)
+            }
         }
 
         private static func runScan(model: AppModel, vehicle: Vehicle) async {
@@ -209,14 +226,14 @@
                                 "The driver frontal stage 1 deployment circuit has an open or high-resistance path. On this car, the dead horn and steering-wheel controls make the clock spring the leading suspect.",
                             firstCheck:
                                 "Follow Maserati's SRS procedure and inspect the clock-spring and connector area without probing airbag circuits.",
-                            confidence: "high"),
+                            confidence: .high),
                         CodeInterpretation(
                             code: "B0002-1B", name: "Driver airbag connector",
                             meaning:
                                 "The driver frontal stage 2 deployment circuit reports the same failure type, which points to an interruption rather than a deployment command.",
                             firstCheck:
                                 "Have a qualified technician inspect the SRS connector and clock spring using the manufacturer's procedure.",
-                            confidence: "high"),
+                            confidence: .high),
                     ], module: nil),
                 target: DemoGarage.airbag.target, provider: .anthropic,
                 model: AnthropicProvider.fastModel)
@@ -229,31 +246,131 @@
                                 "This manufacturer-specific code is not verified by the public catalog. It may reflect a body-computer communication or supply issue, but that meaning is only a low-confidence guess.",
                             firstCheck:
                                 "Check battery voltage and body-computer power and ground according to the service manual.",
-                            confidence: "low")
+                            confidence: .low)
                     ], module: nil),
                 target: DemoGarage.bodyComputer.target, provider: .anthropic,
                 model: AnthropicProvider.fastModel)
-            cache.storeReview(
-                ReviewResult(
+            let problemScope = ReviewScope.problem(vehicle.orderedSessions[0].id)
+            if screen == .diagnosis || screen == .conclusion || screen == .findingMedia
+                || screen == .findingComposer || screen == .resolved
+            {
+                let diagnosis = DiagnosisResult(
                     reading:
-                        "The airbag controller's two driver-circuit faults fit the dead horn and wheel controls. The clock spring is the leading suspect, but its safety circuit should be handled only by the manufacturer's procedure.",
+                        "The airbag controller's two driver-circuit faults, the dead horn, and the dead wheel controls all sit on circuits that run through the clock spring. The column module's own switch codes point the same way. Nothing read so far says the switches or the controller are at fault on their own.",
+                    symptoms: [
+                        "Steering wheel controls dead", "Horn dead", "Airbag lamp on",
+                        "Paddles and wiper stalk work", "Washer pump silent",
+                    ],
+                    suspects: [
+                        DiagnosisSuspect(
+                            name: "Clock spring", why: "Every faulting circuit passes through it.",
+                            confidence: .high, symptoms: [0, 1, 2]),
+                        DiagnosisSuspect(
+                            name: "Steering wheel switch pack",
+                            why: "It can't explain the horn and the lamp together.",
+                            confidence: .low, symptoms: [0]),
+                        DiagnosisSuspect(
+                            name: "Body computer or its supply",
+                            why:
+                                "The washer and horn are body-computer outputs but the airbag codes aren't.",
+                            confidence: .low, symptoms: [1, 4]),
+                    ],
+                    checks: [
+                        DiagnosisCheck(
+                            proposal: CheckProposal(
+                                check: .moduleCodes, module: DemoGarage.steeringColumn.label,
+                                reason:
+                                    "Its switch codes would say whether the wheel's inputs reach it"
+                            ), suspects: [0, 1])
+                    ],
+                    inspections: [
+                        DiagnosisInspection(
+                            title: "Press the horn with the key on",
+                            steps: "Press the horn once with the key on and engine off.",
+                            lookFor: "Whether the horn sounds or the relay clicks.",
+                            safety:
+                                "Keep your hands clear of the airbag cover. Key on, engine off.",
+                            suspects: [0, 2],
+                            tellsApart:
+                                "A silent horn with no relay click supports a body-computer output fault; a click without a horn points downstream."
+                        ),
+                        DiagnosisInspection(
+                            title: "Try every wheel button slowly through a full turn of the wheel",
+                            steps:
+                                "Try each button while turning the wheel slowly from lock to lock.",
+                            lookFor: "Controls that work only at one wheel position.", safety: nil,
+                            suspects: [0, 1],
+                            tellsApart:
+                                "Intermittent contact through the turn points to the clock spring."),
+                        DiagnosisInspection(
+                            title: "Check the horn and washer fuses in the engine bay box",
+                            steps: "Inspect the horn and washer fuses with the engine off.",
+                            lookFor: "An open fuse or signs of heat at the fuse.",
+                            safety: "Engine off, key out.", suspects: [2],
+                            tellsApart:
+                                "A blown fuse supports a body-computer supply or output problem."),
+                    ],
                     questions: [
                         ReviewQuestion(
                             question:
-                                "Does the horn work with the wheel turned fully left or right?",
+                                "Has the airbag lamp been on since the controls died, or did it come on later?",
                             module: DemoGarage.airbag.label, codes: ["B0001-1B", "B0002-1B"]),
                         ReviewQuestion(
                             question: "Has the steering wheel or airbag been removed or serviced?",
                             module: nil, codes: []),
                     ],
-                    checks: [
-                        CheckProposal(
-                            check: .moduleCodes, module: DemoGarage.steeringColumn.label,
-                            reason: "Its codes would say whether the wheel's switches reach it")
-                    ]),
-                scope: .problem(vehicle.orderedSessions[0].id), inputs: "fixture-problem",
-                provider: .anthropic, model: AnthropicProvider.fastModel,
-                modules: vehicle.assistantModules)
+                    conclusion: screen == .conclusion || screen == .resolved
+                        ? DiagnosisConclusion(
+                            cause:
+                                "The clock spring's ribbon is open on the horn, switch, and driver-airbag circuits.",
+                            fix:
+                                "Have a shop replace the clock spring under the SRS procedure, then clear the airbag and column codes and confirm the horn and wheel controls.",
+                            confidence: .high) : nil)
+                cache.storeDiagnosis(
+                    diagnosis, scope: problemScope, inputs: "fixture-problem", provider: .anthropic,
+                    model: AnthropicProvider.fastModel, modules: vehicle.assistantModules)
+                if screen != .findingMedia {
+                    try? model.garage.addFinding(
+                        "Nothing at all, and no click from the horn relay. The airbag lamp stayed on.",
+                        title: "Press the horn with the key on", to: vehicle.orderedSessions[0])
+                }
+                if screen == .findingMedia {
+                    let photo = fixturePhoto()
+                    let sound = fixtureSound()
+                    Task {
+                        _ = try? await model.garage.addFinding(
+                            FindingDraft(
+                                title: "Press the horn with the key on",
+                                text:
+                                    "Nothing at all, and no click from the horn relay. The airbag lamp stayed on.",
+                                photos: [photo], sounds: [sound]),
+                            to: vehicle.orderedSessions[0])
+                    }
+                }
+            } else {
+                cache.storeReview(
+                    ReviewResult(
+                        reading:
+                            "The airbag controller's two driver-circuit faults fit the dead horn and wheel controls. The clock spring is the leading suspect, but its safety circuit should be handled only by the manufacturer's procedure.",
+                        questions: [
+                            ReviewQuestion(
+                                question:
+                                    "Does the horn work with the wheel turned fully left or right?",
+                                module: DemoGarage.airbag.label, codes: ["B0001-1B", "B0002-1B"]),
+                            ReviewQuestion(
+                                question:
+                                    "Has the steering wheel or airbag been removed or serviced?",
+                                module: nil, codes: []),
+                        ],
+                        checks: [
+                            CheckProposal(
+                                check: .moduleCodes, module: DemoGarage.steeringColumn.label,
+                                reason: "Its codes would say whether the wheel's switches reach it")
+                        ]),
+                    scope: problemScope, inputs: "fixture-problem",
+                    provider: .anthropic, model: AnthropicProvider.fastModel,
+                    modules: vehicle.assistantModules)
+            }
             cache.storeReview(
                 ReviewResult(
                     reading:
@@ -261,6 +378,52 @@
                     questions: [], checks: []),
                 scope: .car, inputs: "fixture-car", provider: .anthropic,
                 model: AnthropicProvider.fastModel, modules: vehicle.assistantModules)
+        }
+
+        private static func fixturePhoto() -> Data {
+            let colorSpace = CGColorSpaceCreateDeviceRGB()
+            guard
+                let context = CGContext(
+                    data: nil, width: 1200, height: 900, bitsPerComponent: 8,
+                    bytesPerRow: 1200 * 4, space: colorSpace,
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            else { return Data() }
+            context.setFillColor(CGColor(gray: 0.12, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: 1200, height: 900))
+            context.setFillColor(CGColor(gray: 0.55, alpha: 1))
+            context.fill(CGRect(x: 180, y: 230, width: 840, height: 440))
+            guard let image = context.makeImage() else { return Data() }
+            let data = NSMutableData()
+            guard
+                let destination = CGImageDestinationCreateWithData(
+                    data, UTType.jpeg.identifier as CFString, 1, nil)
+            else { return Data() }
+            CGImageDestinationAddImage(destination, image, nil)
+            CGImageDestinationFinalize(destination)
+            return Data(data)
+        }
+
+        private static func fixtureSound() -> URL {
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("spia-fixture-\(UUID().uuidString).m4a")
+            let settings: [String: Any] = [
+                AVFormatIDKey: kAudioFormatMPEG4AAC,
+                AVSampleRateKey: 44_100,
+                AVNumberOfChannelsKey: 1,
+                AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue,
+            ]
+            guard let file = try? AVAudioFile(forWriting: url, settings: settings),
+                let format = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 1),
+                let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 44_100)
+            else { return url }
+            buffer.frameLength = 44_100
+            if let samples = buffer.floatChannelData?[0] {
+                for index in 0..<44_100 {
+                    samples[index] = sin(Float(index) * 2 * .pi * 220 / 44_100) * 0.2
+                }
+            }
+            try? file.write(from: buffer)
+            return url
         }
 
         private static func runReplayChecks(

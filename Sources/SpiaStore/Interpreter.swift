@@ -107,14 +107,10 @@ public final class Interpreter {
         let interpretations = interpretations(for: vehicle)
         guard !configuration.settings.automaticWorkPaused else { return }
         let carBriefing = garage.briefing(for: vehicle, adapter: adapter)
-        let scopes: [(ReviewScope, ReviewRequest.Scope, String)] =
-            [(.car, .car, carBriefing.problem)]
-            + vehicle.sessions.filter { $0.status == .open && Self.hasReviewScope($0) }.map {
-                session in
-                (
-                    .problem(session.id), .problem(title: session.title, text: session.problem),
-                    session.problem
-                )
+        let scopes: [(ReviewScope, DiagnosticSession?)] =
+            [(.car, nil)]
+            + vehicle.sessions.filter { $0.status == .open && Self.hasSymptoms($0) }.map {
+                (.problem($0.id), $0)
             }
         let providerID = configuration.settings.defaultProvider
         if providerID.isCloud && interpretations.consent == nil { return }
@@ -122,16 +118,27 @@ public final class Interpreter {
             interpretations.lastError = reason
             return
         }
-        for (scope, requestScope, problem) in scopes {
+        for (scope, session) in scopes {
             guard !interpretations.reviewInFlight.contains(scope) else { continue }
             let existing = interpretations.review(for: scope)
             let answered =
                 existing?.questions.compactMap { question in
                     question.answer.map { (question: question.text, answer: $0) }
                 } ?? []
+            let notes = session?.notes.map(\.body) ?? []
+            let findings =
+                session?.findings.map {
+                    (title: $0.title, text: $0.body, evidence: garage.evidenceKey($0))
+                } ?? []
+            let problem = session?.problem ?? carBriefing.problem
             let inputs = ReviewInputs.hash(
-                board: vehicle.board(), problem: problem, answers: answered)
-            guard existing?.inputs != inputs else { continue }
+                board: vehicle.board(), problem: problem, answers: answered, notes: notes,
+                findings: findings)
+            let unchanged =
+                session == nil
+                ? existing?.inputs == inputs
+                : existing?.kind == .diagnosis && existing?.inputs == inputs
+            guard !unchanged else { continue }
             interpretations.beginReview(scope)
             defer { interpretations.endReview(scope) }
             do {
@@ -142,48 +149,69 @@ public final class Interpreter {
                 defer {
                     if let usage {
                         interpretations.recordUsage(
-                            usage, kind: .review, provider: providerID, model: model, modules: 0,
+                            usage, kind: session == nil ? .review : .diagnosis,
+                            provider: providerID, model: model, modules: 0,
                             scope: scope)
                     }
                 }
-                let request = ReviewRequest.make(
-                    briefing: carBriefing, scope: requestScope, answered: answered,
-                    codes: reviewCodes(for: vehicle.board()),
-                    unread: unreadParts(for: vehicle.board()),
-                    provider: providerID,
-                    sharing: SharingPolicy(includeVIN: configuration.settings.shareVIN))
-                var call: ToolCall?
-                for try await event in provider.respond(to: request) {
-                    switch event {
-                    case .usage(let value): usage = value
-                    case .toolCall(let toolCall) where toolCall.name == ReviewTool.name:
-                        call = toolCall
-                    default: break
-                    }
+                let request: AssistantRequest
+                let toolName: String
+                if let session {
+                    request = DiagnosisRequest.make(
+                        briefing: garage.briefing(for: session, adapter: adapter),
+                        title: session.title,
+                        text: session.problem, notes: notes, answered: answered,
+                        findings: session.findings.map { garage.finding($0) },
+                        codes: reviewCodes(for: vehicle.board()),
+                        unread: unreadParts(for: vehicle.board()),
+                        provider: providerID,
+                        sharing: SharingPolicy(includeVIN: configuration.settings.shareVIN))
+                    toolName = DiagnosisTool.name
+                } else {
+                    request = ReviewRequest.make(
+                        briefing: carBriefing, scope: .car, answered: answered,
+                        codes: reviewCodes(for: vehicle.board()),
+                        unread: unreadParts(for: vehicle.board()),
+                        provider: providerID,
+                        sharing: SharingPolicy(includeVIN: configuration.settings.shareVIN))
+                    toolName = ReviewTool.name
                 }
+                let response = try await respond(request, provider: provider)
+                usage = response.usage
+                let call = response.call
                 guard let call else { throw InterpreterError.noStructuredAnswer }
-                let result = try ReviewTool.parse(call, modules: carBriefing.modules.map(\.label))
-                interpretations.storeReview(
-                    result, scope: scope, inputs: inputs, provider: providerID,
-                    model: model,
-                    modules: vehicle.assistantModules)
+                guard call.name == toolName else { throw InterpreterError.noStructuredAnswer }
+                if session != nil {
+                    let result = try DiagnosisTool.parse(
+                        call, modules: carBriefing.modules.map(\.label))
+                    interpretations.storeDiagnosis(
+                        result, scope: scope, inputs: inputs, provider: providerID, model: model,
+                        modules: vehicle.assistantModules)
+                } else {
+                    let result = try ReviewTool.parse(
+                        call, modules: carBriefing.modules.map(\.label))
+                    interpretations.storeReview(
+                        result, scope: scope, inputs: inputs, provider: providerID, model: model,
+                        modules: vehicle.assistantModules)
+                }
                 interpretations.lastError = nil
             } catch {
-                interpretations.lastError = "Review failed: \(error.readable)."
+                interpretations.lastError =
+                    "\(session == nil ? "Review" : "Diagnosis") failed: \(error.readable)."
             }
         }
     }
 
     public static func reviewScopes(for vehicle: Vehicle) -> [ReviewScope] {
         [.car]
-            + vehicle.sessions.filter { $0.status == .open && hasReviewScope($0) }.map {
+            + vehicle.sessions.filter { $0.status == .open && hasSymptoms($0) }.map {
                 .problem($0.id)
             }
     }
 
-    private static func hasReviewScope(_ session: DiagnosticSession) -> Bool {
+    private static func hasSymptoms(_ session: DiagnosticSession) -> Bool {
         !session.problem.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || session.entries.contains { $0.kind == .note }
+            || !session.notes.isEmpty
     }
 
     private func reviewCodes(for board: SessionBoard) -> [(
@@ -231,6 +259,30 @@ public final class Interpreter {
     ) async {
         interpretations(for: vehicle).answer(questionID: questionID, text: text)
         await review(vehicle, adapter: adapter)
+    }
+
+    public func forget(problem id: UUID, in vehicle: Vehicle) {
+        interpretations(for: vehicle).removeReview(for: .problem(id))
+    }
+
+    /// Drops the vehicle's cache once the vehicle is gone; its file goes with the vehicle's folder.
+    public func forget(vehicle id: UUID) {
+        caches.removeValue(forKey: id)
+    }
+
+    private func respond(_ request: AssistantRequest, provider: any AssistantProvider) async throws
+        -> (call: ToolCall?, usage: TokenUsage?)
+    {
+        var call: ToolCall?
+        var usage: TokenUsage?
+        for try await event in provider.respond(to: request) {
+            switch event {
+            case .usage(let value): usage = value
+            case .toolCall(let value): call = value
+            default: break
+            }
+        }
+        return (call, usage)
     }
 
     private func moduleFacts(

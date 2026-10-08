@@ -16,8 +16,10 @@ extension DiagnosticSession {
         return rows.allSatisfy { $0.status == .clear || $0.status == .ok } ? .good : nil
     }
 
+    /// Questions still waiting on the owner. A closed problem has none worth counting.
     @MainActor func openQuestionCount(in interpretations: VehicleInterpretations) -> Int {
-        interpretations.openQuestions(for: .problem(id)).count
+        guard closedAt == nil else { return 0 }
+        return interpretations.openQuestions(for: .problem(id)).count
             + messages.reduce(0) { count, message in
                 count
                     + message.toolCalls.filter {
@@ -612,8 +614,8 @@ private struct CodeNamesView: View {
 
     private func stamp(_ interpretation: StoredCodeInterpretation) -> String {
         let confidence =
-            interpretation.confidence == "high"
-            ? "" : ", \(interpretation.confidence) confidence"
+            interpretation.confidence == .high
+            ? "" : ", \(interpretation.confidence.rawValue) confidence"
         return
             "Interpretation · \(interpretation.provider.displayName) · \(interpretation.date.formatted(date: .abbreviated, time: .omitted))\(confidence)"
     }
@@ -626,7 +628,7 @@ private struct CodeNamesView: View {
     }
 }
 
-private struct QuestionView: View {
+struct QuestionView: View {
     let question: StoredQuestion
     let answer: ((UUID, String) -> Void)?
     @State private var text = ""
@@ -719,27 +721,9 @@ struct ReviewView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                    .fill(Palette.accent)
-                    .frame(width: 3)
-                    .modifier(Breathing(active: inFlight))
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(heading)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Palette.accent)
-                    if let review, !inFlight {
-                        Text(review.reading)
-                            .font(.system(size: 14))
-                            .lineSpacing(2)
-                            .foregroundStyle(Palette.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text("Read \(review.date, format: .dateTime.month().day().year())")
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(Palette.tertiary)
-                    }
-                }
-            }
+            ReadingHeader(
+                provider: review?.provider, reading: review?.reading,
+                date: review?.date, inFlight: inFlight)
             ForEach(untaggedQuestions, id: \.id) { question in
                 QuestionView(question: question, answer: answer)
             }
@@ -759,16 +743,48 @@ struct ReviewView: View {
         .frame(maxWidth: 720, alignment: .leading)
     }
 
-    private var heading: String {
-        if inFlight {
-            return "\(review?.provider.displayName ?? "The assistant") is reading the board…"
-        }
-        return review.map { "\($0.provider.displayName)'s reading" } ?? ""
-    }
-
     private func label(for check: StoredCheck) -> String {
         if let module = check.module, let label = moduleLabels[module] { return label }
         return check.kind.rawValue.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+}
+
+struct ReadingHeader: View {
+    let provider: ProviderID?
+    let reading: String?
+    let date: Date?
+    let inFlight: Bool
+    var busyText = "is reading the board…"
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                .fill(Palette.accent)
+                .frame(width: 3)
+                .modifier(Breathing(active: inFlight))
+            VStack(alignment: .leading, spacing: 6) {
+                Text(heading)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Palette.accent)
+                if let reading, !inFlight {
+                    Text(reading)
+                        .font(.system(size: 14))
+                        .lineSpacing(2)
+                        .foregroundStyle(Palette.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let date {
+                        Text("Read \(date, format: .dateTime.month().day().year())")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Palette.tertiary)
+                    }
+                }
+            }
+        }
+    }
+
+    private var heading: String {
+        if inFlight { return "\(provider?.displayName ?? "The assistant") \(busyText)" }
+        return provider.map { "\($0.displayName)'s reading" } ?? ""
     }
 }
 

@@ -169,6 +169,7 @@ final class AppModel {
 
     func delete(_ session: DiagnosticSession) throws {
         conversations.removeValue(forKey: session.id)?.stop()
+        if let vehicle = session.vehicle { interpreter.forget(problem: session.id, in: vehicle) }
         try garage.delete(session)
     }
 
@@ -177,6 +178,7 @@ final class AppModel {
         recordingsActive.remove(vehicle.id)
         recordingWorkbenches.removeValue(forKey: vehicle.id)
         referenceSets.removeValue(forKey: vehicle.id)
+        interpreter.forget(vehicle: vehicle.id)
         try garage.delete(vehicle)
     }
 
