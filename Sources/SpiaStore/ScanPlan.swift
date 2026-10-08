@@ -16,28 +16,40 @@ public struct ScanPlan: Sendable, Equatable {
     public static func make(
         for vehicle: SpiaSchemaV2.Vehicle,
         backend: any DiagnosticsBackend,
-        survey: SurveyPlan?
+        survey: SurveyPlan?,
+        deep: Bool = false
+    ) -> ScanPlan {
+        make(for: vehicle, canRun: backend.canRun, survey: survey, deep: deep)
+    }
+
+    /// Builds a plan from capabilities without contacting an adapter.
+    public static func make(
+        for vehicle: SpiaSchemaV2.Vehicle,
+        canRun: (DiagnosticJob) -> Bool,
+        survey: SurveyPlan?,
+        deep: Bool = false
     ) -> ScanPlan {
         var jobs: [DiagnosticJob] = []
         var phases: [ScanPhase] = []
         append(
-            .adapterCheck, phase: .adapter, if: backend.canRun(.adapterCheck), to: &jobs,
+            .adapterCheck, phase: .adapter, if: canRun(.adapterCheck), to: &jobs,
             phases: &phases)
-        if let survey, backend.canRun(.survey(survey)) {
-            jobs.append(.survey(survey))
+        let plannedSurvey = deep ? survey?.deepened() : survey
+        if let plannedSurvey, canRun(.survey(plannedSurvey)) {
+            jobs.append(.survey(plannedSurvey))
             phases.append(.modules)
         } else {
             append(
-                .vehicleInfo, phase: .car, if: backend.canRun(.vehicleInfo), to: &jobs,
+                .vehicleInfo, phase: .car, if: canRun(.vehicleInfo), to: &jobs,
                 phases: &phases)
             for module in vehicle.orderedModules {
                 guard let target = module.target else { continue }
                 let job = DiagnosticJob.moduleDTCs(target)
-                append(job, phase: .codes, if: backend.canRun(job), to: &jobs, phases: &phases)
+                append(job, phase: .codes, if: canRun(job), to: &jobs, phases: &phases)
             }
         }
         append(
-            .genericScan, phase: .codes, if: backend.canRun(.genericScan), to: &jobs,
+            .genericScan, phase: .codes, if: canRun(.genericScan), to: &jobs,
             phases: &phases)
         return ScanPlan(jobs: jobs, phases: phases)
     }
