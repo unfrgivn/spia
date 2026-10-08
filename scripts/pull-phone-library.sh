@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Copies Spia's library off a paired iPhone and lists what it recorded, so a car onboarded on the
-# phone can be read on the Mac. Every check keeps its transcript, and the result the app saved
-# lands next to it as <entry>.result.json: together, a ready-made pair for Tests/Fixtures.
+# Copies Spia's library off a paired iPhone and hands it to export-library.sh, so a car onboarded
+# on the phone can be read on the Mac: every check's transcript with the result the app saved
+# next to it as <entry>.result.json, a ready-made pair for Tests/Fixtures, lands in
+# <destination>.export.
 #
 # Usage: scripts/pull-phone-library.sh [destination]
 #   destination: a directory to create (default: $TMPDIR/spia-phone/<timestamp>)
@@ -10,13 +11,13 @@
 # Only builds installed from Xcode allow this; TestFlight and App Store builds don't. Keep the
 # phone unlocked and on the Mac's network, or plugged in. Nothing on the phone changes.
 #
-# The queries read SwiftData's generated tables (ZVEHICLE, ZTIMELINEENTRY, ...), so a model change
-# in SpiaStore can break them.
 set -euo pipefail
 
 bundle=com.unfrgivn.spia
 library="Library/Application Support/Spia"
-dest=${1:-"${TMPDIR:-/tmp}/spia-phone/$(date +%Y%m%d-%H%M%S)"}
+tmp=${TMPDIR:-/tmp}
+tmp=${tmp%/}
+dest=${1:-"$tmp/spia-phone/$(date +%Y%m%d-%H%M%S)"}
 if [[ -e $dest ]]; then
     echo "$dest already exists; give a new directory." >&2
     exit 1
@@ -65,35 +66,6 @@ for item in Library.store Library.store-wal Library.store-shm Transcripts; do
     pull "$item"
 done
 
-store="$dest/Library.store"
-# A saved result is the JSON after Core Data's one-byte marker: 01 when it's stored inline.
-sqlite3 "$store" "select ZTRANSCRIPTPATH from ZTIMELINEENTRY
-    where ZRESULTDATA is not null and ZTRANSCRIPTPATH is not null;" |
-    while IFS= read -r path; do
-        out="$dest/${path%.txt}.result.json"
-        quoted=${path//\'/\'\'}
-        sqlite3 "$store" "select writefile('${out//\'/\'\'}.raw', ZRESULTDATA) from ZTIMELINEENTRY
-            where ZTRANSCRIPTPATH = '$quoted';" >/dev/null
-        if [[ $(head -c1 "$out.raw" | xxd -p) == 01 ]]; then
-            tail -c +2 "$out.raw" >"$out"
-        else
-            echo "$path: its result is stored outside the database; skipped." >&2
-        fi
-        rm -f "$out.raw"
-    done
-
-echo
-echo "Cars:"
-sqlite3 -separator '  ' "$store" "select '  ' || v.ZNAME, coalesce(v.ZVIN, 'no VIN'),
-    (select count(*) from ZMODULEPRESET m where m.ZVEHICLE = v.Z_PK) || ' saved modules'
-    from ZVEHICLE v where v.ZISDEMO = 0 order by v.Z_PK;"
-echo
-echo "Checks (oldest first):"
-sqlite3 -separator '  ' "$store" "select '  ' || datetime(e.ZDATE + 978307200, 'unixepoch',
-    'localtime'), v.ZNAME, e.ZTITLE || ':', replace(coalesce(e.ZBODY, ''), char(10), ' '),
-    coalesce(e.ZTRANSCRIPTPATH, '(no recording)')
-    from ZTIMELINEENTRY e join ZDIAGNOSTICSESSION s on e.ZSESSION = s.Z_PK
-    join ZVEHICLE v on s.ZVEHICLE = v.Z_PK
-    where v.ZISDEMO = 0 and e.ZKINDRAW in ('result', 'failure') order by e.ZDATE;"
-echo
-echo "Copied to $dest"
+# From here the phone's copy is an ordinary library: the export script writes each saved result
+# next to its transcript and lists the cars and checks.
+exec "$(dirname "$0")/export-library.sh" "$dest" "$dest.export"
