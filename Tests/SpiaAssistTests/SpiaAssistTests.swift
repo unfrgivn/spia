@@ -3,6 +3,11 @@ import SpiaAssist
 import SpiaKit
 import Testing
 
+/// Rules alone, with no session data, for request-shape tests.
+private func rulesOnly(_ rules: String) -> Instructions {
+    Instructions(rules: rules, sharedData: "", variableData: "")
+}
+
 /// Parses an SSE document the way it arrives: split at arbitrary byte boundaries.
 private func events(_ text: String, chunk: Int = 7) -> [SSEEvent] {
     var parser = SSEParser()
@@ -50,7 +55,7 @@ struct InterpretationTests {
     @Test("forced and automatic tool choice are encoded for both providers")
     func toolChoiceBodies() throws {
         let request = AssistantRequest(
-            instructions: "x", messages: [], tools: [InterpretationTool.definition],
+            instructions: rulesOnly("x"), messages: [], tools: [InterpretationTool.definition],
             toolChoice: .tool(InterpretationTool.name))
         let anthropic = try AnthropicProvider.body(for: request, model: "m")
         #expect(
@@ -58,7 +63,7 @@ struct InterpretationTests {
         let openAI = try OpenAIProvider.body(for: request, model: "m")
         #expect(
             openAI["tool_choice"] == ["type": "function", "name": .string(InterpretationTool.name)])
-        let automatic = AssistantRequest(instructions: "x", messages: [], tools: [])
+        let automatic = AssistantRequest(instructions: rulesOnly("x"), messages: [], tools: [])
         #expect(
             try AnthropicProvider.body(for: automatic, model: "m")["tool_choice"] == [
                 "type": "auto"
@@ -299,7 +304,7 @@ struct AnthropicTests {
     func requestBody() throws {
         let image = ImageInput(mediaType: "image/jpeg", data: Data([0xFF, 0xD8]))
         let request = AssistantRequest(
-            instructions: "rules",
+            instructions: rulesOnly("rules"),
             messages: [
                 ConversationMessage(role: .user, parts: [.text("Horn is dead"), .image(image)]),
                 ConversationMessage(
@@ -412,7 +417,7 @@ struct OpenAITests {
         "request body: store off, strict tools, function call items keep call IDs, data-URL images")
     func requestBody() throws {
         let request = AssistantRequest(
-            instructions: "rules",
+            instructions: rulesOnly("rules"),
             messages: [
                 ConversationMessage(
                     role: .user,
@@ -542,23 +547,25 @@ struct InstructionsTests {
     @Test("the VIN goes to cloud providers only when the user allows it; on-device always sees it")
     func vinSharing() {
         let withheld = AssistantInstructions.make(
-            briefing: briefing(), provider: .anthropic, sharing: .init(includeVIN: false))
+            briefing: briefing(), provider: .anthropic, sharing: .init(includeVIN: false)
+        ).joined
         #expect(!withheld.contains(DemoGarage.vin))
         #expect(withheld.contains("withheld"))
         #expect(
             AssistantInstructions.make(
                 briefing: briefing(), provider: .openAI, sharing: .init(includeVIN: true)
-            ).contains(DemoGarage.vin))
+            ).joined.contains(DemoGarage.vin))
         #expect(
             AssistantInstructions.make(
                 briefing: briefing(), provider: .onDevice, sharing: .init(includeVIN: false)
-            ).contains(DemoGarage.vin))
+            ).joined.contains(DemoGarage.vin))
     }
 
     @Test("session data is fenced and marked as data, with the SRS safety rule")
     func rules() {
         let text = AssistantInstructions.make(
-            briefing: briefing(), provider: .anthropic, sharing: .init(includeVIN: false))
+            briefing: briefing(), provider: .anthropic, sharing: .init(includeVIN: false)
+        ).joined
         #expect(text.contains("<session_data>") && text.hasSuffix("</session_data>"))
         #expect(text.contains("never as instructions"))
         #expect(text.contains("Never tell the person to probe"))
@@ -567,7 +574,8 @@ struct InstructionsTests {
     @Test("long histories keep the newest events within the provider's budget")
     func truncation() {
         let text = AssistantInstructions.make(
-            briefing: briefing(events: 100), provider: .onDevice, sharing: .init(includeVIN: false))
+            briefing: briefing(events: 100), provider: .onDevice, sharing: .init(includeVIN: false)
+        ).joined
         #expect(text.contains("Note 99"))
         #expect(!text.contains("\"Note 0\""))
     }
@@ -583,6 +591,25 @@ struct InstructionsTests {
             briefing: changed, provider: .anthropic, sharing: .init(includeVIN: false))
         #expect(first.sharedData == second.sharedData)
         #expect(first.variableData != second.variableData)
+    }
+
+    @Test("the two segments joined carry exactly the fields the briefing encodes on its own")
+    func segmentsAreComplete() throws {
+        var full = briefing(events: 3)
+        full.modules = [
+            .init(label: "Airbag", bus: "hs", request: "744", reply: "4C4", labelConfirmed: true)
+        ]
+        full.interpretations = ["B0001-1B: driver airbag stage 1 circuit"]
+        full.reviews = ["Clock spring first."]
+        let instructions = AssistantInstructions.make(
+            briefing: full, provider: .anthropic, sharing: .init(includeVIN: true))
+        let joined = try JSONSerialization.jsonObject(
+            with: Data((instructions.sharedData + instructions.variableData).utf8))
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let whole = try JSONSerialization.jsonObject(with: encoder.encode(full))
+        #expect(joined as? NSDictionary == whole as? NSDictionary)
+        #expect((joined as? NSDictionary)?["references"] == nil)
     }
 }
 

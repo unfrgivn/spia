@@ -117,15 +117,6 @@ public struct AssistantRequest: Sendable, Equatable {
         self.maxOutputTokens = maxOutputTokens
         self.toolChoice = toolChoice
     }
-
-    public init(
-        instructions: String, messages: [ConversationMessage], tools: [ToolDefinition],
-        maxOutputTokens: Int = 2048, toolChoice: ToolChoice = .auto
-    ) {
-        self.init(
-            instructions: Instructions(joined: instructions), messages: messages, tools: tools,
-            maxOutputTokens: maxOutputTokens, toolChoice: toolChoice)
-    }
 }
 
 public enum StopReason: Sendable, Equatable {
