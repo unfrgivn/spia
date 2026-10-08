@@ -180,7 +180,7 @@ private struct LedgerSummary {
                         .joined(separator: " · ")
                 } ?? entry.body
         case .survey(let report):
-            title = "Survey"
+            title = "Modules found"
             text = ResultText.summary(
                 JobResult(
                     job: .survey(report.plan), payload: .survey(report), source: .live,
@@ -281,7 +281,7 @@ struct ResultDetail: View {
                             transcript: nil))
                 )
                 .font(.callout)
-                Button("Review Modules") { reviewSurvey(report) }
+                Button("Show Modules") { reviewSurvey(report) }
                     .buttonStyle(.borderedProminent)
             }
         }

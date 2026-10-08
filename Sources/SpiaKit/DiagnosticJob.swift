@@ -127,11 +127,21 @@ public enum DiagnosticJob: Codable, Sendable, Hashable {
 
     public var title: String {
         switch self {
-        case .adapterCheck: return "Check the adapter"
-        case .vehicleInfo: return "Read vehicle information"
-        case .genericScan: return "Scan for engine and transmission codes"
-        case .moduleDTCs: return "Read module trouble codes"
-        case .survey: return "Survey the car"
+        case .adapterCheck: return "Adapter and battery"
+        case .vehicleInfo: return "Vehicle information"
+        case .genericScan: return "Engine and transmission codes"
+        case .moduleDTCs: return "Module codes"
+        case .survey: return "Modules and their codes"
+        }
+    }
+
+    public var menuTitle: String {
+        switch self {
+        case .adapterCheck: return "Adapter and battery"
+        case .vehicleInfo: return "Vehicle information"
+        case .genericScan: return "Engine and transmission"
+        case .moduleDTCs: return "Module"
+        case .survey: return "Modules and their codes"
         }
     }
 

@@ -170,6 +170,7 @@ public actor JobRunner {
     private func perform(
         _ job: DiagnosticJob, emit: @escaping @Sendable (JobEvent) -> Void
     ) async throws -> JobPayload {
+        // The complete step vocabulary is asserted in ScanPhaseTests.runnerStepsHavePhases.
         switch job {
         case .adapterCheck:
             emit(.step("Asking the adapter who it is"))

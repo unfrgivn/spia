@@ -17,6 +17,7 @@ The app also runs on iPhone and iPad, where it reaches Bluetooth LE adapters (th
 | Make knowledge | A bundled, versioned JSON catalog | Adding a make is a data change, not a code change. A hosted catalog may come later. Owner's decision, 2026-09-28. |
 | Who owns a reading | The car. A problem (the UI's word for `DiagnosticSession`) is a lens over the car's history, not a container for it | A reading is a fact about the car; an investigation is something a person does. Keeping readings inside sessions made the car's state depend on which session was open and forced the module survey to invent one. Owner's decision, 2026-10-04; see "Problems and the car's history". |
 | Explaining codes | The app explains on its own: standard names from bundled CC0 data, then the model's interpretation, then its questions, all without a tap. Cloud lookups need one consent per car | Making the owner tap Explain on each row and read the answer in a chat panel hid the one thing a scan tool is for. Owner's decision, 2026-10-04; see "Codes explained without asking". |
+| Reading the car | One verb, Scan, that does the whole car in order; Deep Scan is its one option; a sheet only when there's a decision | Survey, Find Modules, Search More Thoroughly, Scan, Read, Check, and Review named overlapping things and made the owner pick by implementation detail. Owner's decision, 2026-10-07; see "One scan". |
 
 ## Architecture
 
@@ -129,11 +130,25 @@ Run live on 2026-10-05 against Claude and OpenAI, three times each, on the Ghibl
 
 The 2026-10-07 visit put numbers on the background work. On the Ghibli, two interpretation requests used 22k input and 2k output tokens, while nine reviews used 107k input and 5k output. On the Tiguan, one interpretation used 15k/0.8k and three reviews used 46k/1.6k. All ran on `claude-haiku-4-5`; reviews dominate the cost, and empty problems no longer receive their own review. The survey results sheet now appears before those network reviews explain it.
 
+## One scan (2026-10-07)
+
+The app offered a survey, a thorough search, a generic scan, vehicle information, an adapter check, and per-module reads, each by its own name, in a Run menu grouped by what the car needed, and ended a survey in a sheet that offered another survey. The owner found the words and the order confusing. Seven words named overlapping things.
+
+Decisions (owner, 2026-10-07):
+
+- **Scan is the verb.** One primary button. A scan does the whole car in order, as one activity with a four-step progress: adapter and battery; the car (VIN, engine computers); modules (the known ones, and on a first scan the catalog's candidates); codes from every module and from the engine and transmission. Under the hood it is the existing jobs in sequence (adapter check, survey, generic scan), so the engine and the replay tests don't change. When the connection can't run a survey (the demo, saved recordings), the modules step reads each saved module on its own and the car step reads vehicle information.
+- **Deep Scan is the one option**, in the same menu, with its cost stated (about two minutes, engine off): the same scan with the sweep for unknown modules. The board suggests it once when the catalog knows few modules for the make.
+- **Read stays only on a row**: re-read this one part.
+- **A sheet appears only when there's a decision**: new modules to keep and name, or a scan cut short with the reason and Try Again. Otherwise the board updates and that is the result.
+- **Words that go**: Survey, Find Modules, Search More Thoroughly, Check the adapter, Scan for engine and transmission codes, Review Modules. Individual checks live under Advanced, titled by what they read. The model's output is a reading, never a review, where a person sees it.
+
+Done 2026-10-07. `ScanPlan` chooses the jobs from what the connection can run, `Workbench.scan` runs them as one activity with `ScanProgress`, `ScanDecision` says whether a sheet is owed, and the deep-scan suggestion comes from whether the catalog knew the make. Verified by the scan tests on the demo and replay workbenches (order, phases, cancellation, decisions) and the `scanning` fixture screen, which shows the stepper mid-scan.
+
 ## Vehicle onboarding: the survey
 
 Any owner, using only the app, adds a car, connects, and ends with its modules found, named, and read: no CAN IDs, no code changes. The owner's Ghibli and Tiguan are development cars only. Today modules come only from Advanced → Edit Modules (raw bus and IDs) or the demo's `DemoGarage`, and discovery exists only in `spia discover`.
 
-Flow: add the car (VIN, decoded by vPIC to make, model, and year), connect (the adapter check reports STN firmware), Survey This Car, review the results, save the modules. The vehicle overview offers "Find this car's modules" until the car has some, and the Run menu keeps "Survey This Car". Edit Modules stays under Advanced. The assistant can't propose a survey; it's the owner's action.
+Flow: add the car (VIN, decoded by vPIC to make, model, and year), connect (the adapter check reports STN firmware), Survey This Car, review the results, save the modules. The Overview offers "Scan this car" until the car has modules; a scan runs the survey as its modules step, and Deep Scan adds the sweep. Edit Modules stays under Advanced. The assistant can't propose a survey; it's the owner's action.
 
 ### What one survey does
 

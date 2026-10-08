@@ -106,6 +106,28 @@ public struct SurveyPlan: Codable, Sendable, Equatable, Hashable {
     public let detectsProtocol: Bool
     public let search: ModuleSearch?
 
+    /// True when the bundled catalog supplied at least one make-specific candidate.
+    public var catalogContributedMakeSpecificCandidates: Bool {
+        candidates.contains { candidate in
+            if case .catalog = candidate.origin { return true }
+            return false
+        }
+    }
+
+    /// Whether the catalog has make-specific coverage for this vehicle.
+    public var hasMakeSpecificCandidates: Bool { catalogContributedMakeSpecificCandidates }
+
+    /// Returns the same plan with a bounded thorough-search sweep.
+    public func deepened() -> SurveyPlan {
+        SurveyPlan(
+            catalogVersion: catalogVersion, vehicle: vehicle, platform: platform,
+            candidates: candidates, unreachable: unreachable,
+            probeTimeoutMilliseconds: probeTimeoutMilliseconds,
+            readTimeoutMilliseconds: readTimeoutMilliseconds, identification: identification,
+            requiresVIN: requiresVIN, expected: expected, detectsProtocol: detectsProtocol,
+            search: search ?? ModuleSearch.standard(over: .usbSerial))
+    }
+
     public init(
         catalogVersion: String, vehicle: CatalogVehicle?, platform: String?,
         candidates: [SurveyCandidate], unreachable: [SurveyCandidate],

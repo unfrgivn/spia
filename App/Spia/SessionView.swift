@@ -43,8 +43,8 @@ struct SessionView: View {
                 if let workbench, let vehicle = session.vehicle {
                     ConnectionAssistant(
                         vehicle: vehicle, workbench: workbench,
-                        purpose: runner?.isSurveyPending == true
-                            ? "Connect the adapter, and Spia will find this car's modules." : nil
+                        purpose: runner?.isScanPending == true
+                            ? "Connect the adapter, and Spia will scan the car." : nil
                     ) { refreshed in
                         self.workbench = refreshed
                         runner?.refresh(refreshed)
@@ -76,13 +76,13 @@ struct SessionView: View {
                 #endif
             }
             .onChange(of: workbench?.connection) { _, state in
-                if case .ready = state { runner?.startPendingSurveyIfReady() }
+                if case .ready = state { runner?.startPendingScanIfReady() }
             }
             .onChange(of: runner?.connectRequested) { wasRequested, isRequested in
                 if wasRequested == true && isRequested == false,
                     workbench?.connection.status == nil
                 {
-                    runner?.cancelPendingSurveyIfDisconnected()
+                    runner?.cancelPendingScanIfDisconnected()
                 }
             }
             .onChange(of: workbench.map(ObjectIdentifier.init), initial: true) {
@@ -130,7 +130,8 @@ struct SessionView: View {
                 }
                 if let workbench, let activity = workbench.activity,
                     activity.sessionID == session.id,
-                    activity.prompt != nil || SessionBoard.Subject(job: activity.job) == nil
+                    activity.scan != nil || activity.prompt != nil
+                        || SessionBoard.Subject(job: activity.job) == nil
                 {
                     ActivityPanel(activity: activity, workbench: workbench).padding(.top, 24)
                 }
@@ -282,9 +283,11 @@ struct SessionView: View {
     }
 
     private func runMenu(_ workbench: Workbench) -> some View {
-        RunMenu(
+        ScanMenu(
             vehicle: session.vehicle, workbench: workbench, run: { run($0) },
-            survey: surveyAction(workbench), connect: requestConnection,
+            scan: { runner?.scan() }, deepScan: { runner?.scan(deep: true) },
+            deepScanMessage: runner?.deepScanMessage(),
+            connect: requestConnection,
             editModules: { editingModules = true })
     }
 
@@ -384,15 +387,12 @@ struct SessionView: View {
             connected: workbench?.connection.status != nil,
             assistantShown: showAssistant,
             toggleAssistant: { showAssistant.toggle() }, connect: requestConnection,
-            checks: RunMenu.jobs.map { check($0, $0.menuTitle) },
-            survey: surveyAction(workbench),
+            checks: ScanMenu.jobs.map { check($0, $0.menuTitle) },
+            scan: runner?.scanAction(), deepScan: runner?.scanAction(deep: true),
+            editModules: { editingModules = true },
             moduleChecks: (session.vehicle?.orderedModules ?? []).compactMap { module in
                 module.target.map { check(.moduleDTCs($0), module.label) }
             })
-    }
-
-    private func surveyAction(_ workbench: Workbench?) -> (() -> Void)? {
-        runner?.surveyAction()
     }
 
     private func run(_ job: DiagnosticJob) {
@@ -405,7 +405,7 @@ struct SessionView: View {
             set: { isPresented in
                 if !isPresented {
                     runner?.connectRequested = false
-                    runner?.cancelPendingSurveyIfDisconnected()
+                    runner?.cancelPendingScanIfDisconnected()
                 }
             })
     }

@@ -26,6 +26,38 @@ struct ActivityPanel: View {
             .card(tint: Palette.caution)
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Action needed: \(prompt.action.title)")
+        } else if let scan = activity.scan {
+            let phases = scan.phases.reduce(into: [ScanPhase]()) { phases, phase in
+                if !phases.contains(phase) { phases.append(phase) }
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 10) {
+                    ForEach(phases, id: \.self) { phase in
+                        VStack(spacing: 5) {
+                            Circle()
+                                .fill(color(for: phase, scan: scan))
+                                .frame(width: 11, height: 11)
+                            Text(phase.title)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(color(for: phase, scan: scan))
+                                .lineLimit(1)
+                        }
+                        if phase != phases.last {
+                            Rectangle().fill(Palette.hairline).frame(height: 1)
+                        }
+                    }
+                }
+                Text(activity.currentStep ?? "Starting")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(Palette.secondary)
+                HStack {
+                    Spacer()
+                    Button("Cancel") { Task { await workbench.cancel() } }
+                }
+            }
+            .card(tint: Palette.accent)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Scanning: \(activity.currentStep ?? "Starting")")
         } else {
             HStack(alignment: .top, spacing: 14) {
                 ProgressView()
@@ -52,5 +84,13 @@ struct ActivityPanel: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Reading from the car: \(activity.job.title)")
         }
+    }
+
+    private func color(for phase: ScanPhase, scan: ScanProgress) -> Color {
+        guard let index = scan.phases.firstIndex(of: phase),
+            let current = scan.phases.firstIndex(of: scan.current)
+        else { return Palette.tertiary }
+        if index == current { return Palette.accent }
+        return index < current ? Palette.secondary : Palette.tertiary
     }
 }
