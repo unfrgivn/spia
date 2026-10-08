@@ -76,7 +76,8 @@ struct VehicleOverview: View {
                 }
                 if let workbench, let activity = workbench.activity,
                     activity.vehicleID == vehicle.id,
-                    activity.prompt != nil || SessionBoard.Subject(job: activity.job) == nil
+                    activity.scan != nil || activity.prompt != nil
+                        || SessionBoard.Subject(job: activity.job) == nil
                 {
                     ActivityPanel(activity: activity, workbench: workbench)
                         .padding(.top, 24)
