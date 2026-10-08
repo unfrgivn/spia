@@ -121,13 +121,11 @@ final class AppModel {
     }
 
     func startProblem(for vehicle: Vehicle, saying text: String) throws -> DiagnosticSession {
-        let session = try garage.addSession(
-            to: vehicle, title: ProblemTitle.derive(from: text), problem: text)
-        let provider = assistant.settings.defaultProvider
-        guard assistant.unavailableReason(provider) == nil else { return session }
-        let conversation = conversation(for: session)
-        if provider.isCloud { conversation.allowCloudSharing() }
-        conversation.send(text, using: provider)
+        var startedConversation: AssistantConversation?
+        let session = try garage.startProblem(
+            for: vehicle, saying: text, configuration: assistant,
+            conversation: &startedConversation)
+        if let startedConversation { conversations[session.id] = startedConversation }
         return session
     }
 
