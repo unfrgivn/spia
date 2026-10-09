@@ -4,8 +4,6 @@ import Testing
 
 @Suite("Recorded replay timing")
 struct ReplayTimingTests {
-    private let clock = ContinuousClock()
-
     private func fixture(_ name: String) throws -> [TranscriptEvent] {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
@@ -27,7 +25,7 @@ struct ReplayTimingTests {
         let rxIndices = Array((txIndex + 1)..<rxEnd).filter { events[$0].direction == .rx }
         #expect(rxIndices.count >= 2)
 
-        let write = clock.now
+        let write = Duration.zero
         for index in rxIndices {
             let offset = events[index].milliseconds - tx.milliseconds
             let expected: ReplayReadDecision
@@ -51,7 +49,7 @@ struct ReplayTimingTests {
             events.firstIndex { $0.direction == .tx && $0.bytes == Array("ATZ\r".utf8) })
         let rxIndex = try #require(
             events[(txIndex + 1)...].firstIndex { $0.direction == .rx })
-        let write = clock.now
+        let write = Duration.zero
         let decision = ReplayTransport.readDecision(
             events: events, cursor: rxIndex,
             lastWriteRecordedMilliseconds: events[txIndex].milliseconds,
@@ -70,7 +68,7 @@ struct ReplayTimingTests {
             ReplayTransport.readDecision(
                 events: events, cursor: nextTx,
                 lastWriteRecordedMilliseconds: events[txIndex].milliseconds,
-                lastWriteInstant: clock.now, now: clock.now,
+                lastWriteInstant: .zero, now: .zero,
                 timeout: .milliseconds(7)) == .wait(.milliseconds(7)))
     }
 

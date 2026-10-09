@@ -22,6 +22,7 @@ public actor ReplayBackend: DiagnosticsBackend {
     public nonisolated let adapter: AdapterDescriptor
     private let checks: [SavedCheck]
     private let timing: ReplayTiming
+    private let clock: any SessionClock
     private var state: ConnectionState = .disconnected {
         didSet { for continuation in observers.values { continuation.yield(state) } }
     }
@@ -29,11 +30,13 @@ public actor ReplayBackend: DiagnosticsBackend {
     private var runner: JobRunner?
 
     public init(
-        displayName: String, checks: [SavedCheck], timing: ReplayTiming = .recorded
+        displayName: String, checks: [SavedCheck], timing: ReplayTiming = .recorded,
+        clock: any SessionClock = WallClock()
     ) {
         adapter = AdapterDescriptor(kind: .replay, displayName: displayName)
         self.checks = checks
         self.timing = timing
+        self.clock = clock
     }
 
     public func currentState() async -> ConnectionState { state }
@@ -57,7 +60,7 @@ public actor ReplayBackend: DiagnosticsBackend {
         state = .connecting
         do {
             let (_, connection) = try ReplaySupport.connection(
-                adapter: adapter, transcript: newest.transcript, timing: timing)
+                adapter: adapter, transcript: newest.transcript, timing: timing, clock: clock)
             try await connection.connect()
             if newest.job == .adapterCheck {
                 let checkRunner = JobRunner(connection: connection)
@@ -93,7 +96,7 @@ public actor ReplayBackend: DiagnosticsBackend {
         }
         do {
             let (transport, connection) = try ReplaySupport.connection(
-                adapter: adapter, transcript: saved.transcript, timing: .immediate)
+                adapter: adapter, transcript: saved.transcript, timing: .immediate, clock: clock)
             try await connection.connect()
             await transport.setTiming(timing)
             let checkRunner = JobRunner(connection: connection)

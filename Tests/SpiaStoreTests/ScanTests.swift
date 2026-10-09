@@ -1,6 +1,7 @@
 import Foundation
 import SpiaKit
 import SpiaStore
+import SpiaTestSupport
 import SwiftData
 import Testing
 
@@ -110,13 +111,20 @@ struct ScanTests {
     func cancelsScan() async throws {
         let vehicle = try garage.addDemoVehicle()
         let session = try #require(vehicle.sessions.first)
-        let workbench = Workbench(backend: DemoBackend(timing: .recorded), garage: garage)
+        let clock = ManualClock()
+        let backend = DemoBackend(timing: .recorded, clock: clock)
+        let workbench = Workbench(backend: backend, garage: garage)
         await workbench.connect()
         let plan = ScanPlan.make(for: vehicle, backend: DemoBackend(), survey: nil)
+        // Every recorded pause now suspends on the clock. Step the first job through its pauses
+        // until it completes, then cancel while the second job is suspended on one of its own.
+        clock.hold()
         let scan = Task { await workbench.scan(plan, for: vehicle, in: session) }
         while workbench.activity?.scan?.completed != 1 {
-            try? await Task.sleep(for: .milliseconds(2))
+            await clock.waitUntilSleeping()
+            clock.advance()
         }
+        await clock.waitUntilSleeping()
         await workbench.cancel()
         let outcome = await scan.value
         #expect(outcome.outcomes.count == 2)

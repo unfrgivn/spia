@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 import OBDCore
 import SpiaKit
+import SpiaTestSupport
 import Testing
 
 /// Every test here runs real recordings from the car or the bench. Nothing is simulated.
@@ -450,12 +451,20 @@ struct DemoBackendTests {
         let immediate = ConnectionManager(adapter: DemoGarage.adapter) { immediateTransport }
         try await immediate.connect()
 
-        let recordedTransport = ReplayTransport(events: events, timing: .recorded)
-        let recorded = ConnectionManager(adapter: DemoGarage.adapter) { recordedTransport }
-        let clock = ContinuousClock()
-        let start = clock.now
+        let clock = ManualClock()
+        let recordedTransport = ReplayTransport(events: events, timing: .recorded, clock: clock)
+        let recorded = ConnectionManager(adapter: DemoGarage.adapter, clock: clock) {
+            recordedTransport
+        }
         try await recorded.connect()
-        #expect(start.duration(to: clock.now) >= .milliseconds(1_000))
+        // Connect is the initialization sequence, through ATSP0's reply; the adapter check that
+        // follows in the recording is a job of its own.
+        let lastInitializationWrite = try #require(
+            events.firstIndex { $0.direction == .tx && $0.bytes == Array("ATSP0\r".utf8) })
+        let initializationEnd = try #require(
+            events[(lastInitializationWrite + 1)...].firstIndex { $0.direction == .rx })
+        #expect(clock.now == ManualClock.pacedDuration(of: events[...initializationEnd]))
+        #expect(clock.now >= .milliseconds(1_200))
         let recordedStatus = await recorded.state.status
         let immediateStatus = await immediate.state.status
         #expect(recordedStatus == immediateStatus)
@@ -497,11 +506,13 @@ struct DemoBackendTests {
 
     @Test("a paced decoded check can be cancelled")
     func cancelPacedDecodedCheck() async throws {
-        let demo = DemoBackend(timing: .recorded)
+        let clock = ManualClock()
+        let demo = DemoBackend(timing: .recorded, clock: clock)
         try await demo.connect()
+        clock.hold()
         let stream = await demo.run(.genericScan, transcript: nil)
         let collecting = Task { await collect(stream) }
-        try await Task.sleep(for: .milliseconds(20))
+        await clock.waitUntilSleeping()
         await demo.cancel()
         let events = await collecting.value
         #expect(events.compactMap(\.failure).first?.cancelled == true)
@@ -509,24 +520,19 @@ struct DemoBackendTests {
 
     @Test("a paced module check does not replay connection initialization")
     func pacedModuleCheckUsesCheckDuration() async throws {
-        let demo = DemoBackend(timing: .recorded)
+        let clock = ManualClock()
+        let demo = DemoBackend(timing: .recorded, clock: clock)
         try await demo.connect()
         let events = try DemoRecording.airbagCodes.events()
+        // The recording opens with the adapter's initialization; the check itself starts at the
+        // voltage read. Only the check's part may take time.
         let checkStart = try #require(
-            events.firstIndex {
-                $0.direction == .tx && $0.bytes == Array("ATRV\r".utf8)
-            })
-        let lastTimestamp = try #require(events.last?.milliseconds)
-        let recordedDuration = lastTimestamp - events[checkStart].milliseconds
-        let clock = ContinuousClock()
+            events.firstIndex { $0.direction == .tx && $0.bytes == Array("ATRV\r".utf8) })
         let start = clock.now
         _ = await run(.moduleDTCs(DemoGarage.airbag.target), on: demo)
-        let elapsed = start.duration(to: clock.now)
-        let lowerBound: Duration = .milliseconds(Int64(recordedDuration / 2))
-        let upperBound: Duration = .milliseconds(
-            Int64(min(recordedDuration + 1_000, UInt64(Int64.max))))
-        #expect(elapsed >= lowerBound)
-        #expect(elapsed < upperBound)
+        let elapsed = clock.now - start
+        #expect(elapsed == ManualClock.pacedDuration(of: events[checkStart...]))
+        #expect(elapsed < ManualClock.pacedDuration(of: events))
     }
 
     @Test("vehicle information and generic scan come from the ignition-on recording")

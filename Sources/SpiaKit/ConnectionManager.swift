@@ -24,6 +24,7 @@ public actor ConnectionManager {
     public nonisolated let adapter: AdapterDescriptor
     private let baud: Int
     private let makeTransport: TransportFactory
+    private let clock: any SessionClock
     private var session: ELM327Session?
     private var selectedProtocol = ELM327Protocol.automatic
     private var addressing = AdapterAddressing.postConnect
@@ -35,11 +36,13 @@ public actor ConnectionManager {
     private var observers: [UUID: AsyncStream<ConnectionState>.Continuation] = [:]
 
     public init(
-        adapter: AdapterDescriptor, baud: Int = 115_200, transport: @escaping TransportFactory
+        adapter: AdapterDescriptor, baud: Int = 115_200,
+        clock: any SessionClock = WallClock(), transport: @escaping TransportFactory
     ) {
         self.adapter = adapter
         self.baud = baud
         self.makeTransport = transport
+        self.clock = clock
     }
 
     /// The current state, then every change. Any number of observers may subscribe.
@@ -59,8 +62,8 @@ public actor ConnectionManager {
         if session != nil { await disconnect() }
         state = .connecting
         do {
-            let recorder = TranscriptRecorder(try makeTransport())
-            let session = ELM327Session(transport: recorder, baud: baud)
+            let recorder = TranscriptRecorder(try makeTransport(), clock: clock)
+            let session = ELM327Session(transport: recorder, baud: baud, clock: clock)
             await recorder.beginInitialization()
             let identity: String
             do {
@@ -188,14 +191,17 @@ public enum TranscriptError: Error, Equatable, Sendable {
 /// same format as `spia --record`, so saved checks can be replayed and inspected later.
 actor TranscriptRecorder: Transport {
     private let base: any Transport
-    private let clock = ContinuousClock()
+    private let clock: any SessionClock
     private var file: (url: URL, handle: FileHandle)?
     private var initializationEvents: [TranscriptEvent] = []
-    private var initializationStarted: ContinuousClock.Instant?
+    private var initializationStarted: Duration?
     private var recordingInitialization = false
     private var failure: String?
 
-    init(_ base: any Transport) { self.base = base }
+    init(_ base: any Transport, clock: any SessionClock) {
+        self.base = base
+        self.clock = clock
+    }
 
     func beginInitialization() {
         initializationStarted = clock.now
@@ -255,7 +261,7 @@ actor TranscriptRecorder: Transport {
     /// write. A failed write must not break the diagnosis in progress; `stop()` reports it.
     private func record(_ direction: TranscriptEvent.Direction, _ bytes: [UInt8]) {
         let started = initializationStarted ?? clock.now
-        let elapsed = started.duration(to: clock.now) / .milliseconds(1)
+        let elapsed = (clock.now - started) / .milliseconds(1)
         let event = TranscriptEvent(
             milliseconds: UInt64(max(0, elapsed)), direction: direction, bytes: bytes)
         if recordingInitialization {
