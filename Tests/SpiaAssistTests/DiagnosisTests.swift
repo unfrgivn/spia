@@ -253,7 +253,7 @@ struct DiagnosisTests {
             ],
             unread: ["Steering column module (SCCM)"], provider: .anthropic,
             sharing: .init(includeVIN: false))
-        let text = diagnosisText(request) + request.instructions
+        let text = diagnosisText(request) + request.instructions.joined
         for phrase in [
             "Horn controls", "The horn stopped after rain.", "The lamp stayed on.", "Fuse check",
             "The fuse is intact.", "Was the battery disconnected?", "Yes, yesterday.", "B0001-1B",

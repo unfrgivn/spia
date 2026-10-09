@@ -105,8 +105,8 @@ struct ReferenceStoreTests {
         let instructions = AssistantInstructions.make(
             briefing: garage.briefing(for: session, adapter: nil), provider: .anthropic,
             sharing: SharingPolicy(includeVIN: false))
-        #expect(instructions.contains("search_bulletins"))
-        #expect(!instructions.contains("ZAM57RTS4H1249941"))
+        #expect(instructions.joined.contains("search_bulletins"))
+        #expect(!instructions.joined.contains("ZAM57RTS4H1249941"))
     }
 
     @Test("a bulletin search answers the model at once with the matching bulletins")

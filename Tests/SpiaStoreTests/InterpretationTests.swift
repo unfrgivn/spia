@@ -38,11 +38,14 @@ struct InterpretationTests {
         #expect(loaded.consent?.provider == .anthropic)
         #expect(loaded.codes.first?.meaning == "A body fault.")
         cache.recordUsage(
-            TokenUsage(input: 100, output: 20), kind: .interpretation, provider: .anthropic,
+            TokenUsage(input: 100, output: 20, cacheRead: 70, cacheWrite: 5), kind: .interpretation,
+            provider: .anthropic,
             model: "test", modules: 2)
         let usageLoaded = VehicleInterpretations(vehicleID: vehicle.id, files: files)
         #expect(usageLoaded.usage.count == 1)
         #expect(usageLoaded.usage.first?.input == 100)
+        #expect(usageLoaded.usage.first?.cacheRead == 70)
+        #expect(usageLoaded.usage.first?.cacheWrite == 5)
         loaded.withdraw()
         #expect(loaded.consent == nil)
     }
@@ -56,6 +59,25 @@ struct InterpretationTests {
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try data.write(to: url)
         #expect(VehicleInterpretations(vehicleID: vehicle.id, files: garage.files).usage.isEmpty)
+    }
+
+    @Test("old usage entries decode and new cache fields round-trip")
+    func usageLedgerCompatibility() throws {
+        let vehicle = try garage.addVehicle(name: "Usage compatibility")
+        let url = garage.files.interpretationsURL(vehicle: vehicle.id)
+        let old =
+            #"{"codes":[],"modules":[],"reviews":[],"consent":null,"usage":[{"date":"2026-10-08T00:00:00Z","kind":"review","provider":"anthropic","model":"haiku","input":10,"output":2,"modules":0,"scope":null}]}"#
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(old.utf8).write(to: url)
+        let loaded = VehicleInterpretations(vehicleID: vehicle.id, files: garage.files)
+        #expect(loaded.usage.first?.cacheRead == 0)
+        loaded.recordUsage(
+            TokenUsage(input: 20, output: 3, cacheRead: 12, cacheWrite: 4), kind: .review,
+            provider: .anthropic, model: "haiku", modules: 0, scope: .car)
+        let reloaded = VehicleInterpretations(vehicleID: vehicle.id, files: garage.files)
+        #expect(reloaded.usage.last?.cacheRead == 12)
+        #expect(reloaded.usage.last?.cacheWrite == 4)
     }
 
     @Test("usage summary groups totals by model and recent date")

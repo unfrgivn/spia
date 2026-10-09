@@ -96,7 +96,7 @@ public struct OnDeviceProvider: AssistantProvider {
                             request.tools.contains { $0.name == AssistantTools.proposeCheckName }
                             ? [ProposeCheckTool(log: calls), AskUserTool(log: calls)] : []
                         let session = LanguageModelSession(
-                            tools: tools, instructions: request.instructions)
+                            tools: tools, instructions: request.instructions.joined)
                         var sent = ""
                         for try await snapshot in session.streamResponse(
                             to: OnDeviceProvider.transcript(request.messages))
