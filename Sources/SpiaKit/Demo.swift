@@ -92,8 +92,12 @@ public actor DemoBackend: DiagnosticsBackend {
     private var runner: JobRunner?
     private var pacedTask: Task<Void, Never>?
     private let timing: ReplayTiming
+    private let clock: any SessionClock
 
-    public init(timing: ReplayTiming = .immediate) { self.timing = timing }
+    public init(timing: ReplayTiming = .immediate, clock: any SessionClock = WallClock()) {
+        self.timing = timing
+        self.clock = clock
+    }
 
     public func currentState() -> ConnectionState { state }
 
@@ -205,7 +209,7 @@ public actor DemoBackend: DiagnosticsBackend {
         ReplayTransport, ConnectionManager
     ) {
         let (transport, connection) = try ReplaySupport.connection(
-            adapter: adapter, transcript: recording.url(), timing: timing)
+            adapter: adapter, transcript: recording.url(), timing: timing, clock: clock)
         try await connection.connect()
         return (transport, connection)
     }
@@ -267,7 +271,7 @@ public actor DemoBackend: DiagnosticsBackend {
             $0.kind == "OBD" || $0.kind == "UDS"
         }
         let firstExchange = pacedExchanges.first?.started ?? 0
-        let started = ContinuousClock().now
+        let started = clock.now
         for exchange in pacedExchanges {
             if timing == .recorded {
                 let offset: UInt64
@@ -278,8 +282,8 @@ public actor DemoBackend: DiagnosticsBackend {
                 }
                 let clampedOffset = min(offset, UInt64(Int64.max))
                 let due = started + .milliseconds(Int64(clampedOffset))
-                let remaining = ContinuousClock().now.duration(to: due)
-                if remaining > .zero { try await Task.sleep(for: remaining) }
+                let remaining = due - clock.now
+                if remaining > .zero { try await clock.sleep(for: remaining) }
             }
             continuation.yield(.step("Recorded answer to \(hex(exchange.request))"))
         }

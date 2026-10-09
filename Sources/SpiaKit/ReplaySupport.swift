@@ -4,10 +4,11 @@ import OBDCore
 
 enum ReplaySupport {
     static func connection(
-        adapter: AdapterDescriptor, transcript: URL, timing: ReplayTiming
+        adapter: AdapterDescriptor, transcript: URL, timing: ReplayTiming,
+        clock: any SessionClock = WallClock()
     ) throws -> (ReplayTransport, ConnectionManager) {
-        let transport = try ReplayTransport(contentsOf: transcript, timing: timing)
-        return (transport, ConnectionManager(adapter: adapter) { transport })
+        let transport = try ReplayTransport(contentsOf: transcript, timing: timing, clock: clock)
+        return (transport, ConnectionManager(adapter: adapter, clock: clock) { transport })
     }
 
     static func copy(_ source: URL, to destination: URL) throws -> TranscriptReference {

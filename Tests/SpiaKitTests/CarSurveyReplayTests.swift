@@ -425,7 +425,7 @@ struct CarSurveyReplayTests {
         }
         #expect(prompts == [.turnIgnitionOnForVIN])
         #expect(
-            failure?.message == "replay: expected write \"<end of transcript>\", got \"0900\r\"")
+            failure?.message == "replay: expected the transcript to end, got write \"0900\r\"")
         #expect(try Self.sent(name).last == "090A")
         #expect(await transport.isFinished)
     }

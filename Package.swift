@@ -43,12 +43,17 @@ let package = Package(
         .target(name: "SpiaReference"),
         .target(
             name: "SpiaStore", dependencies: ["SpiaKit", "SpiaAssist", "SpiaReference", "OBDCore"]),
+        .target(name: "SpiaTestSupport", dependencies: ["OBDCore"], path: "Tests/Support"),
         .testTarget(name: "OBDCoreTests", dependencies: ["OBDCore"]),
         .testTarget(name: "OBDBluetoothTests", dependencies: ["OBDBluetooth"]),
-        .testTarget(name: "SpiaKitTests", dependencies: ["SpiaKit", "OBDCore"]),
+        .testTarget(
+            name: "SpiaKitTests", dependencies: ["SpiaKit", "OBDCore", "SpiaTestSupport"]),
         .testTarget(
             name: "SpiaStoreTests",
-            dependencies: ["SpiaStore", "SpiaKit", "SpiaAssist", "SpiaReference", "OBDCore"]),
+            dependencies: [
+                "SpiaStore", "SpiaKit", "SpiaAssist", "SpiaReference", "OBDCore",
+                "SpiaTestSupport",
+            ]),
         .testTarget(name: "SpiaAssistTests", dependencies: ["SpiaAssist", "SpiaKit"]),
         .testTarget(name: "SpiaReferenceTests", dependencies: ["SpiaReference"]),
     ]

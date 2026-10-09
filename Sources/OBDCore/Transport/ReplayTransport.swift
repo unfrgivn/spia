@@ -1,8 +1,15 @@
 import Foundation
 
+/// What the recording said should happen next, when the code under test did something else.
+public enum ReplayExpectation: Equatable, Sendable {
+    case write([UInt8])
+    case read([UInt8])
+    case end
+}
+
 public enum ReplayError: Error, Equatable, Sendable, CustomStringConvertible {
     /// The code under test sent something other than what the recorded session sent.
-    case unexpectedWrite(expected: [UInt8]?, got: [UInt8])
+    case unexpectedWrite(expected: ReplayExpectation, got: [UInt8])
     /// The code under test read when the recording says it should have written next.
     case unexpectedRead(pendingWrite: [UInt8])
     case exhausted
@@ -10,9 +17,17 @@ public enum ReplayError: Error, Equatable, Sendable, CustomStringConvertible {
     public var description: String {
         switch self {
         case .unexpectedWrite(let expected, let got):
-            let want = expected.map { String(decoding: $0, as: UTF8.self) } ?? "<end of transcript>"
-            return
-                "replay: expected write \"\(want)\", got \"\(String(decoding: got, as: UTF8.self))\""
+            let sent = String(decoding: got, as: UTF8.self)
+            switch expected {
+            case .write(let bytes):
+                return
+                    "replay: expected write \"\(String(decoding: bytes, as: UTF8.self))\", got \"\(sent)\""
+            case .read(let bytes):
+                return
+                    "replay: expected to read \"\(String(decoding: bytes, as: UTF8.self))\" next, got write \"\(sent)\""
+            case .end:
+                return "replay: expected the transcript to end, got write \"\(sent)\""
+            }
         case .unexpectedRead(let pending):
             return "replay: read before writing \"\(String(decoding: pending, as: UTF8.self))\""
         case .exhausted:
@@ -40,17 +55,25 @@ public actor ReplayTransport: Transport {
     private let events: [TranscriptEvent]
     private var timing: ReplayTiming
     private var cursor = 0
-    private var lastWrite: (recordedMilliseconds: UInt64, instant: ContinuousClock.Instant)?
-    private let clock = ContinuousClock()
+    private var lastWrite: (recordedMilliseconds: UInt64, instant: Duration)?
+    private let clock: any SessionClock
 
-    public init(events: [TranscriptEvent], timing: ReplayTiming = .immediate) {
+    public init(
+        events: [TranscriptEvent], timing: ReplayTiming = .immediate,
+        clock: any SessionClock = WallClock()
+    ) {
         self.events = events
         self.timing = timing
+        self.clock = clock
     }
 
-    public init(contentsOf url: URL, timing: ReplayTiming = .immediate) throws {
+    public init(
+        contentsOf url: URL, timing: ReplayTiming = .immediate,
+        clock: any SessionClock = WallClock()
+    ) throws {
         events = try Transcript.decodeFile(String(contentsOf: url, encoding: .utf8))
         self.timing = timing
+        self.clock = clock
     }
 
     public func open() async throws {}
@@ -67,12 +90,13 @@ public actor ReplayTransport: Transport {
 
     public func write(_ bytes: [UInt8]) async throws {
         guard cursor < events.count else {
-            throw ReplayError.unexpectedWrite(expected: nil, got: bytes)
+            throw ReplayError.unexpectedWrite(expected: .end, got: bytes)
         }
         let event = events[cursor]
         guard event.direction == .tx, event.bytes == bytes else {
             throw ReplayError.unexpectedWrite(
-                expected: event.direction == .tx ? event.bytes : nil, got: bytes)
+                expected: event.direction == .tx ? .write(event.bytes) : .read(event.bytes),
+                got: bytes)
         }
         cursor += 1
         if timing == .recorded {
@@ -96,14 +120,14 @@ public actor ReplayTransport: Transport {
             return bytes
         case .deliverAfter(let duration):
             let index = cursor
-            try await Task.sleep(for: duration)
+            try await clock.sleep(for: duration)
             guard cursor == index, index < events.count, events[index].direction == .rx else {
                 return []
             }
             cursor += 1
             return events[index].bytes
         case .wait(let duration):
-            try await Task.sleep(for: duration)
+            try await clock.sleep(for: duration)
             return []
         case .exhausted:
             throw ReplayError.exhausted
@@ -119,7 +143,7 @@ public actor ReplayTransport: Transport {
         }
         let event = events[cursor]
         guard event.direction == .rx else {
-            try await Task.sleep(for: timeout)
+            try await clock.sleep(for: timeout)
             return []
         }
         cursor += 1
@@ -130,7 +154,7 @@ public actor ReplayTransport: Transport {
     /// sleeping. The transport applies the decision and owns cursor advancement.
     public static func readDecision(
         events: [TranscriptEvent], cursor: Int, lastWriteRecordedMilliseconds: UInt64?,
-        lastWriteInstant: ContinuousClock.Instant?, now: ContinuousClock.Instant,
+        lastWriteInstant: Duration?, now: Duration,
         timeout: Duration
     ) -> ReplayReadDecision {
         guard cursor < events.count else { return .exhausted }
@@ -147,7 +171,7 @@ public actor ReplayTransport: Transport {
         }
         let clampedLatency = min(latency, UInt64(Int64.max))
         let due = lastWriteInstant + .milliseconds(Int64(clampedLatency))
-        let remaining = now.duration(to: due)
+        let remaining = due - now
         if remaining <= .zero { return .deliver }
         return remaining <= timeout ? .deliverAfter(remaining) : .wait(timeout)
     }

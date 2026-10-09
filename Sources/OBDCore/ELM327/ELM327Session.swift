@@ -5,7 +5,7 @@ import Foundation
 /// Every command is a line ending in `\r`; every reply ends with a `>` prompt.
 public actor ELM327Session {
     private let transport: Transport
-    private let clock = ContinuousClock()
+    private let clock: any SessionClock
     /// The rate the transport opened at, and the one to put the adapter back to on disconnect.
     private let baud: Int
     private var switchedBaud: Int?
@@ -14,9 +14,10 @@ public actor ELM327Session {
 
     /// `baud` is the transport's line rate. It only matters for `switchBaud` bookkeeping and
     /// for recovering an adapter that was left at another rate.
-    public init(transport: Transport, baud: Int = 115_200) {
+    public init(transport: Transport, baud: Int = 115_200, clock: any SessionClock = WallClock()) {
         self.transport = transport
         self.baud = baud
+        self.clock = clock
     }
 
     /// Opens the transport, resets the adapter, and applies the framing settings the parser
@@ -267,7 +268,7 @@ public actor ELM327Session {
         let deadline = clock.now + timeout
         var received: [UInt8] = []
         while true {
-            let remaining = clock.now.duration(to: deadline)
+            let remaining = deadline - clock.now
             guard remaining > .zero else {
                 throw ELM327Error.timeout(command: command, partial: decode(received))
             }
@@ -292,7 +293,7 @@ public actor ELM327Session {
         var received: [UInt8] = []
         while true {
             try Task.checkCancellation()
-            let remaining = clock.now.duration(to: deadline)
+            let remaining = deadline - clock.now
             guard remaining > .zero else {
                 throw ELM327Error.timeout(command: command, partial: decode(received))
             }
@@ -336,12 +337,12 @@ public actor ELM327Session {
                 if let deadline, clock.now >= deadline { break }
                 let readTimeout: Duration
                 if let deadline {
-                    readTimeout = min(.milliseconds(250), clock.now.duration(to: deadline))
+                    readTimeout = min(.milliseconds(250), deadline - clock.now)
                 } else {
                     readTimeout = .milliseconds(250)
                 }
                 let chunk = try await transport.read(timeout: readTimeout)
-                let elapsed = started.duration(to: clock.now)
+                let elapsed = clock.now - started
                 for event in parser.feed(chunk) {
                     let wanted = await handle(elapsed, event)
                     if event == .prompt {
