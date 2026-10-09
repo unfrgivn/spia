@@ -27,7 +27,8 @@ Functional core, imperative shell.
 ```
 ┌────────────────────────────────────────────────────────────┐
 │  spia (CLI, swift-argument-parser)                          │
-│  ports · probe · scan · clear · info · live · term · capture│
+│  ports · probe · term · capture · discover · inspect        │
+│  scan · info · live · uds (dtcs)                            │
 └───────────────────────────┬────────────────────────────────┘
                             │
 ┌───────────────────────────▼────────────────────────────────┐
@@ -88,7 +89,7 @@ App phases: 1 foundation (done), 2 assistant (built, see below), 4 the diagnosis
 - Cloud providers need a once-per-session consent that lists what is sent. The VIN is withheld from cloud providers unless allowed in Settings.
 - Safety rules in every briefing: no probing or unplugging SRS/airbag/clock-spring circuits, manufacturer-code mappings labelled as interpretations, warnings for fuel, high voltage, lifting, and running engines indoors.
 - Photos (attach or drop) are resized to 2000 px JPEG, which also strips location metadata, and stored under `Attachments/<session>`. The on-device model can't see them.
-- Verified: stream decoding and request shapes against the documented examples, tool validation, briefing and redaction, Keychain round trip, and approval running a real demo check through the Workbench. Live provider tests run when `SPIA_ANTHROPIC_API_KEY` / `SPIA_OPENAI_API_KEY` are set; not yet run. The on-device path compiles but is untested (this Mac runs macOS 15).
+- Verified: stream decoding and request shapes against the documented examples, tool validation, briefing and redaction, Keychain round trip, and approval running a real demo check through the Workbench. Live provider tests run when `SPIA_ANTHROPIC_API_KEY` / `SPIA_OPENAI_API_KEY` are set; run on 2026-10-05 against both providers (see "Codes explained without asking"). The on-device path compiles but is untested (this Mac runs macOS 15).
 - Prompt caching (2026-10-08). The automatic reviews and interpretations build one briefing per burst and vary only the user prompt, so the system prompt is byte-identical across the car review and each problem review. Claude gets it as three blocks (the rules, the car's data, the problem's text and events) with a cache breakpoint on the last, so a burst hits the whole prefix and the next reading still hits the car's data; OpenAI gets the same string, stable part first, for its automatic caching. Both providers' cache reads and writes go into the per-car usage ledger (old ledgers decode) and show in the vehicle's settings, so the saving is measured, not assumed. Not yet seen live: a cache hit on the real Haiku prompt; if reads stay at zero the prefix is under the model's minimum and the breakpoint moves to the car's data block as well.
 
 ## Problems and the car's history (2026-10-04)
@@ -127,7 +128,6 @@ Slices, each leaving the build green and the tests on real recordings passing:
 2. Done 2026-10-04. Interpretations: `VehicleInterpretations` (the per-car file), the consent banner and its withdrawal, forced tool calls on both cloud providers, the `Interpreter` that finds what's new and asks, and the row notes. Verified by the tool-schema, request-body, plan, consent, and missing-key tests; the live provider tests wait for keys.
 3. Done 2026-10-05. Review: the structured review, questions on rows, under the headline, on the Overview, and in the sidebar, inline answers, re-review, and the briefing. Verified by the review tool, hash, store, and briefing tests and the `questions` fixture screen.
 
-Run live on 2026-10-05 against Claude and OpenAI, three times each, on the Ghibli's airbag codes and the demo board. Both answered in shape every time once four prompt faults were fixed (a question may concern several codes; the review keeps the SAE names it is given, stays at three sentences, and proposes checks only for unread parts; the interpretation's module slot stays null for a named module, and SAE names are not to be hedged). Both now name the clock spring as the first thing to check, at high confidence. The one fact they disagreed on was the failure-type byte: OpenAI read `1B` as resistance above threshold, which is right; Claude called it a short to ground. Since 2026-10-06 the byte's meaning is shown on the board from `FailureType` and given to both models beside the code; run again, neither guesses wrong, and both leave the precise meaning to the line the owner already sees.
 Run live on 2026-10-05 against Claude and OpenAI, three times each, on the Ghibli's airbag codes and the demo board. Both answered in shape every time once four prompt faults were fixed (a question may concern several codes; the review keeps the SAE names it is given, stays at three sentences, and proposes checks only for unread parts; the interpretation's module slot stays null for a named module, and SAE names are not to be hedged). Both now name the clock spring as the first thing to check, at high confidence. The one fact they disagreed on was the failure-type byte: OpenAI read `1B` as resistance above threshold, which is right; Claude called it a short to ground. Since 2026-10-06 the byte's meaning is shown on the board from `FailureType` and given to both models beside the code; run again, neither guesses wrong, and both leave the precise meaning to the line the owner already sees.
 
 The 2026-10-07 visit put numbers on the background work. On the Ghibli, two interpretation requests used 22k input and 2k output tokens, while nine reviews used 107k input and 5k output. On the Tiguan, one interpretation used 15k/0.8k and three reviews used 46k/1.6k. All ran on `claude-haiku-4-5`; reviews dominate the cost, and empty problems no longer receive their own review. The survey results sheet now appears before those network reviews explain it.
@@ -190,7 +190,7 @@ Slices, each leaving the build green and the tests passing:
 
 ## Vehicle onboarding: the survey
 
-Any owner, using only the app, adds a car, connects, and ends with its modules found, named, and read: no CAN IDs, no code changes. The owner's Ghibli and Tiguan are development cars only. Today modules come only from Advanced → Edit Modules (raw bus and IDs) or the demo's `DemoGarage`, and discovery exists only in `spia discover`.
+Any owner, using only the app, adds a car, connects, and ends with its modules found, named, and read: no CAN IDs, no code changes. The owner's Ghibli and Tiguan are development cars only. Before the survey, modules came only from Advanced → Edit Modules (raw bus and IDs) or the demo's `DemoGarage`, and discovery existed only in `spia discover`.
 
 Flow: add the car (VIN, decoded by vPIC to make, model, and year), connect (the adapter check reports STN firmware), Survey This Car, review the results, save the modules. The Overview offers "Scan this car" until the car has modules; a scan runs the survey as its modules step, and Deep Scan adds the sweep. Edit Modules stays under Advanced. The assistant can't propose a survey; it's the owner's action.
 
@@ -200,7 +200,7 @@ A survey is one read-only `DiagnosticJob.survey(SurveyPlan)` with one `JobPayloa
 
 The executor completes with the partial report when a candidate produces a safe, readable stop such as a malformed answer or adapter error. The stopped candidate is recorded in `stop`, and candidates after it are `notProbed`; candidates that were probed and gave no answer are kept separately in `unanswered`.
 
-If the engine computers do not answer after the ignition prompts, the survey continues with the module probes and says so in its summary. “Survey This Car” is available in the Run and Session menus until step 7 adds the onboarding card and results screen.
+If the engine computers do not answer after the ignition prompts, the survey continues with the module probes and says so in its summary.
 
 1. Buses. 500k (pins 6/14) always. 125k (pins 3/11) only on STN adapters that accept `STP 53`, and then only for the make's known modules unless the thorough search includes that bus. STN firmware (`STI`) is evidence, not proof: each bus reports whether it was reached.
 2. Generic OBD. The emissions ECUs that answer `7DF`, named by `09 0A`, become modules named by themselves (engine `7E0` → `7E8`, transmission `7E1` → `7E9`).
@@ -241,7 +241,7 @@ Pure tests cover the catalog, the matcher, the planner (deterministic; a catalog
 6. Store and board: `SurveyReport.proposedModules()` creates confirmed names from module or OBD answers, while catalog and fallback labels remain unconfirmed until `Garage.apply` saves them. The board maps survey code outcomes through the same module-read rules.
 7. Onboarding UI is done: the Overview card starts a survey, the results sheet reviews and saves modules, it reopens from the case file, and owner-edited names are confirmed.
 8. The first car visit, on the owner's path: done 2026-09-30, on the Ghibli and the Tiguan.
-9. The thorough search: listen first, sweep, and confirm each pair (item 6 above), now designed in detail under "Reading any car" below, with its window chosen from a real capture.
+9. Done 2026-10-07. The thorough search: listen first, sweep, and confirm each pair (item 6 above), designed in detail under "Reading any car" below, with its window chosen from a real capture; ran on the Ghibli over USB and over Bluetooth from the Mac and the iPhone (slice 4).
 
 Sources for these rules: Caring Caribou's [UDS discovery](https://github.com/CaringCaribou/caringcaribou/blob/master/documentation/uds.md) (listen first, blacklist, verify each pair), the [OBDLink family reference](https://www.scantool.net/scantool/downloads/678/obdlink_frpm_e.pdf) (filters, flow control, `STP 53`; filters must be set again after `STP`), and the Linux [can327 notes](https://kernel.org/doc/html/next/networking/device_drivers/can/can327.html) (ELM327 monitoring ends in `BUFFER FULL` and drops frames).
 
@@ -253,12 +253,12 @@ Sources for these rules: Caring Caribou's [UDS discovery](https://github.com/Car
 | 2 | `SerialTransport` + `ELM327Session` + `spia ports` / `spia probe` | Hardware day 1: `ATZ`, `ATI`, `ATRV`, `ATDP` answer from the FS | done |
 | 3 | Recording/replay transports + `--record` flag | Real transcripts land in `Tests/Fixtures/` | done, including car captures |
 | 4 (#4) | `spia capture` (ATMA monitor, candump log, per-ID summary, 2 Mbps UART) | Ghibli traffic captured without reported overflow at 2 Mbps | shipped (PR #9); second-bus traffic also observed with STP 53 |
-| 5 (#5) | UDS/ISO-TP client and module discovery, reads first | Complete DTC replies with explicit request/reply IDs and correct flow control | in progress; live ORC/ABS/BCM reads recorded, CLI integration pending |
+| 5 (#5) | UDS/ISO-TP client and module discovery, reads first | Complete DTC replies with explicit request/reply IDs and correct flow control | `spia uds dtcs` implemented, replay-backed, live unverified; discovery became the app's survey (see "Vehicle onboarding") |
 | 6 (#1) | `spia scan` (stored/pending/permanent DTCs, freeze frame, readiness) + `spia info` (VIN, CAL IDs) | Pure report/decoder tests, original `ghibli-ignition-on-term.txt` replay through production request/decode paths, CLI help/validation; live execution remains unverified | offline milestone implemented; live unverified |
 | 7 (#2) | `spia clear` | Codes clear, CEL off, re-scan clean | pending |
-| 8 (#3) | `spia live` with CSV logging | RPM/coolant/etc. track reality at idle | pending |
+| 8 (#3) | `spia live` with CSV logging | RPM/coolant/etc. track reality at idle | implemented (`--pids`, `--interval`, `--duration`, `--out`); idle run against the car unverified |
 | iOS (#6) | `BLETransport` (CoreBluetooth), SwiftUI shell | Bluetooth FS on iPhone | `BLETransport` and `spia --ble` verified on the Ghibli; the iOS app onboarded the Ghibli over Bluetooth on an iPhone, and its recordings replay in tests (2026-09-30) |
-| Survey | In-app onboarding: find, identify, name, and read a car's modules | Bench capture replays through the survey; first car visit on the owner's path | steps 1-8 done; verified on the Ghibli and the Tiguan over USB and the Ghibli and a CX-5 over Bluetooth; reading any car in slices (see "Reading any car") |
+| Survey | In-app onboarding: find, identify, name, and read a car's modules | Bench capture replays through the survey; first car visit on the owner's path | steps 1-9 done; verified on the Ghibli and the Tiguan over USB and the Ghibli and a CX-5 over Bluetooth; reading any car in slices, 1-5 done (see "Reading any car") |
 
 Reordered 2026-09-26: the fault that started this project is not an emissions code (Mode 03/07/0A are clean), so UDS access to body modules moves ahead of the generic-OBD polish.
 
@@ -276,7 +276,13 @@ check in any order.
 
 Demo mode can replay forward checks and decoded check steps at the timestamps in the car recording.
 The app uses that recorded speed so the reading rows, progress text, cancellation, and prompts can
-be exercised. Tests and screenshot fixtures use immediate replay and remain instant.
+be exercised. Tests and screenshot fixtures use immediate replay and remain instant. The few tests
+of the recorded pace itself run on a clock they turn by hand (2026-10-08): the session, the replay
+transport, and the demo's paced steps take a `SessionClock`, the wall clock by default, and
+`ManualClock` in `SpiaTestSupport` advances on each sleep, so a paced connect's elapsed time is the
+recording's reply latencies summed, exactly, in no real time. This replaced tests that measured the
+wall and failed in half of CI's runs when the three-core runner stalled past the session's 3 s
+`ATZ` deadline.
 
 Completed live checks are standalone recordings tied to the vehicle. At the desk, only the newest
 valid live recording for an exact check can be replayed through the production connection and job
@@ -311,7 +317,7 @@ On the Ghibli minutes later, through the iPhone app over the Bluetooth vLinker F
 
 - The adapter reset works over Bluetooth. The survey left the adapter listening for `7EF` only; vehicle information reset it, and the engine computers' replies on `7E8` and `7E9` came through.
 - The survey found four modules, not six: the airbag controller and the engine stayed silent. The car's power was changing; the adapter wasn't dropping replies. Only the engine answered the opening requests while the transmission was still starting up. The body computer's code showed an operation cycle that had only just begun (status `69`: test not completed this cycle). And twenty seconds after the survey nothing answered until the owner switched the ignition on again.
-- So the survey takes one engine answer to mean the ignition is on, and one silent 100 ms probe to mean a module isn't there. An engine computer still winding down after the ignition goes off, or modules still starting up, defeat both. Open: how the survey should notice.
+- So the survey takes one engine answer to mean the ignition is on, and one silent 100 ms probe to mean a module isn't there. An engine computer still winding down after the ignition goes off, or modules still starting up, defeat both. Answered in "Reading any car", slice 1: the survey asks for the ignition again until a VIN arrives, looks a second time at expected modules that stayed silent, and names any still missing with a Try Again.
 
 Getting recordings off a phone: the iOS library isn't synced, but a build installed from Xcode can be copied off a paired iPhone, over Wi-Fi or a cable. `scripts/pull-phone-library.sh` does it: it finds the phone, copies `Library.store`, `Library.store-wal`, `Library.store-shm`, and `Transcripts` out of the app's container with `xcrun devicectl device copy from`, retries while a sleeping phone wakes, writes each saved result next to its transcript as `<entry>.result.json` (the JSON after Core Data's one-byte inline marker), and lists the cars and checks. TestFlight and App Store builds don't allow this.
 
@@ -329,7 +335,7 @@ Slices, each verified with real recordings:
 2. Done: a car's saved modules become candidates (and expected) in every later survey; the survey reads the protocol (`ATDPN`) after the opening, and on non-CAN, 29-bit, or 250k cars reads the engine computers only and says why.
 3. Done: the opendbc import (see The catalog above).
 4. Done 2026-10-07. Slice 4 ran on a car: the Ghibli's thorough search swept 491 IDs over USB in 101 seconds, over Mac Bluetooth in 121 seconds, and over iPhone Bluetooth in 157 seconds. None found anything new after the eight modules found on 2026-10-04. The Mac Bluetooth path is verified. The Tiguan's search had previously been skipped because its `17F00010` 29-bit gateway broadcast filled the listen count; the listen now ignores frames that cannot collide with the 11-bit sweep. A car whose engine computers don't answer still skips the search with a reason.
-5. 29-bit modules: a target's width follows its IDs (at or below `7FF` is 11-bit; `18DA..` is 29-bit), so saved modules, plans, and recordings need no migration; 29-bit targets stay on the 500k bus, where `ATSP7` reaches them, until `STP 54` is verified. The catalog then gains opendbc's 29-bit rows (Honda and Acura chassis modules at `18DA<target>F1` replying `18DAF1<target>`, and a 2022-on Jeep whose engine itself is 29-bit). Cars whose legislated OBD is 29-bit (protocol 7 or 9) still get their engine computers only until a real 29-bit recording shows the survey's physical probes there.
+5. Done 2026-10-06, bench only. 29-bit modules: a target's width follows its IDs (at or below `7FF` is 11-bit; `18DA..` is 29-bit), so saved modules, plans, and recordings needed no migration; 29-bit targets stay on the 500k bus, where `ATSP7` reaches them, until `STP 54` is verified. The catalog carries opendbc's 29-bit rows (212: Honda and Acura chassis modules at `18DA<target>F1` replying `18DAF1<target>`, six Jeep rows including a 2022-on engine that is itself 29-bit, three Nissan). The STN1170 accepted every 29-bit command on the bench (`vlinker-fs-usb-only-29bit-module-read.txt`). Cars whose legislated OBD is 29-bit (protocol 7 or 9) still get their engine computers only, with the reason shown, until a real 29-bit recording shows the survey's physical probes there. Not verified: any 29-bit module answering.
 6. The 125k bus: known modules first (`STP 53`), sweeping later. `STP 54` stays unverified.
 7. Toyota's sub-addressed modules (opendbc's 78 rows at `750` with a sub-address, among them the parking brake `2C`, telematics `C7`, gateway `5F`, body `40`, and the camera and radar on newer cars): the request goes to `750` with the sub-address as its first data byte, and the reply comes on `758` with the same first byte (opendbc's `uds.py` adds and strips it). ELM327 does this with `AT CEA hh` (insert the byte) and `AT CER hh` (expect it back), set after `AT CEA`. A target needs a field for the sub-address. Some of these modules speak KWP2000 (`1A 88`) rather than UDS, so they may answer TesterPresent and refuse `22` and `19`.
 8. GM: older GM (Global A, through about 2019) sends physical diagnostic requests at `0x24x` and answers at `+0x400` (`0x64x`; opendbc's `GM_RX_OFFSET`, its one GM address `0x24B` for the camera, and community captures of the BCM at `241` and the cluster at `24C`). It identifies modules with GM's own `1A` and reads codes with `A9` (GMW3110), not UDS `22` and `19`, so today's survey would find GM modules but read nothing from them. Sweeping `240`-`25F` is GM-only and needs its own listen, since that band carries ordinary traffic on other makes (the Ghibli's included). Newer GM (Global B, 2020 on) adds CAN FD, gateway isolation, and authentication. No public source gives a GM module table, so nothing here is built before a GM car is recorded.
