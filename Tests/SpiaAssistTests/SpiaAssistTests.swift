@@ -426,6 +426,26 @@ struct AnthropicTests {
         #expect(tools[0]["input_schema"]?["additionalProperties"] == false)
     }
 
+    @Test("models that think by default get the tool offered, not forced, and room to think")
+    func thinkingModels() throws {
+        let review = AssistantRequest(
+            instructions: rulesOnly("r"), messages: [],
+            tools: [ReviewTool.definition(modules: [])], maxOutputTokens: 1200,
+            toolChoice: .tool(ReviewTool.name))
+        for model in ["claude-haiku-5-5", "claude-opus-5-5", "claude-sonnet-5-5"] {
+            let body = try AnthropicProvider.body(for: review, model: model)
+            #expect(body["tool_choice"] == ["type": "auto"])
+            #expect(body["max_tokens"] == .number(Double(1200 + AnthropicProvider.thinkingRoom)))
+        }
+        let older = try AnthropicProvider.body(for: review, model: "claude-haiku-4-5")
+        #expect(older["tool_choice"] == ["type": "tool", "name": .string(ReviewTool.name)])
+        #expect(older["max_tokens"] == 1200)
+        let chat = AssistantRequest(instructions: rulesOnly("r"), messages: [], tools: [])
+        #expect(
+            try AnthropicProvider.body(for: chat, model: "claude-opus-5-5")["max_tokens"]
+                == .number(Double(2048 + AnthropicProvider.thinkingRoom)))
+    }
+
     @Test("cache breakpoints cover stable facts, and session data only when repeated")
     func cacheBreakpoints() throws {
         let instructions = Instructions(
