@@ -267,9 +267,9 @@ struct InterpretationTests {
         let ceiling = InterpretationRequest.make(
             briefing: briefing, modules: [input(20)], provider: .anthropic,
             sharing: .init(includeVIN: false))
-        #expect(floor.maxOutputTokens == 600)
-        #expect(estimate.maxOutputTokens == 3200)
-        #expect(ceiling.maxOutputTokens == 4000)
+        #expect(floor.maxOutputTokens == 780)
+        #expect(estimate.maxOutputTokens == 4160)
+        #expect(ceiling.maxOutputTokens == 5200)
     }
 
     private func promptText(from request: AssistantRequest) -> String {
@@ -424,6 +424,26 @@ struct AnthropicTests {
         guard case .array(let tools) = body["tools"] else { Issue.record("no tools"); return }
         #expect(tools.map { $0["name"] } == ["propose_check", "ask_user"])
         #expect(tools[0]["input_schema"]?["additionalProperties"] == false)
+    }
+
+    @Test("models that think by default get the tool offered, not forced, and room to think")
+    func thinkingModels() throws {
+        let review = AssistantRequest(
+            instructions: rulesOnly("r"), messages: [],
+            tools: [ReviewTool.definition(modules: [])], maxOutputTokens: 1200,
+            toolChoice: .tool(ReviewTool.name))
+        for model in ["claude-haiku-5-5", "claude-opus-5-5", "claude-sonnet-5-5"] {
+            let body = try AnthropicProvider.body(for: review, model: model)
+            #expect(body["tool_choice"] == ["type": "auto"])
+            #expect(body["max_tokens"] == .number(Double(1200 + AnthropicProvider.thinkingRoom)))
+        }
+        let older = try AnthropicProvider.body(for: review, model: "claude-haiku-4-5")
+        #expect(older["tool_choice"] == ["type": "tool", "name": .string(ReviewTool.name)])
+        #expect(older["max_tokens"] == 1200)
+        let chat = AssistantRequest(instructions: rulesOnly("r"), messages: [], tools: [])
+        #expect(
+            try AnthropicProvider.body(for: chat, model: "claude-opus-5-5")["max_tokens"]
+                == .number(Double(2048 + AnthropicProvider.thinkingRoom)))
     }
 
     @Test("cache breakpoints cover stable facts, and session data only when repeated")
@@ -745,6 +765,27 @@ struct SettingsTests {
         #expect(settings.backgroundModel(for: .anthropic) == "custom")
     }
 
+    @Test("settings saved on the old background default move to Haiku 5.5")
+    func previousBackgroundDefaultMoves() throws {
+        func decode(chat: String, background: String) throws -> AssistantSettings {
+            try JSONDecoder().decode(
+                AssistantSettings.self,
+                from: Data(
+                    #"{"anthropicModel":"\#(chat)","anthropicBackgroundModel":"\#(background)"}"#
+                        .utf8))
+        }
+        #expect(
+            try decode(chat: "claude-opus-5-5", background: "claude-haiku-4-5")
+                .anthropicBackgroundModel == "claude-haiku-5-5")
+        // Only "Same as chat" can still store Haiku 4.5, and only with Haiku 4.5 as the chat model.
+        #expect(
+            try decode(chat: "claude-haiku-4-5", background: "claude-haiku-4-5")
+                .anthropicBackgroundModel == "claude-haiku-4-5")
+        #expect(
+            try decode(chat: "claude-opus-5-5", background: "claude-sonnet-5")
+                .anthropicBackgroundModel == "claude-sonnet-5")
+    }
+
     @Test("the on-device model reports why it can't run on this Mac")
     func onDeviceAvailability() {
         if ProcessInfo.processInfo.operatingSystemVersion.majorVersion < 26 {
@@ -771,8 +812,8 @@ struct LiveProviderTests {
             ConversationMessage(
                 role: .user, parts: [.text("Where should we start? Reply in one sentence.")])
         ],
-        tools: AssistantTools.definitions(modules: ["Airbag controller (ORC)"]),
-        maxOutputTokens: 300)
+        // The chat's own budget: Haiku 5.5 thinks first here, and its thinking counts toward it.
+        tools: AssistantTools.definitions(modules: ["Airbag controller (ORC)"]))
 
     private func check(_ provider: any AssistantProvider) async throws {
         var finished = false

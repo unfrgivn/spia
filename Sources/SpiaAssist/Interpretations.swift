@@ -174,13 +174,15 @@ public enum InterpretationRequest {
             A public name beside a code is its SAE definition; treat it as reliable, not as a guess, and never propose reading the code again. A failure-type meaning beside a code is from the standard's categories; use it as given. When it says the byte is not described, say what the byte means if you know, and label it a guess otherwise. Use record_interpretations. Give each code a technician's name, its meaning on this car in at most two sentences including the failure-type byte when present, the first physical thing to check, and confidence. Label guesses as guesses.
             Set each code's `module` to the exact module heading it belongs to, or null for the engine generic scan.
             """
-        let tokens = modules.reduce(0) { $0 + $1.codes.count * 300 + ($1.nameModule ? 200 : 0) }
+        // Room for Haiku 5.5's tokenizer, which counts about 30% more tokens than Haiku 4.5's for
+        // the same text.
+        let tokens = modules.reduce(0) { $0 + $1.codes.count * 390 + ($1.nameModule ? 260 : 0) }
         return AssistantRequest(
             instructions: AssistantInstructions.make(
                 briefing: briefing, provider: provider, sharing: sharing),
             messages: [.init(role: .user, parts: [.text(prompt)])],
             tools: [InterpretationTool.definition],
-            maxOutputTokens: min(4000, max(600, tokens)), toolChoice: .tool(InterpretationTool.name)
+            maxOutputTokens: min(5200, max(780, tokens)), toolChoice: .tool(InterpretationTool.name)
         )
     }
 }

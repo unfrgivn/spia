@@ -214,7 +214,7 @@ public enum ReviewRequest {
                 briefing: briefing, provider: provider, sharing: sharing),
             messages: [.init(role: .user, parts: [.text(prompt)])],
             tools: [ReviewTool.definition(modules: briefing.modules.map(\.label))],
-            maxOutputTokens: 900,
+            maxOutputTokens: 1200,
             toolChoice: .tool(ReviewTool.name))
     }
 }

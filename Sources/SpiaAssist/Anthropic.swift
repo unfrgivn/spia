@@ -3,8 +3,24 @@ import Foundation
 /// Anthropic Messages API (https://platform.claude.com/docs/en/api/messages).
 public struct AnthropicProvider: AssistantProvider {
     public static let defaultModel = "claude-opus-5-5"
-    public static let fastModel = "claude-haiku-4-5"
+    /// The model for the automatic work: Haiku 5.5, which caches prefixes from 512 tokens and costs
+    /// a tenth of Haiku 4.5 per token.
+    public static let fastModel = "claude-haiku-5-5"
+    /// The automatic work's model until 2026-10-17, so saved settings can move off it.
+    static let previousFastModel = "claude-haiku-4-5"
+    /// Thinking counts toward `max_tokens`, so a model that thinks gets this much on top of the
+    /// answer's budget.
+    public static let thinkingRoom = 8_000
     static let endpoint = URL(string: "https://api.anthropic.com/v1/messages")
+
+    /// Claude's 5-generation models think before they answer unless told not to (Anthropic's
+    /// thinking docs, 2026-10-17). Forcing a tool call skips that thinking on Haiku 5.5, and Opus
+    /// and Sonnet 5.5 refuse it with a 400, so these models get a request's one tool offered rather
+    /// than forced; its prompt ends by asking for that tool.
+    static func thinksByDefault(_ model: String) -> Bool {
+        ["claude-haiku-5", "claude-sonnet-5", "claude-opus-5", "claude-fable-5", "claude-mythos-5"]
+            .contains { model.hasPrefix($0) }
+    }
 
     public let id = ProviderID.anthropic
     let apiKey: String
@@ -75,9 +91,10 @@ public struct AnthropicProvider: AssistantProvider {
         if request.repeatsSessionData {
             sessionBlock["cache_control"] = ["type": "ephemeral"]
         }
+        let thinks = thinksByDefault(model)
         return [
             "model": .string(model),
-            "max_tokens": .number(Double(request.maxOutputTokens)),
+            "max_tokens": .number(Double(request.maxOutputTokens + (thinks ? thinkingRoom : 0))),
             "system": .array([
                 ["type": "text", "text": .string(request.instructions.rules)],
                 [
@@ -88,7 +105,7 @@ public struct AnthropicProvider: AssistantProvider {
                 .object(sessionBlock),
             ]),
             "stream": true,
-            "tool_choice": toolChoice(for: request.toolChoice),
+            "tool_choice": toolChoice(for: thinks ? .auto : request.toolChoice),
             "tools": .array(
                 request.tools.map { tool in
                     [
