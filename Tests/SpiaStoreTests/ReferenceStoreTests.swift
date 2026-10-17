@@ -172,13 +172,19 @@ struct ReferenceStoreTests {
         "a live background burst reads the prefix written by its first request",
         .enabled(if: ProcessInfo.processInfo.environment["SPIA_ANTHROPIC_API_KEY"] != nil))
     func liveBackgroundCacheBurst() async throws {
+        let key = try #require(ProcessInfo.processInfo.environment["SPIA_ANTHROPIC_API_KEY"])
+        try #require(!key.isEmpty, "SPIA_ANTHROPIC_API_KEY is set but empty")
         let vehicle = try garage.addDemoVehicle()
         _ = try cacheRecordedReferences(for: vehicle)
+        let suite = "spia-cache-burst-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
         let configuration = AssistantConfiguration(
-            keys: APIKeyStore(service: "spia-cache-burst-\(UUID().uuidString)"))
-        try configuration.keys.setKey(
-            ProcessInfo.processInfo.environment["SPIA_ANTHROPIC_API_KEY"] ?? "", for: .anthropic)
+            keys: APIKeyStore(service: suite), defaults: defaults)
+        // Through the configuration, not its key store: it notes which providers have keys.
+        try configuration.setKey(key, for: .anthropic)
         defer { try? configuration.keys.removeKey(for: .anthropic) }
+        try #require(configuration.unavailableReason(.anthropic) == nil)
         configuration.settings.defaultProvider = .anthropic
         configuration.settings.anthropicBackgroundModel = AnthropicProvider.fastModel
         let interpreter = Interpreter(configuration: configuration, garage: garage)
