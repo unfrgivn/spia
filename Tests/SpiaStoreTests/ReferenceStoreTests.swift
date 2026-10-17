@@ -109,6 +109,113 @@ struct ReferenceStoreTests {
         #expect(!instructions.joined.contains("ZAM57RTS4H1249941"))
     }
 
+    @Test("a car with two open problems sends every request the same rules and facts")
+    func storedBackgroundRequestsSharePrefix() throws {
+        let vehicle = try garage.addDemoVehicle()
+        _ = try cacheRecordedReferences(for: vehicle)
+        let session = try #require(vehicle.sessions.first)
+        // A second problem: the car's briefing carries its review, the first problem's doesn't.
+        let washer = try garage.addSession(
+            to: vehicle, title: "Washer pump", problem: "The washer pump is silent.")
+        let interpretations = VehicleInterpretations(vehicleID: vehicle.id, files: garage.files)
+        interpretations.store(
+            InterpretationResult(
+                codes: [
+                    CodeInterpretation(
+                        code: "P0001", name: "Fuel", meaning: "Fuel fault", firstCheck: "Inspect",
+                        confidence: .medium)
+                ], module: nil), target: nil, provider: .anthropic,
+            model: AnthropicProvider.fastModel)
+        let modules = vehicle.orderedModules.compactMap {
+            preset -> (label: String, target: ModuleTarget)? in
+            guard let target = preset.target else { return nil }
+            return (label: preset.label, target: target)
+        }
+        interpretations.storeReview(
+            ReviewResult(reading: "Car reading", questions: [], checks: []), scope: .car,
+            inputs: "car", provider: .anthropic, model: AnthropicProvider.fastModel,
+            modules: modules)
+        for (problem, reading) in [(session, "Steering reading"), (washer, "Washer reading")] {
+            interpretations.storeReview(
+                ReviewResult(reading: reading, questions: [], checks: []),
+                scope: .problem(problem.id), inputs: reading, provider: .anthropic,
+                model: AnthropicProvider.fastModel, modules: modules)
+        }
+
+        let carBriefing = garage.briefing(for: vehicle, adapter: nil)
+        #expect(carBriefing.reviews != garage.briefing(for: session, adapter: nil).reviews)
+        let car = ReviewRequest.make(
+            briefing: carBriefing, scope: .car, answered: [], codes: [], unread: [],
+            provider: .anthropic, sharing: .init(includeVIN: true))
+        let diagnoses = [session, washer].map { problem in
+            DiagnosisRequest.make(
+                briefing: garage.briefing(for: problem, adapter: nil), title: problem.title,
+                text: problem.problem, notes: [], answered: [], findings: [], codes: [],
+                unread: [], provider: .anthropic, sharing: .init(includeVIN: true))
+        }
+        let interpretation = InterpretationRequest.make(
+            briefing: carBriefing, module: nil, codes: [.init(code: "P0001", catalogName: "Fuel")],
+            provider: .anthropic, sharing: .init(includeVIN: true))
+        let requests = [car, interpretation] + diagnoses
+        #expect(requests.allSatisfy { $0.tools.count == 1 })
+        let bodies = try requests.map {
+            try AnthropicProvider.body(for: $0, model: AnthropicProvider.fastModel)
+        }
+        #expect(bodies[2]["tools"] == bodies[3]["tools"])
+        let blocks = bodies.compactMap { body -> [JSONValue]? in
+            guard case .array(let values) = body["system"] else { return nil }
+            return values
+        }
+        try #require(blocks.count == 4 && blocks.allSatisfy { $0.count == 3 })
+        #expect(blocks.dropFirst().allSatisfy { $0[0] == blocks[0][0] && $0[1] == blocks[0][1] })
+    }
+
+    @Test(
+        "a live burst's second diagnosis reads the prefix the first one wrote",
+        .enabled(if: ProcessInfo.processInfo.environment["SPIA_ANTHROPIC_API_KEY"] != nil))
+    func liveBackgroundCacheBurst() async throws {
+        let key = try #require(ProcessInfo.processInfo.environment["SPIA_ANTHROPIC_API_KEY"])
+        try #require(!key.isEmpty, "SPIA_ANTHROPIC_API_KEY is set but empty")
+        let vehicle = try garage.addDemoVehicle()
+        _ = try cacheRecordedReferences(for: vehicle)
+        // A second open problem, so one burst sends two diagnoses with the same tool and facts.
+        _ = try garage.addSession(
+            to: vehicle, title: "Washer pump",
+            problem: "The washer pump is silent with a full reservoir.")
+        let suite = "spia-cache-burst-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let configuration = AssistantConfiguration(
+            keys: APIKeyStore(service: suite), defaults: defaults)
+        // Through the configuration, not its key store: it notes which providers have keys.
+        try configuration.setKey(key, for: .anthropic)
+        defer { try? configuration.keys.removeKey(for: .anthropic) }
+        try #require(configuration.unavailableReason(.anthropic) == nil)
+        configuration.settings.defaultProvider = .anthropic
+        // Haiku 4.5 caches nothing under 4,096 tokens, more than this car's shared prefix (seen
+        // live 2026-10-17); Haiku 5.5's minimum is 512.
+        configuration.settings.anthropicBackgroundModel = "claude-haiku-5-5"
+        let interpreter = Interpreter(configuration: configuration, garage: garage)
+        interpreter.interpretations(for: vehicle).allow(.anthropic)
+
+        await interpreter.refresh(vehicle, adapter: nil)
+
+        let interpretations = interpreter.interpretations(for: vehicle)
+        let usage = interpretations.usage
+        print("last error: \(interpretations.lastError ?? "none")")
+        for entry in usage {
+            print(
+                "\(entry.kind.rawValue) input=\(entry.input) cacheRead=\(entry.cacheRead) cacheWrite=\(entry.cacheWrite)"
+            )
+        }
+        #expect(usage.count >= 3)
+        let diagnoses = usage.filter { $0.kind == .diagnosis }
+        try #require(diagnoses.count == 2)
+        let written = diagnoses[0].cacheRead + diagnoses[0].cacheWrite
+        #expect(written > 0)
+        #expect(diagnoses[1].cacheRead == written)
+    }
+
     @Test("a bulletin search answers the model at once with the matching bulletins")
     func search() throws {
         let bulletins = try NHTSA.safety(from: fixture("nhtsa-byymmt-2017-maserati-ghibli.json"))

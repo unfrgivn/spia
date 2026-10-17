@@ -72,6 +72,75 @@ struct InterpretationTests {
             try OpenAIProvider.body(for: automatic, model: "m")["tool_choice"] == .string("auto"))
     }
 
+    @Test("background requests share rules and car facts, and each kind keeps its own tool")
+    func backgroundRequestsShareCacheablePrefix() throws {
+        let module = SessionBriefing.ModuleFacts(
+            label: "Engine", bus: "hs", request: "7E0", reply: "7E8", labelConfirmed: true)
+        let first = SessionBriefing(
+            vehicle: .init(name: "Ghibli", vin: "Z", notes: "quiet"), problem: "",
+            modules: [module], adapter: .init(identity: "adapter", voltage: 12),
+            events: [
+                .init(
+                    date: Date(timeIntervalSince1970: 1), kind: "note", title: "Old",
+                    summary: "old", result: nil, fromRecording: false, warnings: [])
+            ],
+            references: .init(
+                decodedVehicle: nil, recalls: [], complaintsByComponent: [], bulletinCount: 1),
+            interpretations: ["old interpretation"], reviews: ["old review"])
+        var second = first
+        second.problem = "Brake noise"
+        second.adapter = .init(identity: "new adapter", voltage: 11)
+        second.events[0].summary = "new"
+        second.interpretations = ["new interpretation"]
+        second.reviews = ["new review"]
+        var third = second
+        third.problem = "Washer silent"
+        third.reviews = ["washer review"]
+        let interpretation = InterpretationRequest.make(
+            briefing: first, module: module,
+            codes: [.init(code: "P0001", catalogName: nil)], provider: .anthropic,
+            sharing: .init(includeVIN: true))
+        let review = ReviewRequest.make(
+            briefing: first, scope: .car, answered: [], codes: [], unread: [], provider: .anthropic,
+            sharing: .init(includeVIN: true))
+        let diagnoses = [(second, "Brake noise"), (third, "Washer silent")].map { briefing, title in
+            DiagnosisRequest.make(
+                briefing: briefing, title: title, text: title, notes: [], answered: [],
+                findings: [], codes: [], unread: [], provider: .anthropic,
+                sharing: .init(includeVIN: true))
+        }
+        let requests = [interpretation, review] + diagnoses
+        // Each request offers only the tool it forces, so no answer can borrow another tool's fields.
+        #expect(
+            requests.map { $0.tools.map(\.name) } == [
+                [InterpretationTool.name], [ReviewTool.name], [DiagnosisTool.name],
+                [DiagnosisTool.name],
+            ])
+
+        let anthropic = try requests.map {
+            try AnthropicProvider.body(for: $0, model: AnthropicProvider.fastModel)
+        }
+        #expect(anthropic[2]["tools"] == anthropic[3]["tools"])
+        let systems = anthropic.compactMap { body -> [JSONValue]? in
+            guard case .array(let blocks) = body["system"] else { return nil }
+            return blocks
+        }
+        try #require(systems.count == 4 && systems.allSatisfy { $0.count == 3 })
+        let sharedBlocksMatch = systems.dropFirst().allSatisfy {
+            $0[0] == systems[0][0] && $0[1] == systems[0][1]
+        }
+        #expect(sharedBlocksMatch)
+        #expect(systems.allSatisfy { $0[1]["cache_control"] == ["type": "ephemeral"] })
+        #expect(systems.allSatisfy { $0[2]["cache_control"] == nil })
+
+        let openAI = try requests.map { try OpenAIProvider.body(for: $0, model: "gpt") }
+        #expect(openAI[2]["tools"] == openAI[3]["tools"])
+        let prefix =
+            interpretation.instructions.rules + "\n\n<session_data>\n"
+            + interpretation.instructions.sharedData
+        #expect(openAI.allSatisfy { $0["instructions"]?.string?.hasPrefix(prefix) == true })
+    }
+
     @Test("interpretation requests include catalog names and withhold VIN")
     func requestPrompt() throws {
         let briefing = SessionBriefing(
@@ -331,9 +400,9 @@ struct AnthropicTests {
         }
         #expect(system.map { $0["type"] } == ["text", "text", "text"])
         #expect(system[0]["text"] == "rules")
-        #expect(system[2]["cache_control"] == ["type": "ephemeral"])
+        #expect(system[1]["cache_control"] == ["type": "ephemeral"])
         #expect(system[0]["cache_control"] == nil)
-        #expect(system[1]["cache_control"] == nil)
+        #expect(system[2]["cache_control"] == nil)
         #expect(body["stream"] == true)
         guard case .array(let messages) = body["messages"] else {
             Issue.record("no messages"); return
@@ -355,6 +424,24 @@ struct AnthropicTests {
         guard case .array(let tools) = body["tools"] else { Issue.record("no tools"); return }
         #expect(tools.map { $0["name"] } == ["propose_check", "ask_user"])
         #expect(tools[0]["input_schema"]?["additionalProperties"] == false)
+    }
+
+    @Test("cache breakpoints cover stable facts, and session data only when repeated")
+    func cacheBreakpoints() throws {
+        let instructions = Instructions(
+            rules: "r", sharedData: "{\"vehicle\":1,", variableData: "\"problem\":2}")
+        let oneShot = AssistantRequest(instructions: instructions, messages: [], tools: [])
+        let repeated = AssistantRequest(
+            instructions: instructions, messages: [], tools: [], repeatsSessionData: true)
+        for (request, expectedVariableBreakpoint) in [(oneShot, false), (repeated, true)] {
+            let body = try AnthropicProvider.body(for: request, model: "m")
+            guard case .array(let blocks) = body["system"] else {
+                Issue.record("no system blocks")
+                continue
+            }
+            #expect(blocks[1]["cache_control"] == ["type": "ephemeral"])
+            #expect((blocks[2]["cache_control"] != nil) == expectedVariableBreakpoint)
+        }
     }
 }
 
@@ -587,6 +674,9 @@ struct InstructionsTests {
         var changed = briefing()
         changed.problem = "Brake pedal soft"
         changed.events[0].summary = "A different owner note"
+        changed.adapter = .init(identity: "different", voltage: 11)
+        changed.interpretations = ["different interpretation"]
+        changed.reviews = ["different review"]
         let second = AssistantInstructions.make(
             briefing: changed, provider: .anthropic, sharing: .init(includeVIN: false))
         #expect(first.sharedData == second.sharedData)
@@ -731,6 +821,16 @@ struct LiveProviderTests {
         let cost = try #require(usage)
         #expect(cost.input > 0 && cost.output > 0)
         let result = try InterpretationTool.parse(try #require(call))
+        print(
+            (["", "=== \(provider.id.rawValue) explanations ==="]
+                + result.codes.map {
+                    "\($0.code) [module \($0.module ?? "null")] \($0.name) (\($0.confidence.rawValue)): \($0.meaning) First: \($0.firstCheck)"
+                }
+                + [
+                    "Module name: \(result.module?.name ?? "null")",
+                    "Tokens: \(cost.input) in, \(cost.output) out",
+                ])
+                .joined(separator: "\n"))
         #expect(result.codes.count == 2)
         #expect(
             result.codes.allSatisfy {

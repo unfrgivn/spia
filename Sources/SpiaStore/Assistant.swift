@@ -430,7 +430,8 @@ public final class AssistantConversation {
                 provider: id, sharing: SharingPolicy(includeVIN: configuration.settings.shareVIN)),
             messages: history(),
             tools: AssistantTools.definitions(
-                modules: modules.map(\.label), bulletins: !bulletins.isEmpty))
+                modules: modules.map(\.label), bulletins: !bulletins.isEmpty),
+            repeatsSessionData: true)
         error = nil
         streamingText = ""
         respondingProvider = id
