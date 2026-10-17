@@ -267,9 +267,9 @@ struct InterpretationTests {
         let ceiling = InterpretationRequest.make(
             briefing: briefing, modules: [input(20)], provider: .anthropic,
             sharing: .init(includeVIN: false))
-        #expect(floor.maxOutputTokens == 600)
-        #expect(estimate.maxOutputTokens == 3200)
-        #expect(ceiling.maxOutputTokens == 4000)
+        #expect(floor.maxOutputTokens == 780)
+        #expect(estimate.maxOutputTokens == 4160)
+        #expect(ceiling.maxOutputTokens == 5200)
     }
 
     private func promptText(from request: AssistantRequest) -> String {
@@ -743,6 +743,27 @@ struct SettingsTests {
         #expect(settings.backgroundModel(for: .anthropic) == AnthropicProvider.fastModel)
         settings.anthropicBackgroundModel = settings.anthropicModel
         #expect(settings.backgroundModel(for: .anthropic) == "custom")
+    }
+
+    @Test("settings saved on the old background default move to Haiku 5.5")
+    func previousBackgroundDefaultMoves() throws {
+        func decode(chat: String, background: String) throws -> AssistantSettings {
+            try JSONDecoder().decode(
+                AssistantSettings.self,
+                from: Data(
+                    #"{"anthropicModel":"\#(chat)","anthropicBackgroundModel":"\#(background)"}"#
+                        .utf8))
+        }
+        #expect(
+            try decode(chat: "claude-opus-5-5", background: "claude-haiku-4-5")
+                .anthropicBackgroundModel == "claude-haiku-5-5")
+        // Only "Same as chat" can still store Haiku 4.5, and only with Haiku 4.5 as the chat model.
+        #expect(
+            try decode(chat: "claude-haiku-4-5", background: "claude-haiku-4-5")
+                .anthropicBackgroundModel == "claude-haiku-4-5")
+        #expect(
+            try decode(chat: "claude-opus-5-5", background: "claude-sonnet-5")
+                .anthropicBackgroundModel == "claude-sonnet-5")
     }
 
     @Test("the on-device model reports why it can't run on this Mac")

@@ -3,7 +3,12 @@ import Foundation
 /// Anthropic Messages API (https://platform.claude.com/docs/en/api/messages).
 public struct AnthropicProvider: AssistantProvider {
     public static let defaultModel = "claude-opus-5-5"
-    public static let fastModel = "claude-haiku-4-5"
+    /// The model for the automatic work. Haiku 5.5 accepts the forced tool choice that work uses
+    /// (the reply starts with the tool call, without thinking), caches prefixes from 512 tokens,
+    /// and costs a tenth of Haiku 4.5 per token.
+    public static let fastModel = "claude-haiku-5-5"
+    /// The automatic work's model until 2026-10-17, so saved settings can move off it.
+    static let previousFastModel = "claude-haiku-4-5"
     static let endpoint = URL(string: "https://api.anthropic.com/v1/messages")
 
     public let id = ProviderID.anthropic

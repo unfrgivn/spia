@@ -111,16 +111,27 @@ public struct AssistantSettings: Codable, Sendable, Equatable {
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        let anthropicModel =
+            try values.decodeIfPresent(String.self, forKey: .anthropicModel)
+            ?? AnthropicProvider.defaultModel
+        var anthropicBackgroundModel =
+            try values.decodeIfPresent(String.self, forKey: .anthropicBackgroundModel)
+            ?? AnthropicProvider.fastModel
+        // Haiku 4.5 was the default here until 2026-10-17. Settings can still store it only as
+        // "Same as chat", with Haiku 4.5 as the chat model too; any other saved Haiku 4.5 is the
+        // old default.
+        if anthropicBackgroundModel == AnthropicProvider.previousFastModel
+            && anthropicModel != AnthropicProvider.previousFastModel
+        {
+            anthropicBackgroundModel = AnthropicProvider.fastModel
+        }
         self.init(
             defaultProvider: try values.decodeIfPresent(ProviderID.self, forKey: .defaultProvider)
                 ?? .anthropic,
-            anthropicModel: try values.decodeIfPresent(String.self, forKey: .anthropicModel)
-                ?? AnthropicProvider.defaultModel,
+            anthropicModel: anthropicModel,
             openAIModel: try values.decodeIfPresent(String.self, forKey: .openAIModel)
                 ?? OpenAIProvider.defaultModel,
-            anthropicBackgroundModel: try values.decodeIfPresent(
-                String.self, forKey: .anthropicBackgroundModel)
-                ?? AnthropicProvider.fastModel,
+            anthropicBackgroundModel: anthropicBackgroundModel,
             openAIBackgroundModel: try values.decodeIfPresent(
                 String.self, forKey: .openAIBackgroundModel)
                 ?? OpenAIProvider.fastModel,
