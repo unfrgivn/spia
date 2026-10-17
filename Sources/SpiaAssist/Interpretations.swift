@@ -179,7 +179,7 @@ public enum InterpretationRequest {
             instructions: AssistantInstructions.make(
                 briefing: briefing, provider: provider, sharing: sharing),
             messages: [.init(role: .user, parts: [.text(prompt)])],
-            tools: BackgroundTools.definitions(modules: briefing.modules.map(\.label)),
+            tools: [InterpretationTool.definition],
             maxOutputTokens: min(4000, max(600, tokens)), toolChoice: .tool(InterpretationTool.name)
         )
     }

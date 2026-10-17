@@ -109,7 +109,7 @@ struct ReferenceStoreTests {
         #expect(!instructions.joined.contains("ZAM57RTS4H1249941"))
     }
 
-    @Test("a car with two open problems keeps one background prefix for every request")
+    @Test("a car with two open problems sends every request the same rules and facts")
     func storedBackgroundRequestsSharePrefix() throws {
         let vehicle = try garage.addDemoVehicle()
         _ = try cacheRecordedReferences(for: vehicle)
@@ -156,10 +156,12 @@ struct ReferenceStoreTests {
         let interpretation = InterpretationRequest.make(
             briefing: carBriefing, module: nil, codes: [.init(code: "P0001", catalogName: "Fuel")],
             provider: .anthropic, sharing: .init(includeVIN: true))
-        let bodies = try ([car, interpretation] + diagnoses).map {
+        let requests = [car, interpretation] + diagnoses
+        #expect(requests.allSatisfy { $0.tools.count == 1 })
+        let bodies = try requests.map {
             try AnthropicProvider.body(for: $0, model: AnthropicProvider.fastModel)
         }
-        #expect(bodies.dropFirst().allSatisfy { $0["tools"] == bodies[0]["tools"] })
+        #expect(bodies[2]["tools"] == bodies[3]["tools"])
         let blocks = bodies.compactMap { body -> [JSONValue]? in
             guard case .array(let values) = body["system"] else { return nil }
             return values
@@ -169,13 +171,17 @@ struct ReferenceStoreTests {
     }
 
     @Test(
-        "a live background burst reads the prefix written by its first request",
+        "a live burst's second diagnosis reads the prefix the first one wrote",
         .enabled(if: ProcessInfo.processInfo.environment["SPIA_ANTHROPIC_API_KEY"] != nil))
     func liveBackgroundCacheBurst() async throws {
         let key = try #require(ProcessInfo.processInfo.environment["SPIA_ANTHROPIC_API_KEY"])
         try #require(!key.isEmpty, "SPIA_ANTHROPIC_API_KEY is set but empty")
         let vehicle = try garage.addDemoVehicle()
         _ = try cacheRecordedReferences(for: vehicle)
+        // A second open problem, so one burst sends two diagnoses with the same tool and facts.
+        _ = try garage.addSession(
+            to: vehicle, title: "Washer pump",
+            problem: "The washer pump is silent with a full reservoir.")
         let suite = "spia-cache-burst-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -202,13 +208,12 @@ struct ReferenceStoreTests {
                 "\(entry.kind.rawValue) input=\(entry.input) cacheRead=\(entry.cacheRead) cacheWrite=\(entry.cacheWrite)"
             )
         }
-        #expect(usage.count >= 2)
-        guard let first = usage.first else { return }
-        let firstCache = first.cacheRead + first.cacheWrite
-        #expect(firstCache > 0)
-        for entry in usage.dropFirst() {
-            #expect(entry.cacheRead == firstCache)
-        }
+        #expect(usage.count >= 3)
+        let diagnoses = usage.filter { $0.kind == .diagnosis }
+        try #require(diagnoses.count == 2)
+        let written = diagnoses[0].cacheRead + diagnoses[0].cacheWrite
+        #expect(written > 0)
+        #expect(diagnoses[1].cacheRead == written)
     }
 
     @Test("a bulletin search answers the model at once with the matching bulletins")

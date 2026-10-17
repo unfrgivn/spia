@@ -72,7 +72,7 @@ struct InterpretationTests {
             try OpenAIProvider.body(for: automatic, model: "m")["tool_choice"] == .string("auto"))
     }
 
-    @Test("every background request for a car shares one cacheable prefix")
+    @Test("background requests share rules and car facts, and each kind keeps its own tool")
     func backgroundRequestsShareCacheablePrefix() throws {
         let module = SessionBriefing.ModuleFacts(
             label: "Engine", bus: "hs", request: "7E0", reply: "7E8", labelConfirmed: true)
@@ -93,6 +93,9 @@ struct InterpretationTests {
         second.events[0].summary = "new"
         second.interpretations = ["new interpretation"]
         second.reviews = ["new review"]
+        var third = second
+        third.problem = "Washer silent"
+        third.reviews = ["washer review"]
         let interpretation = InterpretationRequest.make(
             briefing: first, module: module,
             codes: [.init(code: "P0001", catalogName: nil)], provider: .anthropic,
@@ -100,21 +103,29 @@ struct InterpretationTests {
         let review = ReviewRequest.make(
             briefing: first, scope: .car, answered: [], codes: [], unread: [], provider: .anthropic,
             sharing: .init(includeVIN: true))
-        let diagnosis = DiagnosisRequest.make(
-            briefing: second, title: "Brake noise", text: "It squeaks", notes: [], answered: [],
-            findings: [], codes: [], unread: [], provider: .anthropic,
-            sharing: .init(includeVIN: true))
+        let diagnoses = [(second, "Brake noise"), (third, "Washer silent")].map { briefing, title in
+            DiagnosisRequest.make(
+                briefing: briefing, title: title, text: title, notes: [], answered: [],
+                findings: [], codes: [], unread: [], provider: .anthropic,
+                sharing: .init(includeVIN: true))
+        }
+        let requests = [interpretation, review] + diagnoses
+        // Each request offers only the tool it forces, so no answer can borrow another tool's fields.
+        #expect(
+            requests.map { $0.tools.map(\.name) } == [
+                [InterpretationTool.name], [ReviewTool.name], [DiagnosisTool.name],
+                [DiagnosisTool.name],
+            ])
 
-        let anthropic = try [interpretation, review, diagnosis].map {
+        let anthropic = try requests.map {
             try AnthropicProvider.body(for: $0, model: AnthropicProvider.fastModel)
         }
-        let anthropicTools = anthropic.map { $0["tools"] }
-        #expect(anthropicTools.dropFirst().allSatisfy { $0 == anthropicTools[0] })
+        #expect(anthropic[2]["tools"] == anthropic[3]["tools"])
         let systems = anthropic.compactMap { body -> [JSONValue]? in
             guard case .array(let blocks) = body["system"] else { return nil }
             return blocks
         }
-        try #require(systems.count == 3 && systems.allSatisfy { $0.count == 3 })
+        try #require(systems.count == 4 && systems.allSatisfy { $0.count == 3 })
         let sharedBlocksMatch = systems.dropFirst().allSatisfy {
             $0[0] == systems[0][0] && $0[1] == systems[0][1]
         }
@@ -122,11 +133,8 @@ struct InterpretationTests {
         #expect(systems.allSatisfy { $0[1]["cache_control"] == ["type": "ephemeral"] })
         #expect(systems.allSatisfy { $0[2]["cache_control"] == nil })
 
-        let openAI = try [interpretation, review, diagnosis].map {
-            try OpenAIProvider.body(for: $0, model: "gpt")
-        }
-        let openAITools = openAI.map { $0["tools"] }
-        #expect(openAITools.dropFirst().allSatisfy { $0 == openAITools[0] })
+        let openAI = try requests.map { try OpenAIProvider.body(for: $0, model: "gpt") }
+        #expect(openAI[2]["tools"] == openAI[3]["tools"])
         let prefix =
             interpretation.instructions.rules + "\n\n<session_data>\n"
             + interpretation.instructions.sharedData

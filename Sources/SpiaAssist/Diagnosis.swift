@@ -412,7 +412,7 @@ public enum DiagnosisRequest {
             instructions: AssistantInstructions.make(
                 briefing: briefing, provider: provider, sharing: sharing),
             messages: [.init(role: .user, parts: parts)],
-            tools: BackgroundTools.definitions(modules: briefing.modules.map(\.label)),
+            tools: [DiagnosisTool.definition(modules: briefing.modules.map(\.label))],
             maxOutputTokens: 4000, toolChoice: .tool(DiagnosisTool.name))
     }
 
