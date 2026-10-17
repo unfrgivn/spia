@@ -792,8 +792,8 @@ struct LiveProviderTests {
             ConversationMessage(
                 role: .user, parts: [.text("Where should we start? Reply in one sentence.")])
         ],
-        tools: AssistantTools.definitions(modules: ["Airbag controller (ORC)"]),
-        maxOutputTokens: 300)
+        // The chat's own budget: Haiku 5.5 thinks first here, and its thinking counts toward it.
+        tools: AssistantTools.definitions(modules: ["Airbag controller (ORC)"]))
 
     private func check(_ provider: any AssistantProvider) async throws {
         var finished = false
