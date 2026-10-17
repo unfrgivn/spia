@@ -186,7 +186,9 @@ struct ReferenceStoreTests {
         defer { try? configuration.keys.removeKey(for: .anthropic) }
         try #require(configuration.unavailableReason(.anthropic) == nil)
         configuration.settings.defaultProvider = .anthropic
-        configuration.settings.anthropicBackgroundModel = AnthropicProvider.fastModel
+        // Haiku 4.5 caches nothing under 4,096 tokens, more than this car's shared prefix (seen
+        // live 2026-10-17); Haiku 5.5's minimum is 512.
+        configuration.settings.anthropicBackgroundModel = "claude-haiku-5-5"
         let interpreter = Interpreter(configuration: configuration, garage: garage)
         interpreter.interpretations(for: vehicle).allow(.anthropic)
 
