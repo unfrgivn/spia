@@ -188,3 +188,15 @@ public enum AssistantTools {
         }
     }
 }
+
+/// The fixed tool set used by automatic background work. The requested operation is selected with
+/// `tool_choice`, so every background request for a car has the same cache prefix.
+public enum BackgroundTools {
+    public static func definitions(modules: [String]) -> [ToolDefinition] {
+        [
+            InterpretationTool.definition,
+            ReviewTool.definition(modules: modules),
+            DiagnosisTool.definition(modules: modules),
+        ]
+    }
+}

@@ -136,8 +136,8 @@ public struct SharingPolicy: Sendable, Equatable {
 }
 
 /// The system prompt in the three pieces a provider's prompt cache can match on: the rules, which
-/// never change; the car's data, which is the same for every request in one burst of background
-/// work; and the problem text and events, which differ.
+/// never change; the car's facts, which stay the same until its modules or references change; and
+/// the rest of the session data, which differs from request to request.
 public struct Instructions: Sendable, Equatable {
     public let rules: String
     public let sharedData: String
@@ -156,7 +156,8 @@ public struct Instructions: Sendable, Equatable {
 }
 
 public enum AssistantInstructions {
-    /// The rules and two deterministic session-data segments used by provider prompt caching.
+    /// The rules, then the car's facts, then the rest of the session data, split where a prompt
+    /// cache can match.
     public static func make(briefing: SessionBriefing, provider: ProviderID, sharing: SharingPolicy)
         -> Instructions
     {
@@ -235,19 +236,20 @@ public enum AssistantInstructions {
     }
 
     /// The car's facts, encoded on their own so they come out byte-identical for every request
-    /// that shares them. Nil optionals are left out, as `SessionBriefing`'s own encoding leaves
-    /// them out.
+    /// about the car, in one burst and across bursts, until its modules or references change. Nil
+    /// optionals are left out, as `SessionBriefing`'s own encoding leaves them out.
     private struct SharedFacts: Encodable {
         let vehicle: SessionBriefing.VehicleFacts
         let modules: [SessionBriefing.ModuleFacts]
-        let adapter: AdapterStatus?
         let references: SessionBriefing.ReferenceFacts?
-        let interpretations: [String]
-        let reviews: [String]
     }
 
-    /// What changes between requests: the problem's text and the timeline.
+    /// What changes between requests: the adapter, the codes' explanations, the reviews (a problem
+    /// sees the car's and its own), the problem's text, and the timeline.
     private struct VariableFacts: Encodable {
+        let adapter: AdapterStatus?
+        let interpretations: [String]
+        let reviews: [String]
         let problem: String
         let events: [SessionBriefing.Event]
     }
@@ -257,10 +259,12 @@ public enum AssistantInstructions {
     private static func segments(_ briefing: SessionBriefing) -> Instructions {
         let shared = encode(
             SharedFacts(
-                vehicle: briefing.vehicle, modules: briefing.modules, adapter: briefing.adapter,
-                references: briefing.references, interpretations: briefing.interpretations,
-                reviews: briefing.reviews))
-        let variable = encode(VariableFacts(problem: briefing.problem, events: briefing.events))
+                vehicle: briefing.vehicle, modules: briefing.modules,
+                references: briefing.references))
+        let variable = encode(
+            VariableFacts(
+                adapter: briefing.adapter, interpretations: briefing.interpretations,
+                reviews: briefing.reviews, problem: briefing.problem, events: briefing.events))
         return Instructions(
             rules: rules, sharedData: String(shared.dropLast()) + ",",
             variableData: String(variable.dropFirst()))

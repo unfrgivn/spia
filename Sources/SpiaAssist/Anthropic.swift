@@ -64,6 +64,16 @@ public struct AnthropicProvider: AssistantProvider {
                 messages.append((message.role, content))
             }
         }
+        // Claude's cache prefix runs tools, then system, then messages. Every background request
+        // for a car sends the same tools, rules, and car facts, so the breakpoint closes the car
+        // facts. The rest of the session data is marked too only when the next request repeats it.
+        var sessionBlock: [String: JSONValue] = [
+            "type": "text",
+            "text": .string(request.instructions.variableData + "\n</session_data>"),
+        ]
+        if request.repeatsSessionData {
+            sessionBlock["cache_control"] = ["type": "ephemeral"]
+        }
         return [
             "model": .string(model),
             "max_tokens": .number(Double(request.maxOutputTokens)),
@@ -72,12 +82,9 @@ public struct AnthropicProvider: AssistantProvider {
                 [
                     "type": "text",
                     "text": .string("<session_data>\n" + request.instructions.sharedData),
-                ],
-                [
-                    "type": "text",
-                    "text": .string(request.instructions.variableData + "\n</session_data>"),
                     "cache_control": ["type": "ephemeral"],
                 ],
+                .object(sessionBlock),
             ]),
             "stream": true,
             "tool_choice": toolChoice(for: request.toolChoice),

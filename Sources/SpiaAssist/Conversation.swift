@@ -106,16 +106,22 @@ public struct AssistantRequest: Sendable, Equatable {
     public let tools: [ToolDefinition]
     public let maxOutputTokens: Int
     public let toolChoice: ToolChoice
+    /// Whether the next request will send this session data again, as a conversation's next turn
+    /// does; Claude then caches it too. Each background request carries session data of its own,
+    /// so for those a second cache write would only add its 25 percent premium.
+    public let repeatsSessionData: Bool
 
     public init(
         instructions: Instructions, messages: [ConversationMessage], tools: [ToolDefinition],
-        maxOutputTokens: Int = 2048, toolChoice: ToolChoice = .auto
+        maxOutputTokens: Int = 2048, toolChoice: ToolChoice = .auto,
+        repeatsSessionData: Bool = false
     ) {
         self.instructions = instructions
         self.messages = messages
         self.tools = tools
         self.maxOutputTokens = maxOutputTokens
         self.toolChoice = toolChoice
+        self.repeatsSessionData = repeatsSessionData
     }
 }
 
