@@ -174,6 +174,16 @@ struct ReviewTests {
         let cost = try #require(usage)
         #expect(cost.input > 0 && cost.output > 0)
         let result = try ReviewTool.parse(try #require(call), modules: modules)
+        print(
+            (["", "=== \(provider.id.rawValue) review ===", "Reading: \(result.reading)"]
+                + result.questions.map {
+                    "Question: \($0.question) (\($0.module ?? "untagged") \($0.codes))"
+                }
+                + result.checks.map {
+                    "Check: \($0.check.rawValue) \($0.module ?? "") because \($0.reason)"
+                }
+                + ["Tokens: \(cost.input) in, \(cost.output) out"])
+                .joined(separator: "\n"))
         #expect(!result.reading.isEmpty)
         #expect(result.questions.count <= 3)
     }

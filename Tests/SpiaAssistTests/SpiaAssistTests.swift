@@ -813,6 +813,16 @@ struct LiveProviderTests {
         let cost = try #require(usage)
         #expect(cost.input > 0 && cost.output > 0)
         let result = try InterpretationTool.parse(try #require(call))
+        print(
+            (["", "=== \(provider.id.rawValue) explanations ==="]
+                + result.codes.map {
+                    "\($0.code) [module \($0.module ?? "null")] \($0.name) (\($0.confidence.rawValue)): \($0.meaning) First: \($0.firstCheck)"
+                }
+                + [
+                    "Module name: \(result.module?.name ?? "null")",
+                    "Tokens: \(cost.input) in, \(cost.output) out",
+                ])
+                .joined(separator: "\n"))
         #expect(result.codes.count == 2)
         #expect(
             result.codes.allSatisfy {
