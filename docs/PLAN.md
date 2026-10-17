@@ -253,9 +253,9 @@ Sources for these rules: Caring Caribou's [UDS discovery](https://github.com/Car
 | 2 | `SerialTransport` + `ELM327Session` + `spia ports` / `spia probe` | Hardware day 1: `ATZ`, `ATI`, `ATRV`, `ATDP` answer from the FS | done |
 | 3 | Recording/replay transports + `--record` flag | Real transcripts land in `Tests/Fixtures/` | done, including car captures |
 | 4 (#4) | `spia capture` (ATMA monitor, candump log, per-ID summary, 2 Mbps UART) | Ghibli traffic captured without reported overflow at 2 Mbps | shipped (PR #9); second-bus traffic also observed with STP 53 |
-| 5 (#5) | UDS/ISO-TP client and module discovery, reads first | Complete DTC replies with explicit request/reply IDs and correct flow control | `spia uds dtcs` implemented, replay-backed, live unverified; discovery became the app's survey (see "Vehicle onboarding") |
-| 6 (#1) | `spia scan` (stored/pending/permanent DTCs, freeze frame, readiness) + `spia info` (VIN, CAL IDs) | Pure report/decoder tests, original `ghibli-ignition-on-term.txt` replay through production request/decode paths, CLI help/validation; live execution remains unverified | offline milestone implemented; live unverified |
-| 7 (#2) | `spia clear` | Codes clear, CEL off, re-scan clean | pending |
+| 5 (#5) | UDS/ISO-TP client and module discovery, reads first | Complete DTC replies with explicit request/reply IDs and correct flow control | `spia uds dtcs` implemented and replay-backed; its read (`readUDSDTC`) runs in the app's module reads and survey, verified on the cars 2026-09-30, and the CLI command itself waits for a car; discovery became the app's survey (see "Vehicle onboarding") |
+| 6 (#1) | `spia scan` (stored/pending/permanent DTCs, freeze frame, readiness) + `spia info` (VIN, CAL IDs) | Pure report/decoder tests, original `ghibli-ignition-on-term.txt` replay through production request/decode paths, CLI help/validation | implemented; the same `GenericOBDWorkflow` ran live in the app's scan and vehicle information on the cars 2026-09-30, and the CLI commands themselves wait for a car |
+| 7 (#2) | `spia clear` | Codes clear, CEL off, re-scan clean | dropped 2026-10-17: clearing writes to the car, which the read-only rule rules out; Mode 04 clears only emissions codes, and the Ghibli has none; after the repair, the airbag module's codes are the shop's to clear (UDS `14`) |
 | 8 (#3) | `spia live` with CSV logging | RPM/coolant/etc. track reality at idle | implemented (`--pids`, `--interval`, `--duration`, `--out`); idle run against the car unverified |
 | iOS (#6) | `BLETransport` (CoreBluetooth), SwiftUI shell | Bluetooth FS on iPhone | `BLETransport` and `spia --ble` verified on the Ghibli; the iOS app onboarded the Ghibli over Bluetooth on an iPhone, and its recordings replay in tests (2026-09-30) |
 | Survey | In-app onboarding: find, identify, name, and read a car's modules | Bench capture replays through the survey; first car visit on the owner's path | steps 1-9 done; verified on the Ghibli and the Tiguan over USB and the Ghibli and a CX-5 over Bluetooth; reading any car in slices, 1-5 done (see "Reading any car") |
@@ -301,8 +301,8 @@ The in-place reset is verified on the USB vLinker FS with STN1170 v4.3.2. Mid-se
 `vlinker-fs-usb-only-airbag-read.txt`, `vlinker-fs-usb-only-survey.txt`,
 `vlinker-fs-usb-only-survey.plan.json`, and `vlinker-fs-usb-only-scan-after-module.txt`. `CAN ERROR`
 without a car means nothing acknowledged the frames; on a running car, an absent module answers
-`NO DATA`. USB reset and the survey no-car path are verified, while BLE reset and real module
-answers remain unverified.
+`NO DATA`. The bench verified the USB reset and the survey's no-car path; the next day the cars
+verified the reset over USB and Bluetooth and real module answers (below).
 
 On the cars, 2026-09-30, through the Mac app over USB:
 
@@ -433,6 +433,6 @@ ATFCSM 1
 
 The earlier `ATFCSM 1` rejection was setup order, not whitespace. See the [OBDLink reference manual](https://www.scantool.net/scantool/downloads/678/obdlink_frpm_e.pdf), CAN-specific commands, and [ELM327 manual](https://elmelectronics.com/wp-content/uploads/2020/05/ELM327DSL.pdf), "Altering Flow Control Messages."
 
-Next: validate and review the bounded offline-replay-backed command `spia uds dtcs --bus hs --tx 744 --rx 4C4` before any live use. It is read-only, standard 11-bit only, explicitly configures the target headers/flow control, sends one `19 02 <mask>` request, accepts pending followed by a final response in one adapter prompt, and reports a pending-only prompt as incomplete. No automatic diagnostic-session transitions, retry, discovery, extended-ID support, or manufacturer label inference are included.
+`spia uds dtcs --bus hs --tx 744 --rx 4C4` is this read from the command line. It is read-only, takes 11-bit or 29-bit IDs (29-bit on the 500k bus only), explicitly configures the target headers/flow control, sends one `19 02 <mask>` request, accepts pending followed by a final response in one adapter prompt, and reports a pending-only prompt as incomplete. No automatic diagnostic-session transitions, retry, discovery, or manufacturer label inference are included. Its read, `readUDSDTC`, is the one the app's module reads and survey use, verified on the cars on 2026-09-30; the command itself hasn't been run on a car yet.
 
 Offline CLI validation runs with `scripts/test-cli-validation.sh .build/debug/spia`; it never invokes a valid auto-port command. `readUDSDTC` assumes its caller exclusively owns the session and has already configured the target headers.
