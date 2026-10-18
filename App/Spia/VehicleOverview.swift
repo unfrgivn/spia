@@ -53,10 +53,14 @@ struct VehicleOverview: View {
                 }
                 if interpretations.review(for: .car) != nil
                     || interpretations.reviewInFlight.contains(.car)
+                    || interpretations.failure(for: .review(.car)) != nil
                 {
                     ReviewView(
                         review: interpretations.review(for: .car),
                         inFlight: interpretations.reviewInFlight.contains(.car),
+                        failure: interpretations.failure(for: .review(.car)),
+                        retry: retryAssistant,
+                        failureTitle: "The review didn't run",
                         untaggedQuestions: interpretations.review(for: .car)?.questions.filter {
                             $0.module == nil && $0.codes.isEmpty
                         } ?? [],
@@ -96,25 +100,11 @@ struct VehicleOverview: View {
                     interpretations: interpretations,
                     scope: .car,
                     answer: answer,
+                    assistantFailure: interpretations.failure(for: .explanations),
+                    retryAssistant: retryAssistant,
                     open: { runner?.historySubject = $0.subject }
                 )
                 .padding(.top, compact ? 18 : 22)
-                if let error = interpretations.lastError {
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(Palette.secondary)
-                        Button("Try again") {
-                            Task {
-                                await model.interpreter.refresh(
-                                    vehicle, adapter: workbench?.liveStatus)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Palette.accent)
-                    }
-                    .padding(.top, 8)
-                }
                 VStack(alignment: .leading, spacing: 12) {
                     SectionHeading("What's wrong with the car?")
                     ProblemComposerInline(vehicle: vehicle) { session in
@@ -255,6 +245,14 @@ struct VehicleOverview: View {
     private var board: SessionBoard { vehicle.board(live: workbench?.liveStatus) }
     private var interpretations: VehicleInterpretations {
         model.interpreter.interpretations(for: vehicle)
+    }
+
+    private var retryAssistant: () -> Void {
+        {
+            Task {
+                await model.interpreter.refresh(vehicle, adapter: workbench?.liveStatus)
+            }
+        }
     }
 
     private var moduleLabels: [ModuleTarget: String] {

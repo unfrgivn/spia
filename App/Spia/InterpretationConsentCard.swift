@@ -5,16 +5,12 @@ import SwiftUI
 
 struct InterpretationConsentCard: View {
     @Environment(AppModel.self) private var model
-    #if os(macOS)
-        @Environment(\.openSettings) private var openSettings
-    #endif
     let compact: Bool
     let board: SessionBoard
     let vehicle: Vehicle
     let interpretations: VehicleInterpretations
     let allow: () -> Void
     let dismiss: () -> Void
-    @State private var showingSettings = false
 
     private var provider: ProviderID { model.assistant.settings.defaultProvider }
     private var unavailable: String? { model.assistant.unavailableReason(provider) }
@@ -42,8 +38,7 @@ struct InterpretationConsentCard: View {
                     Button("Not now", action: dismiss)
                         .buttonStyle(.bordered)
                 } else {
-                    Button("Open Settings", action: showSettings)
-                        .buttonStyle(.borderedProminent)
+                    AssistantSettingsButton(look: .prominent, onDismiss: nil)
                     Button("Not now", action: dismiss)
                         .buttonStyle(.bordered)
                 }
@@ -52,25 +47,5 @@ struct InterpretationConsentCard: View {
         .padding(compact ? 16 : 20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .card(tint: Palette.accent)
-        #if os(iOS)
-            .sheet(isPresented: $showingSettings) {
-                NavigationStack {
-                    AssistantSettingsView()
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { showingSettings = false }
-                        }
-                    }
-                }
-            }
-        #endif
-    }
-
-    private func showSettings() {
-        #if os(macOS)
-            openSettings()
-        #else
-            showingSettings = true
-        #endif
     }
 }

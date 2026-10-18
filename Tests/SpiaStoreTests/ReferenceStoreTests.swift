@@ -200,7 +200,7 @@ struct ReferenceStoreTests {
 
         let interpretations = interpreter.interpretations(for: vehicle)
         let usage = interpretations.usage
-        print("last error: \(interpretations.lastError ?? "none")")
+        print("assistant failure: \(interpretations.failure(for: .explanations) ?? "none")")
         for entry in usage {
             print(
                 "\(entry.kind.rawValue) input=\(entry.input) cacheRead=\(entry.cacheRead) cacheWrite=\(entry.cacheWrite)"

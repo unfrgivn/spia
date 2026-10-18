@@ -6,6 +6,8 @@ import SwiftUI
 struct DiagnosisView: View {
     let review: StoredReview?
     let inFlight: Bool
+    let failure: String?
+    let retry: (() -> Void)?
     let findings: [TimelineEntry]
     let untaggedQuestions: [StoredQuestion]
     let moduleLabels: [ModuleTarget: String]
@@ -26,9 +28,14 @@ struct DiagnosisView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: wide ? 18 : 14) {
+            if !closed, let failure, let retry, review == nil {
+                AssistantFailureCard(
+                    title: "The diagnosis didn't run", message: failure, retry: retry)
+            }
             ReadingHeader(
                 provider: review?.provider, reading: review?.reading, date: review?.date,
-                inFlight: inFlight, busyText: "is reading the problem…")
+                inFlight: inFlight, failure: review != nil ? failure : nil, retry: retry,
+                busyText: "is reading the problem…")
             if let review, !review.symptoms.isEmpty { symptoms(review.symptoms) }
             if let review, !review.suspects.isEmpty { suspects(review) }
             if let review, !review.checks.isEmpty || !review.inspections.isEmpty { tests(review) }

@@ -99,6 +99,40 @@ struct InterpretationTests {
         #expect(summary.last30Days == summary.total)
     }
 
+    @Test("paused automatic work clears review and explanation failures")
+    func pausedWorkClearsFailures() async throws {
+        let vehicle = try garage.addDemoVehicle()
+        let suite = "spia-paused-failures-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        let configuration = AssistantConfiguration(
+            keys: APIKeyStore(service: "spia-paused-failures-\(UUID().uuidString)"),
+            defaults: defaults)
+        configuration.settings.automaticWorkPaused = true
+        let interpreter = Interpreter(configuration: configuration, garage: garage)
+        let cache = interpreter.interpretations(for: vehicle)
+        cache.recordFailure("Explanation failed", for: .explanations)
+        cache.recordFailure("Review failed", for: .review(.car))
+
+        await interpreter.refresh(vehicle, adapter: nil)
+
+        #expect(cache.failure(for: .explanations) == nil)
+        #expect(cache.failure(for: .review(.car)) == nil)
+    }
+
+    @Test("an explanation failure clears when there is nothing left to explain")
+    func noExplanationWorkClearsFailure() async throws {
+        let vehicle = try garage.addVehicle(name: "No codes")
+        let configuration = AssistantConfiguration(
+            keys: APIKeyStore(service: "spia-no-explanation-work-\(UUID().uuidString)"))
+        let interpreter = Interpreter(configuration: configuration, garage: garage)
+        let cache = interpreter.interpretations(for: vehicle)
+        cache.recordFailure("Explanation failed", for: .explanations)
+
+        await interpreter.catchUp(vehicle, adapter: nil)
+
+        #expect(cache.failure(for: .explanations) == nil)
+    }
+
     @Test("car briefing includes open problems and interpretations")
     func carBriefing() throws {
         let vehicle = try garage.addDemoVehicle()
@@ -124,7 +158,7 @@ struct InterpretationTests {
             keys: APIKeyStore(service: "spia-interpretation-test-\(UUID().uuidString)"))
         let interpreter = Interpreter(configuration: configuration, garage: garage)
         await interpreter.catchUp(vehicle, adapter: nil)
-        #expect(interpreter.interpretations(for: vehicle).lastError == nil)
+        #expect(interpreter.interpretations(for: vehicle).failure(for: .explanations) == nil)
     }
 
     @Test("automatic work pauses without an error, request, or stored result")
@@ -139,7 +173,7 @@ struct InterpretationTests {
         cache.allow(.anthropic)
         await interpreter.refresh(vehicle, adapter: nil)
         let result = interpreter.interpretations(for: vehicle)
-        #expect(result.lastError == nil)
+        #expect(result.failure(for: .explanations) == nil)
         #expect(result.inFlight.isEmpty)
         #expect(result.reviewInFlight.isEmpty)
         #expect(result.codes.isEmpty)
@@ -177,7 +211,8 @@ struct InterpretationTests {
         let interpreter = Interpreter(configuration: configuration, garage: garage)
         interpreter.interpretations(for: vehicle).allow(.anthropic)
         await interpreter.catchUp(vehicle, adapter: nil)
-        #expect(interpreter.interpretations(for: vehicle).lastError != nil)
+        #expect(
+            interpreter.interpretations(for: vehicle).failure(for: .explanations) != nil)
         let batches = InterpretationPlan.batches(work, size: 8)
         #expect(batches.map(\.count) == [8, 3])
         #expect(batches[0].first?.label == plan[0].label)
@@ -235,7 +270,7 @@ struct InterpretationTests {
         interpreter.interpretations(for: vehicle).allow(.anthropic)
         await interpreter.catchUp(vehicle, adapter: nil)
         #expect(
-            interpreter.interpretations(for: vehicle).lastError
+            interpreter.interpretations(for: vehicle).failure(for: .explanations)
                 == AssistantError.missingAPIKey(.anthropic).description)
         #expect(interpreter.interpretations(for: vehicle).inFlight.isEmpty)
     }
