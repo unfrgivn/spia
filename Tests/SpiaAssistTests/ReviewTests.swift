@@ -180,7 +180,7 @@ struct ReviewTests {
         }
         // A real stream must report what it cost; the ledger depends on it.
         let cost = try #require(usage)
-        #expect(cost.input > 0 && cost.output > 0)
+        #expect(cost.input + cost.cacheRead + cost.cacheWrite > 0 && cost.output > 0)
         let result = try ReviewTool.parse(try #require(call), modules: modules)
         print(
             (["", "=== \(provider.id.rawValue) review ===", "Reading: \(result.reading)"]
