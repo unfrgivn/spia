@@ -211,9 +211,7 @@ public enum DiagnosisTool {
             else { throw AssistantError.malformedStream("invalid diagnosis suspect") }
             return DiagnosisSuspect(
                 name: name, why: why, confidence: confidence,
-                symptoms: try indexes.map {
-                    try index($0, count: symptoms.count, label: "suspect symptom")
-                })
+                symptoms: Self.indexes(indexes, count: symptoms.count))
         }
         guard case .array(let checkValues)? = root["checks"] else {
             throw AssistantError.malformedStream("invalid diagnosis checks")
@@ -233,9 +231,7 @@ public enum DiagnosisTool {
             }
             return DiagnosisCheck(
                 proposal: CheckProposal(check: check, module: module, reason: reason),
-                suspects: try indexes.map {
-                    try index($0, count: suspects.count, label: "check suspect")
-                })
+                suspects: Self.indexes(indexes, count: suspects.count))
         }
         guard case .array(let inspectionValues)? = root["inspections"], inspectionValues.count <= 5
         else { throw AssistantError.malformedStream("invalid diagnosis inspections") }
@@ -252,9 +248,7 @@ public enum DiagnosisTool {
             return DiagnosisInspection(
                 title: title, steps: steps, lookFor: lookFor,
                 safety: try optionalString(object["safety"], label: "diagnosis inspection safety"),
-                suspects: try indexes.map {
-                    try index($0, count: suspects.count, label: "inspection suspect")
-                }, tellsApart: tellsApart)
+                suspects: Self.indexes(indexes, count: suspects.count), tellsApart: tellsApart)
         }
         guard case .array(let questionValues)? = root["questions"], questionValues.count <= 3 else {
             throw AssistantError.malformedStream("invalid diagnosis questions")
@@ -298,11 +292,18 @@ public enum DiagnosisTool {
         return string
     }
 
-    private static func index(_ value: JSONValue, count: Int, label: String) throws -> Int {
-        guard case .number(let number) = value, number.rounded() == number, number >= 0,
-            number < Double(count)
-        else { throw AssistantError.malformedStream("invalid \(label) index") }
-        return Int(number)
+    /// Cross-references into the symptoms or the suspects. One that points nowhere (past the
+    /// end, below zero, or not a whole number) costs only itself: it's dropped, and the rest of
+    /// the diagnosis stands. Repeats go too.
+    private static func indexes(_ values: [JSONValue], count: Int) -> [Int] {
+        var kept: [Int] = []
+        for value in values {
+            guard case .number(let number) = value, number.rounded() == number, number >= 0,
+                number < Double(count), !kept.contains(Int(number))
+            else { continue }
+            kept.append(Int(number))
+        }
+        return kept
     }
 }
 
