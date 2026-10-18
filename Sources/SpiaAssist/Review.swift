@@ -199,7 +199,7 @@ public enum ReviewRequest {
             \(codeText)
             Not read yet:
             \(unreadText)
-            Propose checks only for parts listed as not read yet. The adapter check is allowed only when Battery is
+            Propose checks only for parts listed as not read yet; when nothing is listed, `checks` is an empty array. The adapter check is allowed only when Battery is
             listed as not read yet. Never propose vehicle_info when the briefing already has a VIN.
             Manufacturer-code meanings are interpretations, not verified descriptions.
             A failure-type meaning beside a code is from the standard's categories; use it as given. When it says the byte is not described, say what the byte means if you know, and label it a guess otherwise.
