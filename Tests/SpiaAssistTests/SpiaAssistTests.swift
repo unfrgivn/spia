@@ -902,4 +902,63 @@ struct LiveProviderTests {
         try await interpret(
             OpenAIProvider(apiKey: Self.openAIKey ?? "", model: OpenAIProvider.fastModel))
     }
+
+    /// The chat's loop as the app runs it on its default Claude model, which always thinks: the
+    /// model calls a tool, the app keeps the reply's text and tool calls as it saves them, and
+    /// the answer goes back as a tool result.
+    @Test("Claude's chat model carries on after a tool result", .enabled(if: anthropicKey != nil))
+    func claudeToolRoundTrip() async throws {
+        let provider = AnthropicProvider(
+            apiKey: Self.anthropicKey ?? "", model: AnthropicProvider.defaultModel)
+        var messages = [
+            ConversationMessage(
+                role: .user,
+                parts: [
+                    .text(
+                        "The horn and every steering-wheel button are dead, and the airbag lamp is on. Before you suggest anything, ask me one question with ask_user."
+                    )
+                ])
+        ]
+        let first = try await chatReply(provider, messages)
+        try #require(first.calls.contains { $0.name == AssistantTools.askUserName })
+        messages.append(
+            ConversationMessage(
+                role: .assistant,
+                parts: (first.text.isEmpty ? [] : [.text(first.text)])
+                    + first.calls.map { .toolCall($0) }))
+        messages.append(
+            ConversationMessage(
+                role: .user,
+                parts: first.calls.map {
+                    .toolResult(
+                        ToolResult(callID: $0.id, content: "It started the day after a car wash."))
+                }))
+        let second = try await chatReply(provider, messages)
+        print(
+            "=== round trip: first \(String(describing: first.usage)), second \(String(describing: second.usage)), stop \(String(describing: second.stop))\n\(second.text)"
+        )
+        #expect(second.stop != nil)
+        #expect(!second.text.isEmpty || !second.calls.isEmpty)
+    }
+
+    private func chatReply(_ provider: any AssistantProvider, _ messages: [ConversationMessage])
+        async throws -> (text: String, calls: [ToolCall], usage: TokenUsage?, stop: StopReason?)
+    {
+        var text = ""
+        var calls: [ToolCall] = []
+        var usage: TokenUsage?
+        var stop: StopReason?
+        let chat = AssistantRequest(
+            instructions: request.instructions, messages: messages, tools: request.tools,
+            repeatsSessionData: true)
+        for try await event in provider.respond(to: chat) {
+            switch event {
+            case .text(let delta): text += delta
+            case .toolCall(let call): calls.append(call)
+            case .usage(let value): usage = value
+            case .finished(let reason): stop = reason
+            }
+        }
+        return (text.trimmingCharacters(in: .whitespacesAndNewlines), calls, usage, stop)
+    }
 }
