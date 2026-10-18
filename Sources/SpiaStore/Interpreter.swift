@@ -29,17 +29,25 @@ public final class Interpreter {
         let plan = InterpretationPlan.missing(
             board: vehicle.board(), stored: interpretations.codes, modules: vehicle.orderedModules)
         let work = plan.filter { !interpretations.inFlight.contains($0.target) }
-        guard !work.isEmpty else { return }
-        guard !configuration.settings.automaticWorkPaused else { return }
+        guard !work.isEmpty else {
+            interpretations.clearFailure(for: .explanations)
+            return
+        }
+        guard !configuration.settings.automaticWorkPaused else {
+            interpretations.clearFailure(for: .explanations)
+            return
+        }
         let providerID = configuration.settings.defaultProvider
         if providerID.isCloud && interpretations.consent == nil {
+            interpretations.clearFailure(for: .explanations)
             return
         }
         if let reason = configuration.unavailableReason(providerID) {
-            interpretations.lastError = reason
+            interpretations.recordFailure(reason, for: .explanations)
             return
         }
         let briefing = garage.briefing(for: vehicle, adapter: adapter)
+        var allBatchesSucceeded = true
         for batch in InterpretationPlan.batches(work, size: 8) {
             for item in batch { interpretations.begin(item.target) }
             defer { batch.forEach { interpretations.end($0.target) } }
@@ -91,10 +99,13 @@ public final class Interpreter {
                         model: model,
                         module: item.needsName ? module : nil)
                 }
-                interpretations.lastError = nil
             } catch {
-                interpretations.lastError = "Code explanation failed: \(error.readable)."
+                allBatchesSucceeded = false
+                interpretations.recordFailure(error.readable, for: .explanations)
             }
+        }
+        if allBatchesSucceeded {
+            interpretations.clearFailure(for: .explanations)
         }
     }
 
@@ -105,19 +116,23 @@ public final class Interpreter {
 
     public func review(_ vehicle: Vehicle, adapter: AdapterStatus?) async {
         let interpretations = interpretations(for: vehicle)
-        guard !configuration.settings.automaticWorkPaused else { return }
+        if configuration.settings.automaticWorkPaused {
+            interpretations.clearReviewFailures()
+            return
+        }
         let carBriefing = garage.briefing(for: vehicle, adapter: adapter)
         let scopes: [(ReviewScope, DiagnosticSession?)] =
             [(.car, nil)]
             + vehicle.sessions.filter { $0.status == .open && Self.hasSymptoms($0) }.map {
                 (.problem($0.id), $0)
             }
+        interpretations.clearReviewFailures(except: Set(scopes.map(\.0)))
         let providerID = configuration.settings.defaultProvider
-        if providerID.isCloud && interpretations.consent == nil { return }
-        if let reason = configuration.unavailableReason(providerID) {
-            interpretations.lastError = reason
+        if providerID.isCloud && interpretations.consent == nil {
+            interpretations.clearReviewFailures()
             return
         }
+        let unavailableReason = configuration.unavailableReason(providerID)
         for (scope, session) in scopes {
             guard !interpretations.reviewInFlight.contains(scope) else { continue }
             let existing = interpretations.review(for: scope)
@@ -138,7 +153,14 @@ public final class Interpreter {
                 session == nil
                 ? existing?.inputs == inputs
                 : existing?.kind == .diagnosis && existing?.inputs == inputs
-            guard !unchanged else { continue }
+            if unchanged {
+                interpretations.clearFailure(for: .review(scope))
+                continue
+            }
+            if let unavailableReason {
+                interpretations.recordFailure(unavailableReason, for: .review(scope))
+                continue
+            }
             interpretations.beginReview(scope)
             defer { interpretations.endReview(scope) }
             do {
@@ -194,10 +216,9 @@ public final class Interpreter {
                         result, scope: scope, inputs: inputs, provider: providerID, model: model,
                         modules: vehicle.assistantModules)
                 }
-                interpretations.lastError = nil
+                interpretations.clearFailure(for: .review(scope))
             } catch {
-                interpretations.lastError =
-                    "\(session == nil ? "Review" : "Diagnosis") failed: \(error.readable)."
+                interpretations.recordFailure(error.readable, for: .review(scope))
             }
         }
     }

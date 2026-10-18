@@ -141,14 +141,43 @@ struct ReviewTests {
             keys: APIKeyStore(service: "spia-review-gating-\(UUID().uuidString)"))
         let interpreter = Interpreter(configuration: configuration, garage: garage)
         await interpreter.review(vehicle, adapter: nil)
-        #expect(interpreter.interpretations(for: vehicle).lastError == nil)
+        #expect(interpreter.interpretations(for: vehicle).failure(for: .review(.car)) == nil)
         interpreter.interpretations(for: vehicle).allow(.anthropic)
         await interpreter.review(vehicle, adapter: nil)
         #expect(
-            interpreter.interpretations(for: vehicle).lastError
+            interpreter.interpretations(for: vehicle).failure(for: .review(.car))
                 == AssistantError.missingAPIKey(.anthropic).description)
         #expect(interpreter.interpretations(for: vehicle).reviewInFlight.isEmpty)
         #expect(interpreter.interpretations(for: vehicle).reviews.isEmpty)
+    }
+
+    @Test("resolved problems clear only their review failure")
+    func resolvedProblemClearsFailure() async throws {
+        let vehicle = try garage.addVehicle(name: "Failure scopes")
+        let problem = try garage.addSession(to: vehicle, title: "Noise", problem: "A noise")
+        let suite = "spia-review-scopes-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        let configuration = AssistantConfiguration(
+            keys: APIKeyStore(service: "spia-review-scopes-\(UUID().uuidString)"),
+            defaults: defaults)
+        let interpreter = Interpreter(configuration: configuration, garage: garage)
+        let cache = interpreter.interpretations(for: vehicle)
+        cache.allow(.anthropic)
+
+        await interpreter.review(vehicle, adapter: nil)
+        #expect(
+            cache.failure(for: .review(.car))
+                == AssistantError.missingAPIKey(.anthropic).description)
+        #expect(
+            cache.failure(for: .review(.problem(problem.id)))
+                == AssistantError.missingAPIKey(.anthropic).description)
+
+        try garage.resolve(problem, fix: "Replace the part")
+        await interpreter.review(vehicle, adapter: nil)
+        #expect(cache.failure(for: .review(.problem(problem.id))) == nil)
+        #expect(
+            cache.failure(for: .review(.car))
+                == AssistantError.missingAPIKey(.anthropic).description)
     }
 
     @Test("only problems with a report or note receive their own review scope")

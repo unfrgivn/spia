@@ -247,6 +247,8 @@ struct SessionBoardView: View {
     var answer: ((UUID, String) -> Void)?
     var runCheck: ((StoredCheck) -> Void)?
     var askMore: ((String) -> Void)?
+    var assistantFailure: String? = nil
+    var retryAssistant: (() -> Void)? = nil
     /// Opens the reading history for a row.
     var open: ((SessionBoard.Row) -> Void)?
     var openAssistant: (() -> Void)?
@@ -254,6 +256,14 @@ struct SessionBoardView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let assistantFailure, let retryAssistant {
+                AssistantFailureLine(
+                    title: "Code explanations didn't run", message: assistantFailure,
+                    retry: retryAssistant
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, 16)
+            }
             Hairline()
             ForEach(board.rows) { row in
                 VStack(alignment: .leading, spacing: 0) {
@@ -713,6 +723,9 @@ private struct BoardNoteView: View {
 struct ReviewView: View {
     let review: StoredReview?
     let inFlight: Bool
+    let failure: String?
+    let retry: (() -> Void)?
+    let failureTitle: String
     let untaggedQuestions: [StoredQuestion]
     let moduleLabels: [ModuleTarget: String]
     let answer: (UUID, String) -> Void
@@ -721,9 +734,14 @@ struct ReviewView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if let failure, let retry, review == nil {
+                AssistantFailureCard(
+                    title: failureTitle, message: failure, retry: retry)
+            }
             ReadingHeader(
                 provider: review?.provider, reading: review?.reading,
-                date: review?.date, inFlight: inFlight)
+                date: review?.date, inFlight: inFlight,
+                failure: review != nil ? failure : nil, retry: retry)
             ForEach(untaggedQuestions, id: \.id) { question in
                 QuestionView(question: question, answer: answer)
             }
@@ -754,6 +772,8 @@ struct ReadingHeader: View {
     let reading: String?
     let date: Date?
     let inFlight: Bool
+    let failure: String?
+    let retry: (() -> Void)?
     var busyText = "is reading the board…"
 
     var body: some View {
@@ -777,6 +797,9 @@ struct ReadingHeader: View {
                             .font(.system(size: 11.5))
                             .foregroundStyle(Palette.tertiary)
                     }
+                }
+                if let failure, let retry {
+                    AssistantFailureLine(title: "Couldn't update", message: failure, retry: retry)
                 }
             }
         }

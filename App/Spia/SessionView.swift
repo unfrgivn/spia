@@ -180,16 +180,22 @@ struct SessionView: View {
                     )
                     .padding(.top, wide ? 24 : 18)
                 }
-                if let interpretations {
+                if let interpretations, let vehicle = session.vehicle {
                     let stored = interpretations.review(for: sessionReviewScope)
                     let inFlight = interpretations.reviewInFlight.contains(sessionReviewScope)
+                    let failure = interpretations.failure(for: .review(sessionReviewScope))
+                    let closed = session.closedAt != nil
                     let showDiagnosis =
                         isProblemScope
-                        && (stored?.kind == .diagnosis || (stored == nil && inFlight))
+                        && (stored?.kind == .diagnosis
+                            || (stored == nil && (inFlight || (!closed && failure != nil))))
                     Group {
                         if showDiagnosis {
                             DiagnosisView(
-                                review: stored, inFlight: inFlight, findings: session.findings,
+                                review: stored, inFlight: inFlight,
+                                failure: closed ? nil : failure,
+                                retry: { retryAssistant(for: vehicle) },
+                                findings: session.findings,
                                 untaggedQuestions: stored?.questions.filter {
                                     $0.module == nil && $0.codes.isEmpty
                                 } ?? [], moduleLabels: moduleLabels, answer: answer,
@@ -197,9 +203,12 @@ struct SessionView: View {
                                 recordFinding: recordFinding, files: model.garage.files,
                                 resolve: beginResolve, wide: wide,
                                 closed: session.closedAt != nil)
-                        } else if stored != nil || inFlight {
+                        } else if stored != nil || inFlight || (!closed && failure != nil) {
                             ReviewView(
                                 review: stored, inFlight: inFlight,
+                                failure: closed ? nil : failure,
+                                retry: { retryAssistant(for: vehicle) },
+                                failureTitle: "The review didn't run",
                                 untaggedQuestions: stored?.questions.filter {
                                     $0.module == nil && $0.codes.isEmpty
                                 } ?? [], moduleLabels: moduleLabels, answer: answer,
@@ -220,26 +229,14 @@ struct SessionView: View {
                     askMore: {
                         question = $0; showAssistant = true
                     },
+                    assistantFailure: interpretations?.failure(for: .explanations),
+                    retryAssistant: session.vehicle.map { vehicle in
+                        { retryAssistant(for: vehicle) }
+                    },
                     open: { runner?.historySubject = $0.subject },
                     openAssistant: { showAssistant = true }
                 )
                 .padding(.top, wide ? 32 : 22)
-                if let error = interpretations?.lastError, let vehicle = session.vehicle {
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(Palette.secondary)
-                        Button("Try again") {
-                            Task {
-                                await model.interpreter.refresh(
-                                    vehicle, adapter: workbench?.liveStatus)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Palette.accent)
-                    }
-                    .padding(.top, 8)
-                }
                 CaseFile(
                     session: session, layout: layout, files: model.garage.files,
                     showTranscript: { transcript = $0 },
@@ -358,6 +355,12 @@ struct SessionView: View {
 
     private var interpretations: VehicleInterpretations? {
         session.vehicle.map { model.interpreter.interpretations(for: $0) }
+    }
+
+    private func retryAssistant(for vehicle: Vehicle) {
+        Task {
+            await model.interpreter.refresh(vehicle, adapter: workbench?.liveStatus)
+        }
     }
 
     private var moduleLabels: [ModuleTarget: String] {

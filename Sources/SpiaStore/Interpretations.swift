@@ -23,6 +23,11 @@ public enum UsageKind: String, Codable, Sendable, Equatable {
 
 public enum ReviewKind: String, Codable, Sendable, Equatable { case review, diagnosis }
 
+public enum InterpretationWork: Hashable, Sendable {
+    case explanations
+    case review(ReviewScope)
+}
+
 public struct StoredSuspect: Codable, Sendable, Equatable {
     public let name: String
     public let why: String
@@ -345,7 +350,7 @@ public final class VehicleInterpretations {
     public private(set) var usage: [UsageEntry]
     public private(set) var inFlight: Set<ModuleTarget?> = []
     public private(set) var reviewInFlight: Set<ReviewScope> = []
-    public var lastError: String?
+    private var failures: [InterpretationWork: String] = [:]
     private let url: URL
 
     public init(vehicleID: UUID, files: SpiaFiles) {
@@ -393,6 +398,25 @@ public final class VehicleInterpretations {
 
     public func endReview(_ scope: ReviewScope) {
         reviewInFlight.remove(scope)
+    }
+
+    public func failure(for work: InterpretationWork) -> String? {
+        failures[work]
+    }
+
+    public func recordFailure(_ message: String, for work: InterpretationWork) {
+        failures[work] = message
+    }
+
+    public func clearFailure(for work: InterpretationWork) {
+        failures.removeValue(forKey: work)
+    }
+
+    public func clearReviewFailures(except scopes: Set<ReviewScope> = []) {
+        failures = failures.filter { work, _ in
+            guard case .review(let scope) = work else { return true }
+            return scopes.contains(scope)
+        }
     }
 
     public func recordUsage(
