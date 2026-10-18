@@ -138,7 +138,7 @@ struct VehicleSettings: View {
                     if let consent = interpretations.consent {
                         HStack {
                             Text(
-                                "Allowed with \(consent.provider.displayName) since \(consent.grantedAt.formatted(date: .abbreviated, time: .omitted))"
+                                "Allowed since \(consent.grantedAt.formatted(date: .abbreviated, time: .omitted))"
                             )
                             Spacer()
                             Button("Stop") { interpretations.withdraw() }
