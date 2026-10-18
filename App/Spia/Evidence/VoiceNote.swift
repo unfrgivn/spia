@@ -33,7 +33,7 @@ import Speech
         guard availability == .available, let recognizer else {
             throw VoiceNoteError.unavailable
         }
-        let speech = await requestSpeechPermission()
+        let speech = await Self.speechPermission()
         let microphone = await AVAudioApplication.requestRecordPermission()
         guard speech == .authorized, microphone else { throw VoiceNoteError.denied }
         try AudioSession.beginRecording()
@@ -41,18 +41,12 @@ import Speech
         request.requiresOnDeviceRecognition = true
         request.shouldReportPartialResults = true
         self.request = request
-        task = recognizer.recognitionTask(with: request) { [weak self] result, _ in
-            guard let result else { return }
-            Task { @MainActor in
-                self?.transcript = result.bestTranscription.formattedString
-            }
-        }
+        task = recognizer.recognitionTask(with: request, resultHandler: Self.transcriber(for: self))
         let input = engine.inputNode
         input.removeTap(onBus: 0)
-        let format = input.outputFormat(forBus: 0)
-        input.installTap(onBus: 0, bufferSize: 1_024, format: format) { [weak request] buffer, _ in
-            request?.append(buffer)
-        }
+        input.installTap(
+            onBus: 0, bufferSize: 1_024, format: input.outputFormat(forBus: 0),
+            block: Self.feeder(for: request))
         engine.prepare()
         try engine.start()
         transcript = ""
@@ -70,12 +64,32 @@ import Speech
         AudioSession.endRecording()
     }
 
-    private func requestSpeechPermission() async -> SFSpeechRecognizerAuthorizationStatus {
+    // TCC, Speech and the audio engine call these blocks on their own threads. A closure written
+    // inside this class inherits its main-actor isolation, and Swift 6 traps when one runs off
+    // the main thread (the permission reply crashed the app that way), so each is built here,
+    // outside the actor.
+
+    private nonisolated static func speechPermission() async
+        -> SFSpeechRecognizerAuthorizationStatus
+    {
         await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { status in
-                continuation.resume(returning: status)
-            }
+            SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
         }
+    }
+
+    private nonisolated static func transcriber(
+        for note: VoiceNote
+    ) -> (SFSpeechRecognitionResult?, (any Error)?) -> Void {
+        { [weak note] result, _ in
+            guard let text = result?.bestTranscription.formattedString else { return }
+            Task { @MainActor [note] in note?.transcript = text }
+        }
+    }
+
+    private nonisolated static func feeder(
+        for request: SFSpeechAudioBufferRecognitionRequest
+    ) -> AVAudioNodeTapBlock {
+        { [weak request] buffer, _ in request?.append(buffer) }
     }
 }
 
