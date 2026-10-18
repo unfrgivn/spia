@@ -62,11 +62,15 @@ public struct ToolResult: Codable, Sendable, Equatable {
     }
 }
 
-/// Token counts reported by a provider for one completed request.
+/// Token counts reported by a provider for one completed request, in Claude's terms for both
+/// providers: `input` is what was neither read from a cache nor written to one, so the request's
+/// whole input is `input + cacheRead + cacheWrite`.
 public struct TokenUsage: Sendable, Equatable {
     public let input: Int
     public let output: Int
+    /// Input read from the provider's prompt cache, billed at a tenth of the input rate or less.
     public let cacheRead: Int
+    /// Input written to the prompt cache, billed at 1.25 times the input rate.
     public let cacheWrite: Int
 
     public init(input: Int, output: Int, cacheRead: Int = 0, cacheWrite: Int = 0) {

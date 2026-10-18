@@ -502,7 +502,8 @@ struct OpenAITests {
                     ToolCall(
                         id: "call_123", name: "propose_check",
                         arguments: #"{"check":"generic_scan","module":null,"reason":"Baseline"}"#)),
-                .usage(TokenUsage(input: 25, output: 42, cacheRead: 11, cacheWrite: 7)),
+                // 25 in, of which 11 came from the cache and 7 went into it.
+                .usage(TokenUsage(input: 7, output: 42, cacheRead: 11, cacheWrite: 7)),
                 .finished(.toolUse),
             ])
     }
@@ -910,7 +911,7 @@ struct LiveProviderTests {
         }
         // A real stream must report what it cost; the ledger depends on it.
         let cost = try #require(usage)
-        #expect(cost.input > 0 && cost.output > 0)
+        #expect(cost.input + cost.cacheRead + cost.cacheWrite > 0 && cost.output > 0)
         let result = try InterpretationTool.parse(try #require(call))
         print(
             (["", "=== \(provider.id.rawValue) explanations ==="]

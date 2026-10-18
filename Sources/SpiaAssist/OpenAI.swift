@@ -155,7 +155,8 @@ public struct OpenAIStreamDecoder: Sendable {
                     ToolCall(id: id, name: name, arguments: item["arguments"]?.string ?? "{}"))
             ]
         // OpenAI's response.completed event carries response.usage and its cache details. GPT-6
-        // models report cache writes too, which they bill at 1.25 times the input rate.
+        // models report cache writes too, which they bill at 1.25 times the input rate. OpenAI's
+        // input_tokens counts the cached and written tokens as well, so they come out of it.
         case "response.completed":
             let usage = payload["response"]?["usage"]
             let events: [AssistantEvent] =
@@ -164,11 +165,12 @@ public struct OpenAIStreamDecoder: Sendable {
                         let output = usage["output_tokens"].flatMap(Self.integer)
                     else { return nil }
                     let details = usage["input_tokens_details"]
+                    let read = details?["cached_tokens"].flatMap(Self.integer) ?? 0
+                    let written = details?["cache_write_tokens"].flatMap(Self.integer) ?? 0
                     return .usage(
                         TokenUsage(
-                            input: input, output: output,
-                            cacheRead: details?["cached_tokens"].flatMap(Self.integer) ?? 0,
-                            cacheWrite: details?["cache_write_tokens"].flatMap(Self.integer) ?? 0))
+                            input: max(0, input - read - written), output: output,
+                            cacheRead: read, cacheWrite: written))
                 }.map { [$0, .finished(sawToolCall ? .toolUse : .endTurn)] }
                 ?? [.finished(sawToolCall ? .toolUse : .endTurn)]
             return events
