@@ -199,18 +199,6 @@ struct DiagnosisTests {
                 #"{"reading":"r","symptoms":[],"suspects":[],"checks":[],"inspections":[{"title":"t","steps":"s","look_for":"l","safety":null,"suspects":[],"tells_apart":"a"},{"title":"t","steps":"s","look_for":"l","safety":null,"suspects":[],"tells_apart":"a"},{"title":"t","steps":"s","look_for":"l","safety":null,"suspects":[],"tells_apart":"a"},{"title":"t","steps":"s","look_for":"l","safety":null,"suspects":[],"tells_apart":"a"},{"title":"t","steps":"s","look_for":"l","safety":null,"suspects":[],"tells_apart":"a"},{"title":"t","steps":"s","look_for":"l","safety":null,"suspects":[],"tells_apart":"a"}],"questions":[],"conclusion":null}"#
             ),
             (
-                "suspect symptom index",
-                #"{"reading":"r","symptoms":["s"],"suspects":[{"name":"n","why":"w","confidence":"high","symptoms":[1]}],"checks":[],"inspections":[],"questions":[],"conclusion":null}"#
-            ),
-            (
-                "check suspect index",
-                #"{"reading":"r","symptoms":[],"suspects":[],"checks":[{"check":"generic_scan","module":null,"reason":"r","suspects":[0]}],"inspections":[],"questions":[],"conclusion":null}"#
-            ),
-            (
-                "inspection suspect index",
-                #"{"reading":"r","symptoms":[],"suspects":[],"checks":[],"inspections":[{"title":"t","steps":"s","look_for":"l","safety":null,"suspects":[0],"tells_apart":"a"}],"questions":[],"conclusion":null}"#
-            ),
-            (
                 "bad code",
                 #"{"reading":"r","symptoms":[],"suspects":[],"checks":[],"inspections":[],"questions":[{"question":"q","module":null,"codes":["not-a-code"]}],"conclusion":null}"#
             ),
@@ -235,6 +223,20 @@ struct DiagnosisTests {
             let call = ToolCall(id: name, name: DiagnosisTool.name, arguments: arguments)
             #expect(throws: Error.self) { try DiagnosisTool.parse(call, modules: diagnosisModules) }
         }
+    }
+
+    @Test("an index that points nowhere is dropped, and the rest of the diagnosis stands")
+    func dropsIndexesThatPointNowhere() throws {
+        let arguments =
+            #"{"reading":"r","symptoms":["a","b"],"suspects":[{"name":"n","why":"w","confidence":"high","symptoms":[1,2,-1,0,0,1.5,"x"]}],"checks":[{"check":"generic_scan","module":null,"reason":"r","suspects":[0,5]}],"inspections":[{"title":"t","steps":"s","look_for":"l","safety":null,"suspects":[3,0],"tells_apart":"a"}],"questions":[],"conclusion":null}"#
+        let result = try DiagnosisTool.parse(
+            ToolCall(id: "c", name: DiagnosisTool.name, arguments: arguments),
+            modules: diagnosisModules)
+        #expect(result.reading == "r")
+        #expect(result.symptoms == ["a", "b"])
+        #expect(result.suspects.first?.symptoms == [1, 0])
+        #expect(result.checks.first?.suspects == [0])
+        #expect(result.inspections.first?.suspects == [0])
     }
 
     @Test("diagnosis request includes owner evidence and safety instructions")
