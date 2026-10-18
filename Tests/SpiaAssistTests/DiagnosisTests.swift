@@ -258,7 +258,10 @@ struct DiagnosisTests {
             "Horn controls", "The horn stopped after rain.", "The lamp stayed on.", "Fuse check",
             "The fuse is intact.", "Was the battery disconnected?", "Yes, yesterday.", "B0001-1B",
             "Driver Frontal Stage 1 Deployment Control", "failure type 1B", "Not read yet",
-            "at most three sentences", "Never propose an inspection that already has a finding",
+            "at most three sentences", "a finding already reports what it would show",
+            "neither is anything learned in an inspection",
+            "anything about when or how the problem started is a question",
+            "When a safe inspection that hasn't been done would tell the leading suspects apart, propose it.",
             "SRS or airbag circuits", "set conclusion to null", "record_diagnosis",
         ] { #expect(text.contains(phrase)) }
         #expect(!text.contains("SECRET"))

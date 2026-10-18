@@ -106,6 +106,7 @@ struct ReviewTests {
         #expect(text.contains("failure type 1B: resistance"))
         #expect(text.contains("use it as given"))
         #expect(text.contains("Not read yet:\n- Steering column"))
+        #expect(text.contains("when nothing is listed, `checks` is an empty array"))
         #expect(text.contains("at most three sentences of plain prose, with no lists or headings"))
         #expect(!text.contains("SECRET"))
         #expect(request.toolChoice == .tool(ReviewTool.name))
@@ -158,7 +159,14 @@ struct ReviewTests {
             ])
         let request = ReviewRequest.make(
             briefing: briefing, scope: .car, answered: [],
-            codes: [] as [(printed: String, name: String?, failureType: String?)], unread: [],
+            // As the app sends them: the codes with their public names and failure types.
+            codes: ["B0001-1B", "B0002-1B"].enumerated().map { index, code in
+                (
+                    printed: code,
+                    name: "Driver Frontal Stage \(index + 1) Deployment Control",
+                    failureType: FailureType.label(for: 0x1B)
+                )
+            }, unread: [],
             provider: provider.id,
             sharing: .init(includeVIN: false))
         var call: ToolCall?

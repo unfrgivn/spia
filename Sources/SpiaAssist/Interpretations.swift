@@ -162,8 +162,8 @@ public enum InterpretationRequest {
             let naming =
                 input.module.map { _ in
                     input.nameModule
-                        ? "Name this module: its only label is a placeholder."
-                        : "`module` must be null: this module is already named."
+                        ? "Name this module in the top-level `module`: its only label is a placeholder."
+                        : "The top-level `module` must be null: this module is already named."
                 } ?? "The engine generic scan has no module to name."
             return
                 "Module group \(index + 1)\n\(moduleText)\n\(naming)\nCodes, read from this module by this app with their status bytes:\n\(codeText)"

@@ -163,10 +163,18 @@ public enum DiagnosisTool {
                 "type": "object",
                 "properties": [
                     "reading": ["type": "string"],
-                    "symptoms": ["type": "array", "items": ["type": "string"]],
+                    "symptoms": [
+                        "type": "array", "items": ["type": "string"],
+                        "description":
+                            "What the owner noticed the car doing, in their terms. Never codes, background, or anything learned in an inspection.",
+                    ],
                     "suspects": ["type": "array", "items": suspect],
                     "checks": ["type": "array", "items": check],
-                    "inspections": ["type": "array", "items": inspection],
+                    "inspections": [
+                        "type": "array", "items": inspection,
+                        "description":
+                            "Inspections not yet done: none whose outcome a finding already reports or the owner already gave.",
+                    ],
                     "questions": ["type": "array", "items": question],
                     "conclusion": conclusion,
                 ],
@@ -381,14 +389,14 @@ public enum DiagnosisRequest {
             \(findingText)
             Write a careful technician's reading of what the board, the owner's words, and the findings add up to for this problem.
             The reading must be at most three sentences of plain prose, with no lists or headings.
-            List the symptoms you are working from, in the owner's terms, at most eight, each a short phrase. Symptoms are what the owner noticed, not codes and not findings.
+            List the symptoms you are working from, in the owner's terms, at most eight, each a short phrase. Take them from what the owner noticed, and from a note only when it says what the car does. Codes are not symptoms, and neither is anything learned in an inspection: it stays a finding even when it describes how the car behaves.
             Rank at most five suspects, most likely first. For each give the evidence for and against it in a sentence or two and list the symptoms it explains by zero-based index into your symptoms list (the first symptom is 0). Confidence is high, medium, or low.
             Codes on the board, with their public names; use these names and do not rename or reinterpret a code's identity. The parts these codes came from have been read; never propose reading them again:
             \(codeText)
             Not read yet:
             \(unreadText)
             Propose checks only for parts listed as not read yet, and say which suspects each would tell apart by zero-based index into your suspects list (the first suspect is 0). When nothing is listed as not read yet, `checks` is an empty array. The adapter check is allowed only when Battery is listed as not read yet. Never propose vehicle_info when the briefing already has a VIN.
-            Propose at most five inspections the owner can do safely with no tools beyond a flashlight: looking, listening, pressing, turning, and reading fuse labels; no multimeter or test light, and no removing trim, panels, the horn pad, the steering wheel, or any airbag part. Each has a short imperative title, the steps, what to look for, a safety line when one is due, which suspects it tells apart by zero-based index, and what each outcome would mean. Never propose an inspection that already has a finding, and never one whose answer the owner has already given. Never ask the owner to probe, unplug, or measure SRS or airbag circuits, work on fuel or high-voltage parts, or get under a lifted car; that work belongs in the fix, as a job for a shop.
+            Propose at most five inspections the owner can do safely with no tools beyond a flashlight: looking, listening, pressing, turning, and reading fuse labels; no multimeter or test light, and no removing trim, panels, the horn pad, the steering wheel, or any airbag part. Each has a short imperative title, the steps, what to look for, a safety line when one is due, which suspects it tells apart by zero-based index, and what each outcome would mean. An inspection counts as done when a finding already reports what it would show, whatever its title; never propose one that's done, or one whose answer the owner has already given. Inspections are things to do at the car now; anything about when or how the problem started is a question. When a safe inspection that hasn't been done would tell the leading suspects apart, propose it. Never ask the owner to probe, unplug, or measure SRS or airbag circuits, work on fuel or high-voltage parts, or get under a lifted car; that work belongs in the fix, as a job for a shop.
             Ask at most three questions, only when an answer would change what to do next. Tag a question with the module label it concerns, and list every printed code it concerns in `codes`; leave `codes` empty when it's about the module or the car as a whole. Never repeat an answered question.
             Give a conclusion only when one suspect stands at high confidence and the findings rule the others out or leave them far behind: the cause, the fix in the owner's terms (what to do, or what to tell a shop), and your confidence, which is then high. Otherwise set conclusion to null; never give a conclusion at medium or low confidence.
             Manufacturer-code meanings are interpretations, not verified descriptions.

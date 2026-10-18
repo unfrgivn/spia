@@ -178,11 +178,12 @@ struct InterpretationTests {
             codes: [], nameModule: true, provider: .anthropic,
             sharing: SharingPolicy(includeVIN: false))
         #expect(
-            promptText(from: named).contains("`module` must be null: this module is already named.")
+            promptText(from: named).contains(
+                "The top-level `module` must be null: this module is already named.")
         )
         #expect(
             promptText(from: placeholder).contains(
-                "Name this module: its only label is a placeholder."))
+                "Name this module in the top-level `module`: its only label is a placeholder."))
     }
 
     @Test("interpretation prompts identify an unknown failure type")
@@ -846,8 +847,12 @@ struct LiveProviderTests {
                 label: "Airbag controller (ORC)", bus: "hs", request: "7A0", reply: "7A8",
                 labelConfirmed: true),
             codes: [
-                .init(code: "B0001-1B", catalogName: "Driver Frontal Stage 1 Deployment Control"),
-                .init(code: "B0002-1B", catalogName: "Driver Frontal Stage 2 Deployment Control"),
+                .init(
+                    code: "B0001-1B", catalogName: "Driver Frontal Stage 1 Deployment Control",
+                    failureType: FailureType.label(for: 0x1B)),
+                .init(
+                    code: "B0002-1B", catalogName: "Driver Frontal Stage 2 Deployment Control",
+                    failureType: FailureType.label(for: 0x1B)),
             ], provider: provider.id, sharing: .init(includeVIN: false))
         var call: ToolCall?
         var usage: TokenUsage?
