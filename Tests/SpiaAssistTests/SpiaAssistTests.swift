@@ -775,6 +775,23 @@ struct SettingsTests {
         #expect(settings.backgroundModel(for: .anthropic) == "custom")
     }
 
+    @Test("settings saved on gpt-5.5, the old chat default, move to GPT-6.1 Sol")
+    func previousOpenAIChatDefaultMoves() throws {
+        func decode(chat: String, background: String) throws -> AssistantSettings {
+            try JSONDecoder().decode(
+                AssistantSettings.self,
+                from: Data(
+                    #"{"openAIModel":"\#(chat)","openAIBackgroundModel":"\#(background)"}"#.utf8))
+        }
+        let saved = try decode(chat: "gpt-5.5", background: "gpt-5.5")
+        #expect(saved.openAIModel == "gpt-6.1-sol")
+        // "Most capable" stored the chat default for the automatic work.
+        #expect(saved.openAIBackgroundModel == "gpt-6.1-sol")
+        let chosen = try decode(chat: "gpt-6-sol", background: "gpt-6-luna")
+        #expect(chosen.openAIModel == "gpt-6-sol")
+        #expect(chosen.openAIBackgroundModel == "gpt-6-luna")
+    }
+
     @Test("settings saved on gpt-5.4-mini for the automatic work move to GPT-6 Luna")
     func previousOpenAIBackgroundDefaultMoves() throws {
         func decode(chat: String, background: String) throws -> AssistantSettings {
@@ -936,13 +953,23 @@ struct LiveProviderTests {
             OpenAIProvider(apiKey: Self.openAIKey ?? "", model: OpenAIProvider.fastModel))
     }
 
-    /// The chat's loop as the app runs it on its default Claude model, which always thinks: the
-    /// model calls a tool, the app keeps the reply's text and tool calls as it saves them, and
-    /// the answer goes back as a tool result.
+    /// The chat's loop as the app runs it on each provider's chat model, both of which reason
+    /// before they answer: the model calls a tool, the app keeps the reply's text and tool calls
+    /// as it saves them, and the answer goes back as a tool result.
     @Test("Claude's chat model carries on after a tool result", .enabled(if: anthropicKey != nil))
     func claudeToolRoundTrip() async throws {
-        let provider = AnthropicProvider(
-            apiKey: Self.anthropicKey ?? "", model: AnthropicProvider.defaultModel)
+        try await toolRoundTrip(
+            AnthropicProvider(
+                apiKey: Self.anthropicKey ?? "", model: AnthropicProvider.defaultModel))
+    }
+
+    @Test("OpenAI's chat model carries on after a tool result", .enabled(if: openAIKey != nil))
+    func openAIToolRoundTrip() async throws {
+        try await toolRoundTrip(
+            OpenAIProvider(apiKey: Self.openAIKey ?? "", model: OpenAIProvider.defaultModel))
+    }
+
+    private func toolRoundTrip(_ provider: any AssistantProvider) async throws {
         var messages = [
             ConversationMessage(
                 role: .user,
@@ -968,7 +995,7 @@ struct LiveProviderTests {
                 }))
         let second = try await chatReply(provider, messages)
         print(
-            "=== round trip: first \(String(describing: first.usage)), second \(String(describing: second.usage)), stop \(String(describing: second.stop))\n\(second.text)"
+            "=== \(provider.id.rawValue) round trip: first \(String(describing: first.usage)), second \(String(describing: second.usage)), stop \(String(describing: second.stop))\n\(second.text)"
         )
         #expect(second.stop != nil)
         #expect(!second.text.isEmpty || !second.calls.isEmpty)

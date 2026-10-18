@@ -3,7 +3,10 @@ import Foundation
 /// OpenAI Responses API (https://platform.openai.com/docs/api-reference/responses). Sent with
 /// `store: false`; the app keeps the conversation and resends it, so nothing is chained server-side.
 public struct OpenAIProvider: AssistantProvider {
-    public static let defaultModel = "gpt-5.5"
+    /// The chat's model: GPT-6.1 Sol, at $2 and $10 per million input and output tokens.
+    public static let defaultModel = "gpt-6.1-sol"
+    /// The chat's model until 2026-10-17, so saved settings can move off it.
+    static let previousDefaultModel = "gpt-5.5"
     /// The model for the automatic work: GPT-6 Luna, OpenAI's newest small model, at $0.10 and
     /// $0.50 per million input and output tokens.
     public static let fastModel = "gpt-6-luna"

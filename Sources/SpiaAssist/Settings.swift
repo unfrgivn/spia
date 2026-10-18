@@ -114,9 +114,14 @@ public struct AssistantSettings: Codable, Sendable, Equatable {
         let anthropicModel =
             try values.decodeIfPresent(String.self, forKey: .anthropicModel)
             ?? AnthropicProvider.defaultModel
-        let openAIModel =
+        // gpt-5.5 was OpenAI's chat default until 2026-10-17, and "Most capable" stored it for the
+        // automatic work too; wherever it's saved, it moves to the current default.
+        let replacingOpenAIDefault = { (model: String) in
+            model == OpenAIProvider.previousDefaultModel ? OpenAIProvider.defaultModel : model
+        }
+        let openAIModel = replacingOpenAIDefault(
             try values.decodeIfPresent(String.self, forKey: .openAIModel)
-            ?? OpenAIProvider.defaultModel
+                ?? OpenAIProvider.defaultModel)
         self.init(
             defaultProvider: try values.decodeIfPresent(ProviderID.self, forKey: .defaultProvider)
                 ?? .anthropic,
@@ -126,10 +131,11 @@ public struct AssistantSettings: Codable, Sendable, Equatable {
                 saved: try values.decodeIfPresent(String.self, forKey: .anthropicBackgroundModel),
                 chat: anthropicModel, previous: AnthropicProvider.previousFastModel,
                 current: AnthropicProvider.fastModel),
-            openAIBackgroundModel: Self.backgroundModel(
-                saved: try values.decodeIfPresent(String.self, forKey: .openAIBackgroundModel),
-                chat: openAIModel, previous: OpenAIProvider.previousFastModel,
-                current: OpenAIProvider.fastModel),
+            openAIBackgroundModel: replacingOpenAIDefault(
+                Self.backgroundModel(
+                    saved: try values.decodeIfPresent(String.self, forKey: .openAIBackgroundModel),
+                    chat: openAIModel, previous: OpenAIProvider.previousFastModel,
+                    current: OpenAIProvider.fastModel)),
             automaticWorkPaused: try values.decodeIfPresent(Bool.self, forKey: .automaticWorkPaused)
                 ?? false,
             shareVIN: try values.decodeIfPresent(Bool.self, forKey: .shareVIN) ?? false)
