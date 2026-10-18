@@ -4,7 +4,14 @@ import Foundation
 /// `store: false`; the app keeps the conversation and resends it, so nothing is chained server-side.
 public struct OpenAIProvider: AssistantProvider {
     public static let defaultModel = "gpt-5.5"
-    public static let fastModel = "gpt-5.4-mini"
+    /// The model for the automatic work: GPT-6 Luna, OpenAI's newest small model, at $0.10 and
+    /// $0.50 per million input and output tokens.
+    public static let fastModel = "gpt-6-luna"
+    /// The automatic work's model until 2026-10-17, so saved settings can move off it.
+    static let previousFastModel = "gpt-5.4-mini"
+    /// Reasoning counts toward `max_output_tokens`, and the models offered here reason (at medium
+    /// effort unless told otherwise), so a request gets this much on top of the answer's budget.
+    public static let reasoningRoom = 8_000
     static let endpoint = URL(string: "https://api.openai.com/v1/responses")
 
     public let id = ProviderID.openAI
@@ -103,7 +110,7 @@ public struct OpenAIProvider: AssistantProvider {
             "model": .string(model),
             "instructions": .string(request.instructions.joined),
             "input": .array(input),
-            "max_output_tokens": .number(Double(request.maxOutputTokens)),
+            "max_output_tokens": .number(Double(request.maxOutputTokens + reasoningRoom)),
             "store": false,
             "stream": true,
             "tools": .array(
@@ -144,7 +151,8 @@ public struct OpenAIStreamDecoder: Sendable {
                 .toolCall(
                     ToolCall(id: id, name: name, arguments: item["arguments"]?.string ?? "{}"))
             ]
-        // OpenAI's response.completed event carries response.usage and its cache details.
+        // OpenAI's response.completed event carries response.usage and its cache details. GPT-6
+        // models report cache writes too, which they bill at 1.25 times the input rate.
         case "response.completed":
             let usage = payload["response"]?["usage"]
             let events: [AssistantEvent] =
@@ -152,9 +160,12 @@ public struct OpenAIStreamDecoder: Sendable {
                     guard let input = usage["input_tokens"].flatMap(Self.integer),
                         let output = usage["output_tokens"].flatMap(Self.integer)
                     else { return nil }
-                    let cached =
-                        usage["input_tokens_details"]?["cached_tokens"].flatMap(Self.integer) ?? 0
-                    return .usage(TokenUsage(input: input, output: output, cacheRead: cached))
+                    let details = usage["input_tokens_details"]
+                    return .usage(
+                        TokenUsage(
+                            input: input, output: output,
+                            cacheRead: details?["cached_tokens"].flatMap(Self.integer) ?? 0,
+                            cacheWrite: details?["cache_write_tokens"].flatMap(Self.integer) ?? 0))
                 }.map { [$0, .finished(sawToolCall ? .toolUse : .endTurn)] }
                 ?? [.finished(sawToolCall ? .toolUse : .endTurn)]
             return events

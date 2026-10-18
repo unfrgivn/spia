@@ -114,30 +114,36 @@ public struct AssistantSettings: Codable, Sendable, Equatable {
         let anthropicModel =
             try values.decodeIfPresent(String.self, forKey: .anthropicModel)
             ?? AnthropicProvider.defaultModel
-        var anthropicBackgroundModel =
-            try values.decodeIfPresent(String.self, forKey: .anthropicBackgroundModel)
-            ?? AnthropicProvider.fastModel
-        // Haiku 4.5 was the default here until 2026-10-17. Settings can still store it only as
-        // "Same as chat", with Haiku 4.5 as the chat model too; any other saved Haiku 4.5 is the
-        // old default.
-        if anthropicBackgroundModel == AnthropicProvider.previousFastModel
-            && anthropicModel != AnthropicProvider.previousFastModel
-        {
-            anthropicBackgroundModel = AnthropicProvider.fastModel
-        }
+        let openAIModel =
+            try values.decodeIfPresent(String.self, forKey: .openAIModel)
+            ?? OpenAIProvider.defaultModel
         self.init(
             defaultProvider: try values.decodeIfPresent(ProviderID.self, forKey: .defaultProvider)
                 ?? .anthropic,
             anthropicModel: anthropicModel,
-            openAIModel: try values.decodeIfPresent(String.self, forKey: .openAIModel)
-                ?? OpenAIProvider.defaultModel,
-            anthropicBackgroundModel: anthropicBackgroundModel,
-            openAIBackgroundModel: try values.decodeIfPresent(
-                String.self, forKey: .openAIBackgroundModel)
-                ?? OpenAIProvider.fastModel,
+            openAIModel: openAIModel,
+            anthropicBackgroundModel: Self.backgroundModel(
+                saved: try values.decodeIfPresent(String.self, forKey: .anthropicBackgroundModel),
+                chat: anthropicModel, previous: AnthropicProvider.previousFastModel,
+                current: AnthropicProvider.fastModel),
+            openAIBackgroundModel: Self.backgroundModel(
+                saved: try values.decodeIfPresent(String.self, forKey: .openAIBackgroundModel),
+                chat: openAIModel, previous: OpenAIProvider.previousFastModel,
+                current: OpenAIProvider.fastModel),
             automaticWorkPaused: try values.decodeIfPresent(Bool.self, forKey: .automaticWorkPaused)
                 ?? false,
             shareVIN: try values.decodeIfPresent(Bool.self, forKey: .shareVIN) ?? false)
+    }
+
+    /// The saved model for the automatic work, moved to the current default when it's the
+    /// previous one (Haiku 4.5 and gpt-5.4-mini until 2026-10-17). Settings can still store the
+    /// previous default on purpose only as "Same as chat", with it as the chat model too, so that
+    /// stays.
+    private static func backgroundModel(
+        saved: String?, chat: String, previous: String, current: String
+    ) -> String {
+        guard let saved else { return current }
+        return saved == previous && chat != previous ? current : saved
     }
 
     static let defaultsKey = "assistant.settings"

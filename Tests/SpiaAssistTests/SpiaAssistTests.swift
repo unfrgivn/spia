@@ -486,7 +486,7 @@ struct OpenAITests {
         data: {"type":"response.output_item.done","output_index":1,"item":{"type":"function_call","id":"fc_123","call_id":"call_123","name":"propose_check","arguments":"{\\"check\\":\\"generic_scan\\",\\"module\\":null,\\"reason\\":\\"Baseline\\"}"}}
 
         event: response.completed
-        data: {"type":"response.completed","response":{"id":"resp_123","status":"completed","output":[],"usage":{"input_tokens":25,"output_tokens":42,"input_tokens_details":{"cached_tokens":11}}}}
+        data: {"type":"response.completed","response":{"id":"resp_123","status":"completed","output":[],"usage":{"input_tokens":25,"output_tokens":42,"input_tokens_details":{"cached_tokens":11,"cache_write_tokens":7}}}}
 
 
         """
@@ -502,7 +502,7 @@ struct OpenAITests {
                     ToolCall(
                         id: "call_123", name: "propose_check",
                         arguments: #"{"check":"generic_scan","module":null,"reason":"Baseline"}"#)),
-                .usage(TokenUsage(input: 25, output: 42, cacheRead: 11)),
+                .usage(TokenUsage(input: 25, output: 42, cacheRead: 11, cacheWrite: 7)),
                 .finished(.toolUse),
             ])
     }
@@ -519,6 +519,15 @@ struct OpenAITests {
                         #"{"type":"error","code":"rate_limit_exceeded","message":"Slow down","param":null}"#
                 ))
         }
+    }
+
+    @Test("reasoning gets room on top of the answer's budget")
+    func openAIReasoningRoom() throws {
+        let request = AssistantRequest(
+            instructions: rulesOnly("r"), messages: [], tools: [], maxOutputTokens: 1200)
+        #expect(
+            try OpenAIProvider.body(for: request, model: "gpt-6-luna")["max_output_tokens"]
+                == .number(Double(1200 + OpenAIProvider.reasoningRoom)))
     }
 
     @Test(
@@ -764,6 +773,25 @@ struct SettingsTests {
         #expect(settings.backgroundModel(for: .anthropic) == AnthropicProvider.fastModel)
         settings.anthropicBackgroundModel = settings.anthropicModel
         #expect(settings.backgroundModel(for: .anthropic) == "custom")
+    }
+
+    @Test("settings saved on gpt-5.4-mini for the automatic work move to GPT-6 Luna")
+    func previousOpenAIBackgroundDefaultMoves() throws {
+        func decode(chat: String, background: String) throws -> AssistantSettings {
+            try JSONDecoder().decode(
+                AssistantSettings.self,
+                from: Data(
+                    #"{"openAIModel":"\#(chat)","openAIBackgroundModel":"\#(background)"}"#.utf8))
+        }
+        #expect(
+            try decode(chat: "gpt-5.5", background: "gpt-5.4-mini").openAIBackgroundModel
+                == "gpt-6-luna")
+        #expect(
+            try decode(chat: "gpt-5.4-mini", background: "gpt-5.4-mini").openAIBackgroundModel
+                == "gpt-5.4-mini")
+        #expect(
+            try decode(chat: "gpt-5.5", background: "gpt-6-sol").openAIBackgroundModel
+                == "gpt-6-sol")
     }
 
     @Test("settings saved on the old background default move to Haiku 5.5")
